@@ -1,0 +1,902 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+WG_IF="wg-ir"
+WG_CONF="/etc/wireguard/wg-ir.conf"
+CLIENT_DIR="/etc/wireguard/clients"
+STATE_DIR="/etc/wireguard/client-state"
+SERVER_PUBLIC_KEY_FILE="/etc/wireguard/ir_client_public.key"
+
+DEFAULT_ENDPOINT="31.25.93.168:51820"
+VPN_PREFIX="10.10.10"
+VPN_CIDR="10.10.10.0/24"
+MTU="1280"
+DNS_SERVERS="1.1.1.1, 8.8.8.8"
+
+usage() {
+  cat <<USAGE
+Usage:
+  wg-client add CLIENT_NAME [options]
+  wg-client remove CLIENT_NAME
+  wg-client renew CLIENT_NAME [options]
+  wg-client disable CLIENT_NAME REASON
+  wg-client enable CLIENT_NAME
+  wg-client show CLIENT_NAME
+  wg-client list
+  wg-client status CLIENT_NAME
+  wg-client enforce
+  wg-client qr CLIENT_NAME
+  wg-client install-timer
+
+Options for add/renew:
+  --ip IP                  Example: 10.10.10.20
+  --days DAYS              Expire after X days. Example: --days 30
+  --limit SIZE             Total data limit. Examples: 5G, 500M, 20GB
+  --endpoint HOST:PORT     Default: 31.25.93.168:51820
+  --single-ip              Lock to first source IP
+  --single-endpoint        Lock to first source IP:port, stricter but may break on mobile networks
+  --no-single              Disable single-device protection
+
+Examples:
+  wg-client add farzad --days 30 --limit 20G --single-ip
+  wg-client add ali --ip 10.10.10.20 --days 7 --limit 5G
+  wg-client renew farzad --days 30 --limit 20G --single-ip
+  wg-client remove farzad
+  wg-client list
+  wg-client enforce
+  wg-client install-timer
+USAGE
+}
+
+die() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
+require_root() {
+  [ "$(id -u)" -eq 0 ] || die "Run as root: sudo -i"
+}
+
+sanitize_name() {
+  echo "$1" | tr -cs 'A-Za-z0-9_.-' '_'
+}
+
+q() {
+  printf '%q' "$1"
+}
+
+now_epoch() {
+  date +%s
+}
+
+backup_conf() {
+  mkdir -p /root/wg-client-backups
+  cp "$WG_CONF" "/root/wg-client-backups/wg-ir.conf.$(date +%F-%H%M%S)"
+}
+
+check_base_files() {
+  [ -f "$WG_CONF" ] || die "$WG_CONF not found"
+  [ -f "$SERVER_PUBLIC_KEY_FILE" ] || die "$SERVER_PUBLIC_KEY_FILE not found"
+  command -v wg >/dev/null || die "WireGuard command 'wg' not found"
+  mkdir -p "$CLIENT_DIR" "$STATE_DIR"
+  chmod 700 "$CLIENT_DIR" "$STATE_DIR"
+}
+
+meta_path() {
+  echo "$STATE_DIR/$1.meta"
+}
+
+client_conf_path() {
+  echo "$CLIENT_DIR/$1.conf"
+}
+
+parse_bytes() {
+  local input="${1^^}"
+  input="${input// /}"
+
+  [[ "$input" =~ ^([0-9]+)(B|K|KB|M|MB|G|GB|T|TB)?$ ]] || die "Invalid size: $1"
+
+  local num="${BASH_REMATCH[1]}"
+  local unit="${BASH_REMATCH[2]:-B}"
+
+  case "$unit" in
+    B)  echo "$num" ;;
+    K|KB) echo $((num * 1024)) ;;
+    M|MB) echo $((num * 1024 * 1024)) ;;
+    G|GB) echo $((num * 1024 * 1024 * 1024)) ;;
+    T|TB) echo $((num * 1024 * 1024 * 1024 * 1024)) ;;
+    *) die "Invalid size unit: $unit" ;;
+  esac
+}
+
+human_bytes() {
+  local b="${1:-0}"
+
+  if command -v numfmt >/dev/null 2>&1; then
+    numfmt --to=iec --suffix=B "$b" 2>/dev/null || echo "${b}B"
+  else
+    echo "${b}B"
+  fi
+}
+
+human_time() {
+  local ts="${1:-0}"
+
+  if [ "$ts" = "0" ] || [ -z "$ts" ]; then
+    echo "never"
+  else
+    date -d "@$ts" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "$ts"
+  fi
+}
+
+validate_ip() {
+  local ip="$1"
+
+  [[ "$ip" =~ ^10\.10\.10\.([0-9]{1,3})$ ]] || die "Client IP must be like 10.10.10.X"
+
+  local last="${BASH_REMATCH[1]}"
+  [ "$last" -ge 2 ] && [ "$last" -le 254 ] || die "Client IP must be between 10.10.10.2 and 10.10.10.254"
+}
+
+client_exists() {
+  local name="$1"
+  [ -f "$(meta_path "$name")" ]
+}
+
+client_active_in_conf() {
+  local name="$1"
+  grep -q "^# BEGIN CLIENT $name$" "$WG_CONF"
+}
+
+remove_client_block() {
+  local name="$1"
+  local tmp
+  tmp="$(mktemp)"
+
+  awk -v n="$name" '
+    $0 == "# BEGIN CLIENT " n {skip=1; next}
+    $0 == "# END CLIENT " n {skip=0; next}
+    !skip {print}
+  ' "$WG_CONF" > "$tmp"
+
+  cat "$tmp" > "$WG_CONF"
+  rm -f "$tmp"
+  chmod 600 "$WG_CONF"
+}
+
+add_client_block() {
+  local name="$1"
+  local public_key="$2"
+  local ip="$3"
+
+  remove_client_block "$name"
+
+  cat >> "$WG_CONF" <<EOF2
+
+# BEGIN CLIENT $name
+[Peer]
+PublicKey = $public_key
+AllowedIPs = $ip/32
+# END CLIENT $name
+EOF2
+
+  chmod 600 "$WG_CONF"
+}
+
+used_ips() {
+  {
+    grep -hoE "${VPN_PREFIX//./\\.}\.[0-9]+/32" "$WG_CONF" 2>/dev/null || true
+    grep -RhoE "${VPN_PREFIX//./\\.}\.[0-9]+/32" "$CLIENT_DIR" 2>/dev/null || true
+    for f in "$STATE_DIR"/*.meta; do
+      [ -f "$f" ] || continue
+      grep '^IP=' "$f" | cut -d= -f2- | tr -d "'" 2>/dev/null || true
+    done
+  } | sed 's#/32##' | sort -u
+}
+
+ip_is_used() {
+  local ip="$1"
+  used_ips | grep -qx "$ip"
+}
+
+next_free_ip() {
+  local i ip
+  for i in $(seq 2 254); do
+    ip="$VPN_PREFIX.$i"
+    if ! ip_is_used "$ip"; then
+      echo "$ip"
+      return 0
+    fi
+  done
+
+  die "No free IP left in $VPN_CIDR"
+}
+
+load_meta() {
+  local name="$1"
+  local f
+  f="$(meta_path "$name")"
+  [ -f "$f" ] || die "Client not found: $name"
+
+  # shellcheck disable=SC1090
+  source "$f"
+
+  NAME="${NAME:-$name}"
+  IP="${IP:-}"
+  PUBLIC_KEY="${PUBLIC_KEY:-}"
+  LIMIT_BYTES="${LIMIT_BYTES:-0}"
+  EXPIRES_AT="${EXPIRES_AT:-0}"
+  CREATED_AT="${CREATED_AT:-0}"
+  USED_BYTES="${USED_BYTES:-0}"
+  LAST_TOTAL="${LAST_TOTAL:-0}"
+  SINGLE_MODE="${SINGLE_MODE:-off}"
+  LOCKED_ENDPOINT="${LOCKED_ENDPOINT:-}"
+  LOCKED_IP="${LOCKED_IP:-}"
+  DISABLED="${DISABLED:-0}"
+  DISABLED_REASON="${DISABLED_REASON:-}"
+}
+
+save_meta() {
+  local name="$NAME"
+  local f
+  f="$(meta_path "$name")"
+
+  {
+    echo "NAME=$(q "$NAME")"
+    echo "IP=$(q "$IP")"
+    echo "PUBLIC_KEY=$(q "$PUBLIC_KEY")"
+    echo "LIMIT_BYTES=$(q "$LIMIT_BYTES")"
+    echo "EXPIRES_AT=$(q "$EXPIRES_AT")"
+    echo "CREATED_AT=$(q "$CREATED_AT")"
+    echo "USED_BYTES=$(q "$USED_BYTES")"
+    echo "LAST_TOTAL=$(q "$LAST_TOTAL")"
+    echo "SINGLE_MODE=$(q "$SINGLE_MODE")"
+    echo "LOCKED_ENDPOINT=$(q "$LOCKED_ENDPOINT")"
+    echo "LOCKED_IP=$(q "$LOCKED_IP")"
+    echo "DISABLED=$(q "$DISABLED")"
+    echo "DISABLED_REASON=$(q "$DISABLED_REASON")"
+    echo "UPDATED_AT=$(q "$(now_epoch)")"
+  } > "$f"
+
+  chmod 600 "$f"
+}
+
+remove_live_peer() {
+  local public_key="$1"
+
+  if [ -n "$public_key" ] && wg show "$WG_IF" >/dev/null 2>&1; then
+    wg set "$WG_IF" peer "$public_key" remove 2>/dev/null || true
+  fi
+}
+
+add_live_peer() {
+  local public_key="$1"
+  local ip="$2"
+
+  if wg show "$WG_IF" >/dev/null 2>&1; then
+    wg set "$WG_IF" peer "$public_key" allowed-ips "$ip/32"
+  else
+    echo "WARNING: $WG_IF is not running. Peer saved to config only."
+    echo "Start it with: systemctl restart wg-quick@$WG_IF"
+  fi
+}
+
+endpoint_ip() {
+  local ep="$1"
+
+  if [ -z "$ep" ] || [ "$ep" = "(none)" ]; then
+    echo ""
+    return 0
+  fi
+
+  if [[ "$ep" =~ ^\[.*\]:[0-9]+$ ]]; then
+    echo "$ep" | sed -E 's/^\[([^]]+)\]:[0-9]+$/\1/'
+  else
+    echo "${ep%:*}"
+  fi
+}
+
+get_transfer_total() {
+  local public_key="$1"
+  local rx tx
+
+  read -r rx tx < <(wg show "$WG_IF" transfer 2>/dev/null | awk -v k="$public_key" '$1 == k {print $2, $3}')
+
+  if [ -z "${rx:-}" ] || [ -z "${tx:-}" ]; then
+    echo ""
+  else
+    echo $((rx + tx))
+  fi
+}
+
+get_endpoint() {
+  local public_key="$1"
+  wg show "$WG_IF" endpoints 2>/dev/null | awk -v k="$public_key" '$1 == k {print $2}'
+}
+
+disable_client_internal() {
+  local name="$1"
+  local reason="$2"
+
+  load_meta "$name"
+
+  remove_live_peer "$PUBLIC_KEY"
+  remove_client_block "$NAME"
+
+  DISABLED="1"
+  DISABLED_REASON="$reason"
+  save_meta
+
+  echo "Disabled client: $NAME"
+  echo "Reason: $reason"
+}
+
+create_client_config() {
+  local name="$1"
+  local ip="$2"
+  local private_key="$3"
+  local endpoint="$4"
+
+  mkdir -p "$CLIENT_DIR"
+  chmod 700 "$CLIENT_DIR"
+
+  cat > "$(client_conf_path "$name")" <<EOF2
+[Interface]
+PrivateKey = $private_key
+Address = $ip/32
+DNS = $DNS_SERVERS
+MTU = $MTU
+
+[Peer]
+PublicKey = $(cat "$SERVER_PUBLIC_KEY_FILE")
+Endpoint = $endpoint
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
+EOF2
+
+  chmod 600 "$(client_conf_path "$name")"
+}
+
+parse_opts() {
+  OP_IP=""
+  OP_DAYS=""
+  OP_LIMIT=""
+  OP_ENDPOINT="$DEFAULT_ENDPOINT"
+  OP_SINGLE_MODE=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --ip)
+        OP_IP="${2:-}"
+        shift 2
+        ;;
+      --days)
+        OP_DAYS="${2:-}"
+        shift 2
+        ;;
+      --limit)
+        OP_LIMIT="${2:-}"
+        shift 2
+        ;;
+      --endpoint)
+        OP_ENDPOINT="${2:-}"
+        shift 2
+        ;;
+      --single-ip)
+        OP_SINGLE_MODE="ip"
+        shift
+        ;;
+      --single-endpoint)
+        OP_SINGLE_MODE="endpoint"
+        shift
+        ;;
+      --no-single)
+        OP_SINGLE_MODE="off"
+        shift
+        ;;
+      *)
+        die "Unknown option: $1"
+        ;;
+    esac
+  done
+}
+
+add_client() {
+  local raw_name="${1:-}"
+  [ -n "$raw_name" ] || die "Client name required"
+  shift || true
+
+  parse_opts "$@"
+  check_base_files
+
+  local name
+  name="$(sanitize_name "$raw_name")"
+
+  if client_exists "$name" || client_active_in_conf "$name"; then
+    die "Client already exists: $name"
+  fi
+
+  local ip
+  if [ -n "$OP_IP" ]; then
+    validate_ip "$OP_IP"
+    ip="$OP_IP"
+    if ip_is_used "$ip"; then
+      die "IP already used: $ip"
+    fi
+  else
+    ip="$(next_free_ip)"
+  fi
+
+  local limit_bytes="0"
+  if [ -n "$OP_LIMIT" ]; then
+    limit_bytes="$(parse_bytes "$OP_LIMIT")"
+  fi
+
+  local expires_at="0"
+  if [ -n "$OP_DAYS" ]; then
+    [[ "$OP_DAYS" =~ ^[0-9]+$ ]] || die "--days must be a number"
+    expires_at=$(( $(now_epoch) + OP_DAYS * 86400 ))
+  fi
+
+  local single_mode="${OP_SINGLE_MODE:-off}"
+
+  local private_key public_key
+  private_key="$(wg genkey)"
+  public_key="$(printf '%s' "$private_key" | wg pubkey)"
+
+  backup_conf
+  add_client_block "$name" "$public_key" "$ip"
+  add_live_peer "$public_key" "$ip"
+  create_client_config "$name" "$ip" "$private_key" "$OP_ENDPOINT"
+
+  NAME="$name"
+  IP="$ip"
+  PUBLIC_KEY="$public_key"
+  LIMIT_BYTES="$limit_bytes"
+  EXPIRES_AT="$expires_at"
+  CREATED_AT="$(now_epoch)"
+  USED_BYTES="0"
+  LAST_TOTAL="0"
+  SINGLE_MODE="$single_mode"
+  LOCKED_ENDPOINT=""
+  LOCKED_IP=""
+  DISABLED="0"
+  DISABLED_REASON=""
+  save_meta
+
+  echo "Created client: $name"
+  echo "Client IP: $ip"
+  echo "Limit: $( [ "$limit_bytes" = "0" ] && echo unlimited || human_bytes "$limit_bytes" )"
+  echo "Expires: $(human_time "$expires_at")"
+  echo "Single-device mode: $single_mode"
+  echo "Config file: $(client_conf_path "$name")"
+  echo
+  cat "$(client_conf_path "$name")"
+}
+
+remove_client() {
+  local raw_name="${1:-}"
+  [ -n "$raw_name" ] || die "Client name required"
+
+  check_base_files
+
+  local name
+  name="$(sanitize_name "$raw_name")"
+
+  if ! client_exists "$name" && ! client_active_in_conf "$name"; then
+    die "Client not found: $name"
+  fi
+
+  local public_key=""
+  if client_exists "$name"; then
+    load_meta "$name"
+    public_key="$PUBLIC_KEY"
+  else
+    public_key="$(awk -v n="$name" '$0 == "# BEGIN CLIENT " n {flag=1} flag && /^PublicKey/ {print $3; exit}' "$WG_CONF")"
+  fi
+
+  backup_conf
+  remove_live_peer "$public_key"
+  remove_client_block "$name"
+
+  rm -f "$(client_conf_path "$name")" "$(meta_path "$name")"
+
+  echo "Removed client: $name"
+}
+
+renew_client() {
+  local raw_name="${1:-}"
+  [ -n "$raw_name" ] || die "Client name required"
+  shift || true
+
+  parse_opts "$@"
+  check_base_files
+
+  local name
+  name="$(sanitize_name "$raw_name")"
+
+  load_meta "$name"
+
+  local old_public_key="$PUBLIC_KEY"
+  local ip="$IP"
+
+  if [ -n "$OP_IP" ]; then
+    validate_ip "$OP_IP"
+    if [ "$OP_IP" != "$ip" ] && ip_is_used "$OP_IP"; then
+      die "IP already used: $OP_IP"
+    fi
+    ip="$OP_IP"
+  fi
+
+  local limit_bytes="$LIMIT_BYTES"
+  if [ -n "$OP_LIMIT" ]; then
+    limit_bytes="$(parse_bytes "$OP_LIMIT")"
+  fi
+
+  local expires_at="$EXPIRES_AT"
+  if [ -n "$OP_DAYS" ]; then
+    [[ "$OP_DAYS" =~ ^[0-9]+$ ]] || die "--days must be a number"
+    expires_at=$(( $(now_epoch) + OP_DAYS * 86400 ))
+  fi
+
+  local single_mode="$SINGLE_MODE"
+  if [ -n "$OP_SINGLE_MODE" ]; then
+    single_mode="$OP_SINGLE_MODE"
+  fi
+
+  local private_key public_key
+  private_key="$(wg genkey)"
+  public_key="$(printf '%s' "$private_key" | wg pubkey)"
+
+  backup_conf
+  remove_live_peer "$old_public_key"
+  remove_client_block "$name"
+
+  add_client_block "$name" "$public_key" "$ip"
+  add_live_peer "$public_key" "$ip"
+  create_client_config "$name" "$ip" "$private_key" "$OP_ENDPOINT"
+
+  NAME="$name"
+  IP="$ip"
+  PUBLIC_KEY="$public_key"
+  LIMIT_BYTES="$limit_bytes"
+  EXPIRES_AT="$expires_at"
+  CREATED_AT="$(now_epoch)"
+  USED_BYTES="0"
+  LAST_TOTAL="0"
+  SINGLE_MODE="$single_mode"
+  LOCKED_ENDPOINT=""
+  LOCKED_IP=""
+  DISABLED="0"
+  DISABLED_REASON=""
+  save_meta
+
+  echo "Renewed client: $name"
+  echo "Client IP: $ip"
+  echo "Limit: $( [ "$limit_bytes" = "0" ] && echo unlimited || human_bytes "$limit_bytes" )"
+  echo "Expires: $(human_time "$expires_at")"
+  echo "Single-device mode: $single_mode"
+  echo "New config file: $(client_conf_path "$name")"
+  echo
+  cat "$(client_conf_path "$name")"
+}
+
+enable_client() {
+  local raw_name="${1:-}"
+  [ -n "$raw_name" ] || die "Client name required"
+
+  check_base_files
+
+  local name
+  name="$(sanitize_name "$raw_name")"
+
+  load_meta "$name"
+
+  local now
+  now="$(now_epoch)"
+
+  if [ "$EXPIRES_AT" != "0" ] && [ "$now" -ge "$EXPIRES_AT" ]; then
+    die "Client is expired. Use renew with --days to extend."
+  fi
+
+  if [ "$LIMIT_BYTES" != "0" ] && [ "$USED_BYTES" -ge "$LIMIT_BYTES" ]; then
+    die "Client is over data limit. Use renew or edit limit."
+  fi
+
+  backup_conf
+  add_client_block "$NAME" "$PUBLIC_KEY" "$IP"
+  add_live_peer "$PUBLIC_KEY" "$IP"
+
+  DISABLED="0"
+  DISABLED_REASON=""
+  save_meta
+
+  echo "Enabled client: $NAME"
+}
+
+disable_client_cmd() {
+  local raw_name="${1:-}"
+  local reason="${2:-manual disable}"
+  [ -n "$raw_name" ] || die "Client name required"
+
+  check_base_files
+
+  local name
+  name="$(sanitize_name "$raw_name")"
+  disable_client_internal "$name" "$reason"
+}
+
+show_client() {
+  local raw_name="${1:-}"
+  [ -n "$raw_name" ] || die "Client name required"
+
+  local name
+  name="$(sanitize_name "$raw_name")"
+
+  [ -f "$(client_conf_path "$name")" ] || die "Config not found: $(client_conf_path "$name")"
+
+  cat "$(client_conf_path "$name")"
+}
+
+status_client() {
+  local raw_name="${1:-}"
+  [ -n "$raw_name" ] || die "Client name required"
+
+  check_base_files
+
+  local name
+  name="$(sanitize_name "$raw_name")"
+  load_meta "$name"
+  update_usage_for_loaded_client false
+
+  local endpoint
+  endpoint="$(get_endpoint "$PUBLIC_KEY")"
+
+  echo "Name: $NAME"
+  echo "IP: $IP"
+  echo "Status: $( [ "$DISABLED" = "1" ] && echo "disabled: $DISABLED_REASON" || echo "active" )"
+  echo "Used: $(human_bytes "$USED_BYTES")"
+  echo "Limit: $( [ "$LIMIT_BYTES" = "0" ] && echo unlimited || human_bytes "$LIMIT_BYTES" )"
+  echo "Expires: $(human_time "$EXPIRES_AT")"
+  echo "Single-device mode: $SINGLE_MODE"
+  echo "Locked endpoint: ${LOCKED_ENDPOINT:-none}"
+  echo "Locked IP: ${LOCKED_IP:-none}"
+  echo "Current endpoint: ${endpoint:-none}"
+}
+
+list_clients() {
+  check_base_files
+
+  printf "%-22s %-15s %-11s %-12s %-12s %-20s %-10s\n" "NAME" "IP" "STATUS" "USED" "LIMIT" "EXPIRES" "SINGLE"
+  printf "%-22s %-15s %-11s %-12s %-12s %-20s %-10s\n" "----" "--" "------" "----" "-----" "-------" "------"
+
+  local f name status limit expires
+  for f in "$STATE_DIR"/*.meta; do
+    [ -f "$f" ] || continue
+
+    name="$(basename "$f" .meta)"
+    load_meta "$name"
+    update_usage_for_loaded_client false
+
+    status="active"
+    if [ "$DISABLED" = "1" ]; then
+      status="disabled"
+    fi
+
+    if [ "$LIMIT_BYTES" = "0" ]; then
+      limit="unlimited"
+    else
+      limit="$(human_bytes "$LIMIT_BYTES")"
+    fi
+
+    expires="$(human_time "$EXPIRES_AT")"
+
+    printf "%-22s %-15s %-11s %-12s %-12s %-20s %-10s\n" \
+      "$NAME" "$IP" "$status" "$(human_bytes "$USED_BYTES")" "$limit" "$expires" "$SINGLE_MODE"
+  done
+}
+
+update_usage_for_loaded_client() {
+  local save="${1:-true}"
+
+  if [ "$DISABLED" = "1" ]; then
+    return 0
+  fi
+
+  local total
+  total="$(get_transfer_total "$PUBLIC_KEY")"
+
+  if [ -z "$total" ]; then
+    return 0
+  fi
+
+  local last="${LAST_TOTAL:-0}"
+  local delta="0"
+
+  if [ "$total" -ge "$last" ]; then
+    delta=$((total - last))
+  else
+    delta="$total"
+  fi
+
+  USED_BYTES=$((USED_BYTES + delta))
+  LAST_TOTAL="$total"
+
+  if [ "$save" = "true" ]; then
+    save_meta
+  fi
+}
+
+check_single_device_for_loaded_client() {
+  if [ "$DISABLED" = "1" ]; then
+    return 0
+  fi
+
+  if [ "$SINGLE_MODE" = "off" ] || [ -z "$SINGLE_MODE" ]; then
+    return 0
+  fi
+
+  local ep ip
+  ep="$(get_endpoint "$PUBLIC_KEY")"
+
+  if [ -z "$ep" ] || [ "$ep" = "(none)" ]; then
+    return 0
+  fi
+
+  ip="$(endpoint_ip "$ep")"
+
+  if [ "$SINGLE_MODE" = "ip" ]; then
+    if [ -z "$LOCKED_IP" ]; then
+      LOCKED_IP="$ip"
+      save_meta
+      return 0
+    fi
+
+    if [ "$ip" != "$LOCKED_IP" ]; then
+      disable_client_internal "$NAME" "single-ip violation: locked=$LOCKED_IP current=$ip"
+      return 0
+    fi
+  fi
+
+  if [ "$SINGLE_MODE" = "endpoint" ]; then
+    if [ -z "$LOCKED_ENDPOINT" ]; then
+      LOCKED_ENDPOINT="$ep"
+      save_meta
+      return 0
+    fi
+
+    if [ "$ep" != "$LOCKED_ENDPOINT" ]; then
+      disable_client_internal "$NAME" "single-endpoint violation: locked=$LOCKED_ENDPOINT current=$ep"
+      return 0
+    fi
+  fi
+}
+
+enforce_clients() {
+  check_base_files
+
+  local f name now
+  now="$(now_epoch)"
+
+  for f in "$STATE_DIR"/*.meta; do
+    [ -f "$f" ] || continue
+
+    name="$(basename "$f" .meta)"
+    load_meta "$name"
+
+    if [ "$DISABLED" = "1" ]; then
+      continue
+    fi
+
+    update_usage_for_loaded_client true
+
+    if [ "$EXPIRES_AT" != "0" ] && [ "$now" -ge "$EXPIRES_AT" ]; then
+      disable_client_internal "$NAME" "expired"
+      continue
+    fi
+
+    if [ "$LIMIT_BYTES" != "0" ] && [ "$USED_BYTES" -ge "$LIMIT_BYTES" ]; then
+      disable_client_internal "$NAME" "data limit reached: used=$(human_bytes "$USED_BYTES") limit=$(human_bytes "$LIMIT_BYTES")"
+      continue
+    fi
+
+    check_single_device_for_loaded_client
+  done
+}
+
+qr_client() {
+  local raw_name="${1:-}"
+  [ -n "$raw_name" ] || die "Client name required"
+
+  local name
+  name="$(sanitize_name "$raw_name")"
+
+  [ -f "$(client_conf_path "$name")" ] || die "Config not found: $(client_conf_path "$name")"
+
+  command -v qrencode >/dev/null || die "qrencode not installed. Install with: apt install -y qrencode"
+
+  qrencode -t ansiutf8 < "$(client_conf_path "$name")"
+}
+
+install_timer() {
+  cat > /etc/systemd/system/wg-client-enforce.service <<'EOF2'
+[Unit]
+Description=Enforce WireGuard client limits
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/wg-client enforce
+EOF2
+
+  cat > /etc/systemd/system/wg-client-enforce.timer <<'EOF2'
+[Unit]
+Description=Run WireGuard client limit enforcement every minute
+
+[Timer]
+OnBootSec=30sec
+OnUnitActiveSec=60sec
+AccuracySec=10sec
+Unit=wg-client-enforce.service
+
+[Install]
+WantedBy=timers.target
+EOF2
+
+  systemctl daemon-reload
+  systemctl enable --now wg-client-enforce.timer
+
+  echo "Installed and started wg-client-enforce.timer"
+  systemctl list-timers --all | grep wg-client || true
+}
+
+main() {
+  require_root
+
+  local cmd="${1:-}"
+  shift || true
+
+  case "$cmd" in
+    add)
+      add_client "$@"
+      ;;
+    remove|delete|rm)
+      remove_client "$@"
+      ;;
+    renew)
+      renew_client "$@"
+      ;;
+    disable)
+      disable_client_cmd "$@"
+      ;;
+    enable)
+      enable_client "$@"
+      ;;
+    show|cat)
+      show_client "$@"
+      ;;
+    status)
+      status_client "$@"
+      ;;
+    list|ls)
+      list_clients
+      ;;
+    enforce)
+      enforce_clients
+      ;;
+    qr)
+      qr_client "$@"
+      ;;
+    install-timer)
+      install_timer
+      ;;
+    help|-h|--help|"")
+      usage
+      ;;
+    *)
+      usage
+      die "Unknown command: $cmd"
+      ;;
+  esac
+}
+
+main "$@"

@@ -1,0 +1,4 @@
+__pycache__/
+*.py[cod]
+*.bak.*
+admin_app.py.bak.*

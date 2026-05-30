@@ -1,0 +1,127 @@
+(function () {
+  "use strict";
+
+  function showCopyMsg(text) {
+    var el = document.getElementById("copy-config-msg");
+    if (el) {
+      el.textContent = text;
+    }
+  }
+
+  function copyFromFetch() {
+    return fetch("/config-text", { credentials: "same-origin" })
+      .then(function (r) {
+        if (!r.ok) throw new Error("fetch failed");
+        return r.text();
+      })
+      .then(function (text) {
+        return navigator.clipboard.writeText(text);
+      });
+  }
+
+  document.querySelectorAll("[data-copy-config]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      copyFromFetch()
+        .then(function () {
+          showCopyMsg("متن کانفیگ کپی شد.");
+        })
+        .catch(function () {
+          showCopyMsg("کپی انجام نشد. از صفحه «کپی کانفیگ» استفاده کنید.");
+          window.location.href = "/copy-config";
+        });
+    });
+  });
+
+  var copyBtn = document.getElementById("copy-btn");
+  var cfg = document.getElementById("cfg");
+  if (copyBtn && cfg) {
+    copyBtn.addEventListener("click", function () {
+      navigator.clipboard
+        .writeText(cfg.value)
+        .then(function () {
+          var msg = document.getElementById("copy-msg");
+          if (msg) msg.textContent = "متن کانفیگ کپی شد.";
+        })
+        .catch(function () {
+          var msg = document.getElementById("copy-msg");
+          if (msg) msg.textContent = "کپی انجام نشد — متن را دستی انتخاب کنید.";
+        });
+    });
+  }
+
+  var modal = document.getElementById("qr-modal");
+  if (!modal) return;
+
+  var modalBody = document.getElementById("qr-modal-body");
+  var modalError = document.getElementById("qr-modal-error");
+  var lastFocus = null;
+
+  function setModalError(msg) {
+    if (!modalError) return;
+    if (msg) {
+      modalError.textContent = msg;
+      modalError.hidden = false;
+    } else {
+      modalError.textContent = "";
+      modalError.hidden = true;
+    }
+  }
+
+  function closeQrModal() {
+    modal.hidden = true;
+    modal.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("modal-open");
+    if (lastFocus && lastFocus.focus) {
+      lastFocus.focus();
+    }
+  }
+
+  function openQrModal() {
+    lastFocus = document.activeElement;
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("modal-open");
+    setModalError("");
+    if (modalBody) {
+      modalBody.innerHTML = '<p class="modal-loading">در حال ساخت QR…</p>';
+    }
+
+    fetch("/config-qr.svg", { credentials: "same-origin" })
+      .then(function (r) {
+        if (!r.ok) {
+          return r.text().then(function (t) {
+            throw new Error(t || "خطا در ساخت QR");
+          });
+        }
+        return r.text();
+      })
+      .then(function (svg) {
+        if (modalBody) {
+          modalBody.innerHTML = svg;
+        }
+      })
+      .catch(function (err) {
+        if (modalBody) {
+          modalBody.innerHTML = "";
+        }
+        setModalError(err.message || "خطا در ساخت QR کد");
+      });
+
+    var closeBtn = modal.querySelector(".modal-close");
+    if (closeBtn) closeBtn.focus();
+  }
+
+  document.querySelectorAll("[data-qr-open]").forEach(function (btn) {
+    btn.addEventListener("click", openQrModal);
+  });
+
+  document.querySelectorAll("[data-qr-close]").forEach(function (el) {
+    el.addEventListener("click", closeQrModal);
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (!modal.hidden && e.key === "Escape") {
+      closeQrModal();
+    }
+  });
+})();

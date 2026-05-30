@@ -1,0 +1,15 @@
+[Unit]
+Description=WireGuard Admin Web Panel
+After=network.target
+
+[Service]
+Type=simple
+Environment=WG_ADMIN_HOST=127.0.0.1
+Environment=WG_ADMIN_PORT=8090
+Environment=WG_ADMIN_BASE=/admin
+ExecStart=/usr/bin/python3 /opt/wg/admin-panel/app.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

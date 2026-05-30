@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+WG_IF="wg-ir"
+WG_CONF="/etc/wireguard/wg-ir.conf"
+STATE_DIR="/etc/wireguard/client-state"
+
+DAYS="${DAYS:-30}"
+LIMIT="${LIMIT:-20G}"
+SINGLE_MODE="${SINGLE_MODE:-ip}"
+
+mkdir -p "$STATE_DIR"
+chmod 700 "$STATE_DIR"
+
+parse_bytes() {
+  local input="${1^^}"
+  input="${input// /}"
+
+  [[ "$input" =~ ^([0-9]+)(B|K|KB|M|MB|G|GB|T|TB)?$ ]] || {
+    echo "Invalid size: $1" >&2
+    exit 1
+  }
+
+  local num="${BASH_REMATCH[1]}"
+  local unit="${BASH_REMATCH[2]:-B}"
+
+  case "$unit" in
+    B) echo "$num" ;;
+    K|KB) echo $((num * 1024)) ;;
+    M|MB) echo $((num * 1024 * 1024)) ;;
+    G|GB) echo $((num * 1024 * 1024 * 1024)) ;;
+    T|TB) echo $((num * 1024 * 1024 * 1024 * 1024)) ;;
+  esac
+}
+
+q() {
+  printf '%q' "$1"
+}
+
+sanitize_name() {
+  echo "$1" | tr -cs 'A-Za-z0-9_.-' '_'
+}
+
+LIMIT_BYTES="$(parse_bytes "$LIMIT")"
+EXPIRES_AT=$(( $(date +%s) + DAYS * 86400 ))
+
+{
+  find /etc/wireguard/clients -maxdepth 1 -type f -name "*.conf" 2>/dev/null || true
+  find /etc/wireguard -maxdepth 1 -type f -name "client*.conf" 2>/dev/null || true
+} | sort -u | while read -r conf; do
+  name="$(basename "$conf" .conf)"
+  name="$(sanitize_name "$name")"
+
+  private_key="$(sed -n 's/^[[:space:]]*PrivateKey[[:space:]]*=[[:space:]]*//p' "$conf" | head -n1 | tr -d '[:space:]')"
+  address="$(sed -n 's/^[[:space:]]*Address[[:space:]]*=[[:space:]]*//p' "$conf" | head -n1 | tr -d '[:space:]')"
+
+  if [ -z "$private_key" ] || [ -z "$address" ]; then
+    echo "SKIP: $conf is not a complete client config"
+    continue
+  fi
+
+  if ! printf '%s\n' "$private_key" | wg pubkey >/dev/null 2>&1; then
+    echo "SKIP: $conf has invalid PrivateKey"
+    continue
+  fi
+
+  ip="${address%%/*}"
+
+  if ! [[ "$ip" =~ ^10\.10\.10\.([0-9]+)$ ]]; then
+    echo "SKIP: $conf has non-client IP: $ip"
+    continue
+  fi
+
+  last_octet="${BASH_REMATCH[1]}"
+  if [ "$last_octet" -lt 2 ] || [ "$last_octet" -gt 254 ]; then
+    echo "SKIP: $conf has reserved/non-client IP: $ip"
+    continue
+  fi
+
+  public_key="$(printf '%s\n' "$private_key" | wg pubkey)"
+
+  current_total="$(wg show "$WG_IF" transfer 2>/dev/null | awk -v k="$public_key" '$1 == k {print $2 + $3; exit}')"
+  current_total="${current_total:-0}"
+
+  meta="$STATE_DIR/$name.meta"
+
+  cat > "$meta" <<EOF2
+NAME=$(q "$name")
+IP=$(q "$ip")
+PUBLIC_KEY=$(q "$public_key")
+LIMIT_BYTES=$(q "$LIMIT_BYTES")
+EXPIRES_AT=$(q "$EXPIRES_AT")
+CREATED_AT=$(q "$(date +%s)")
+USED_BYTES=0
+LAST_TOTAL=$(q "$current_total")
+SINGLE_MODE=$(q "$SINGLE_MODE")
+LOCKED_ENDPOINT=''
+LOCKED_IP=''
+DISABLED=0
+DISABLED_REASON=''
+UPDATED_AT=$(q "$(date +%s)")
+EOF2
+
+  chmod 600 "$meta"
+
+  if wg show "$WG_IF" >/dev/null 2>&1; then
+    wg set "$WG_IF" peer "$public_key" allowed-ips "$ip/32"
+  fi
+
+  if ! grep -q "$public_key" "$WG_CONF"; then
+    cat >> "$WG_CONF" <<EOF2
+
+# BEGIN CLIENT $name
+[Peer]
+PublicKey = $public_key
+AllowedIPs = $ip/32
+# END CLIENT $name
+EOF2
+    chmod 600 "$WG_CONF"
+  fi
+
+  echo "IMPORTED: $name -> $ip | limit=$LIMIT | days=$DAYS | single=$SINGLE_MODE"
+done

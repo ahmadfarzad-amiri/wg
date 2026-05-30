@@ -1,0 +1,191 @@
+import html
+
+from admin_panel.config import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_SINGLE, admin_url
+from admin_panel.core.labels import label_client_status, label_single_mode
+
+
+def _badge_class(state_key):
+    if state_key == "active":
+        return "ok"
+    if state_key in ("disabled", "offline"):
+        return "bad"
+    return "warn"
+
+
+def _remove_confirm_message(client_name, assigned_users):
+    if not assigned_users:
+        return "حذف این کلاینت؟"
+    users_text = "، ".join(html.escape(u) for u in assigned_users)
+    name = html.escape(client_name)
+    return (
+        f"کلاینت «{name}» به کاربر(ان) {users_text} اختصاص داده شده است. "
+        "با حذف، اختصاص پاک می‌شود و کاربر غیرفعال می‌شود. "
+        "بعداً از صفحه کاربران می‌توانید کلاینت جدید اختصاص دهید. ادامه می‌دهید؟"
+    )
+
+
+def _client_actions(c, assigned_users=None):
+    name = html.escape(c["name"])
+    assigned_users = assigned_users or []
+    can_enable = c["disabled"]
+    can_disable = not c["disabled"]
+    can_renew = c.get("expired") or c.get("over_limit")
+
+    enable_attr = "" if can_enable else 'disabled title="کلاینت از قبل فعال است"'
+    disable_attr = "" if can_disable else 'disabled title="کلاینت از قبل غیرفعال است"'
+    renew_attr = (
+        ""
+        if can_renew
+        else 'disabled title="تمدید فقط وقتی منقضی یا حجم تمام شده باشد"'
+    )
+
+    if c["has_config"]:
+        config_btn = (
+            f'<a class="btn dark btn-sm" href="{admin_url("/config/" + c["name"])}">'
+            f"دانلود</a>"
+        )
+    else:
+        config_btn = (
+            '<button class="dark btn-sm" disabled title="فایل کانفیگ پیدا نشد">'
+            "دانلود</button>"
+        )
+
+    selected = {m: ("selected" if c.get("single") == m else "") for m in ("off", "ip", "endpoint")}
+
+    single_form = f"""
+<form class="inline-form table-limit-form" method="post" action="{admin_url("/client-action")}">
+  <input type="hidden" name="client" value="{name}">
+  <input type="hidden" name="action" value="set-single">
+  <select name="single_mode" class="table-select">
+    <option value="off" {selected["off"]}>{html.escape(label_single_mode("off"))}</option>
+    <option value="ip" {selected["ip"]}>{html.escape(label_single_mode("ip"))}</option>
+    <option value="endpoint" {selected["endpoint"]}>{html.escape(label_single_mode("endpoint"))}</option>
+  </select>
+  <button type="submit" class="dark btn-sm">ذخیره</button>
+</form>
+"""
+
+    remove_confirm = html.escape(_remove_confirm_message(c["name"], assigned_users), quote=True)
+
+    buttons = f"""
+<div class="actions actions-compact">
+  {config_btn}
+  <form class="inline-form" method="post" action="{admin_url("/client-action")}">
+    <input type="hidden" name="client" value="{name}">
+    <input type="hidden" name="action" value="enable">
+    <button type="submit" class="btn-sm" {enable_attr}>فعال‌سازی</button>
+  </form>
+  <form class="inline-form" method="post" action="{admin_url("/client-action")}">
+    <input type="hidden" name="client" value="{name}">
+    <input type="hidden" name="action" value="disable">
+    <button type="submit" class="dark btn-sm" {disable_attr}>غیرفعال</button>
+  </form>
+  <form class="inline-form" method="post" action="{admin_url("/client-action")}">
+    <input type="hidden" name="client" value="{name}">
+    <input type="hidden" name="action" value="renew">
+    <button type="submit" class="dark btn-sm" {renew_attr}>تمدید</button>
+  </form>
+  <form class="inline-form" method="post" action="{admin_url("/client-action")}">
+    <input type="hidden" name="client" value="{name}">
+    <input type="hidden" name="action" value="remove">
+    <button type="submit" class="bad btn-sm" data-confirm="{remove_confirm}">حذف</button>
+  </form>
+</div>
+"""
+    return single_form, buttons
+
+
+def client_rows(clients, assigned_names=None, users_by_client_map=None):
+    rows = ""
+    cards = ""
+    assigned_names = assigned_names or set()
+    users_by_client_map = users_by_client_map or {}
+    for c in clients:
+        badge = _badge_class(c["state_key"])
+        status = label_client_status(c["state_key"])
+        single_form, buttons = _client_actions(c, users_by_client_map.get(c["name"], []))
+
+        usage = f"{c['used']} / {c['limit']}"
+        sort_name = html.escape(c["name"].lower())
+        sort_ip = html.escape(c["ip"])
+        state_key = html.escape(c["state_key"])
+        assigned = "1" if c["name"] in assigned_names else "0"
+        search_text = html.escape(
+            " ".join([c["name"], c["ip"], status, usage, c["last"], c["endpoint"], c["state_key"]]).lower()
+        )
+        item_attrs = (
+            f'data-list-item data-list-primary data-status="{state_key}" data-assigned="{assigned}" '
+            f'data-sort-name="{sort_name}" data-sort-ip="{sort_ip}" data-search="{search_text}"'
+        )
+        rows += f"""
+<tr class="client-row client-row-details" {item_attrs}>
+  <td class="col-name" title="{html.escape(c['name'])}">{html.escape(c['name'])}</td>
+  <td class="col-ip" title="{html.escape(c['ip'])}">{html.escape(c['ip'])}</td>
+  <td class="col-status"><span class="badge {badge}">{html.escape(status)}</span></td>
+  <td class="col-usage" title="{html.escape(usage)}">{html.escape(usage)}</td>
+  <td class="col-last" title="{html.escape(c['last'])}">{html.escape(c['last'])}</td>
+  <td class="col-endpoint" title="{html.escape(c['endpoint'])}">{html.escape(c['endpoint'])}</td>
+  <td class="col-limit">{single_form}</td>
+</tr>
+<tr class="client-row client-row-actions" data-list-actions-row>
+  <td colspan="7">
+    <div class="client-row-actions-inner">{buttons}</div>
+  </td>
+</tr>
+"""
+
+        cards += f"""
+<div class="rowcard" {item_attrs}>
+  <div class="rowcard-title">{html.escape(c['name'])} <span class="badge {badge}">{html.escape(status)}</span></div>
+  <div class="rowline"><div class="rowlabel">IP</div><div class="rowvalue">{html.escape(c['ip'])}</div></div>
+  <div class="rowline"><div class="rowlabel">مصرف</div><div class="rowvalue">{html.escape(c['used'])} / {html.escape(c['limit'])}</div></div>
+  <div class="rowline"><div class="rowlabel">آخرین اتصال</div><div class="rowvalue">{html.escape(c['last'])}</div></div>
+  <div class="rowline"><div class="rowlabel">Endpoint</div><div class="rowvalue">{html.escape(c['endpoint'])}</div></div>
+  <div class="rowline"><div class="rowlabel">محدودیت دستگاه</div><div class="rowvalue">{single_form}</div></div>
+  <div class="rowactions">{buttons}</div>
+</div>
+"""
+    return rows, cards
+
+
+def add_client_form():
+    single_opts = [
+        ("--single-ip", "محدود به IP"),
+        ("--single-endpoint", "محدود به endpoint"),
+        ("--no-single", "بدون محدودیت"),
+    ]
+    tabs = "".join(
+        f'<label class="option-tab">'
+        f'<input type="radio" name="single" value="{html.escape(value)}"'
+        f'{" checked" if value == DEFAULT_SINGLE else ""}>'
+        f"<span>{html.escape(label)}</span></label>"
+        for value, label in single_opts
+    )
+    return f"""
+<form method="post" action="{admin_url("/client-action")}" class="add-client-form">
+  <input type="hidden" name="action" value="add">
+  <div class="add-client-fields">
+    <label class="field field-name">
+      <span class="field-label">نام کلاینت</span>
+      <input name="client" class="field-input" placeholder="farzad_" required autocomplete="off">
+    </label>
+    <label class="field field-days">
+      <span class="field-label">مدت (روز)</span>
+      <input name="days" class="field-input" value="{html.escape(DEFAULT_DAYS)}" inputmode="numeric">
+    </label>
+    <label class="field field-limit">
+      <span class="field-label">سقف حجم</span>
+      <input name="limit" class="field-input" value="{html.escape(DEFAULT_LIMIT)}" placeholder="20G">
+    </label>
+    <div class="field field-single">
+      <span class="field-label">محدودیت دستگاه</span>
+      <div class="option-tabs" role="radiogroup" aria-label="محدودیت دستگاه">
+        {tabs}
+      </div>
+    </div>
+    <div class="field field-submit">
+      <button type="submit" class="btn btn-sm add-client-submit">افزودن</button>
+    </div>
+  </div>
+</form>
+"""

@@ -1,0 +1,333 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DB="/etc/wireguard/panel.db"
+STATE_DIR="/etc/wireguard/client-state"
+WG_IF="wg-ir"
+
+usage() {
+  cat <<USAGE
+Usage:
+  wg-panel-admin users
+  wg-panel-admin pending
+  wg-panel-admin approve USERNAME CLIENT_NAME
+  wg-panel-admin reject USERNAME
+  wg-panel-admin disable-user USERNAME
+  wg-panel-admin enable-user USERNAME
+
+  wg-panel-admin requests
+  wg-panel-admin approve-request REQUEST_ID [renew options]
+  wg-panel-admin reject-request REQUEST_ID
+
+  wg-panel-admin active-users [SECONDS]
+  wg-panel-admin active-count [SECONDS]
+  wg-panel-admin connections [SECONDS]
+
+Examples:
+  wg-panel-admin users
+  wg-panel-admin pending
+  wg-panel-admin approve farzad farzad_
+  wg-panel-admin requests
+  wg-panel-admin approve-request 3 --days 30 --limit 20G --single-ip
+
+  wg-panel-admin active-users
+  wg-panel-admin active-users 300
+  wg-panel-admin active-count
+  wg-panel-admin connections
+USAGE
+}
+
+require_db() {
+  [ -f "$DB" ] || {
+    echo "ERROR: panel database not found: $DB"
+    exit 1
+  }
+}
+
+sql_escape() {
+  echo "$1" | sed "s/'/''/g"
+}
+
+sql() {
+  sqlite3 "$DB" "$@"
+}
+
+human_duration() {
+  local seconds="${1:-0}"
+
+  if [ "$seconds" -lt 60 ]; then
+    echo "${seconds}s ago"
+  elif [ "$seconds" -lt 3600 ]; then
+    echo "$((seconds / 60))m ago"
+  elif [ "$seconds" -lt 86400 ]; then
+    echo "$((seconds / 3600))h ago"
+  else
+    echo "$((seconds / 86400))d ago"
+  fi
+}
+
+human_bytes() {
+  local bytes="${1:-0}"
+
+  if command -v numfmt >/dev/null 2>&1; then
+    numfmt --to=iec --suffix=B "$bytes" 2>/dev/null || echo "${bytes}B"
+  else
+    echo "${bytes}B"
+  fi
+}
+
+client_username() {
+  local client_name="$1"
+  local esc
+  esc="$(sql_escape "$client_name")"
+
+  sqlite3 "$DB" "SELECT username FROM users WHERE client_name='$esc' LIMIT 1;" 2>/dev/null || true
+}
+
+print_connections() {
+  local mode="${1:-all}"
+  local active_seconds="${2:-120}"
+
+  [ -d "$STATE_DIR" ] || {
+    echo "ERROR: client state directory not found: $STATE_DIR"
+    exit 1
+  }
+
+  local now
+  now="$(date +%s)"
+
+  local hs_data ep_data tr_data
+  hs_data="$(wg show "$WG_IF" latest-handshakes 2>/dev/null || true)"
+  ep_data="$(wg show "$WG_IF" endpoints 2>/dev/null || true)"
+  tr_data="$(wg show "$WG_IF" transfer 2>/dev/null || true)"
+
+  printf "%-22s %-22s %-15s %-9s %-12s %-24s %-12s %-12s\n" \
+    "USERNAME" "CLIENT" "VPN_IP" "STATUS" "LAST" "ENDPOINT" "RX" "TX"
+
+  printf "%-22s %-22s %-15s %-9s %-12s %-24s %-12s %-12s\n" \
+    "--------" "------" "------" "------" "----" "--------" "--" "--"
+
+  local active_count=0
+
+  for f in "$STATE_DIR"/*.meta; do
+    [ -f "$f" ] || continue
+
+    NAME=""
+    IP=""
+    PUBLIC_KEY=""
+
+    # shellcheck disable=SC1090
+    source "$f"
+
+    [ -n "${NAME:-}" ] || continue
+    [ -n "${PUBLIC_KEY:-}" ] || continue
+
+    local hs ep rx tx diff status last username
+    hs="$(awk -v p="$PUBLIC_KEY" '$1 == p {print $2; exit}' <<< "$hs_data")"
+    ep="$(awk -v p="$PUBLIC_KEY" '$1 == p {print $2; exit}' <<< "$ep_data")"
+    rx="$(awk -v p="$PUBLIC_KEY" '$1 == p {print $2; exit}' <<< "$tr_data")"
+    tx="$(awk -v p="$PUBLIC_KEY" '$1 == p {print $3; exit}' <<< "$tr_data")"
+
+    hs="${hs:-0}"
+    ep="${ep:-none}"
+    rx="${rx:-0}"
+    tx="${tx:-0}"
+
+    if [ "$hs" = "0" ]; then
+      status="OFFLINE"
+      last="never"
+      diff=999999999
+    else
+      diff=$((now - hs))
+      last="$(human_duration "$diff")"
+
+      if [ "$diff" -le "$active_seconds" ]; then
+        status="ACTIVE"
+        active_count=$((active_count + 1))
+      else
+        status="OFFLINE"
+      fi
+    fi
+
+    if [ "$mode" = "active" ] && [ "$status" != "ACTIVE" ]; then
+      continue
+    fi
+
+    username="$(client_username "$NAME")"
+    username="${username:-unassigned}"
+
+    printf "%-22s %-22s %-15s %-9s %-12s %-24s %-12s %-12s\n" \
+      "$username" "$NAME" "${IP:-unknown}" "$status" "$last" "$ep" "$(human_bytes "$rx")" "$(human_bytes "$tx")"
+  done
+
+  if [ "$mode" = "count" ]; then
+    echo
+    echo "Active users: $active_count"
+    echo "Threshold: ${active_seconds}s"
+  fi
+}
+
+cmd="${1:-}"
+shift || true
+
+case "$cmd" in
+  users)
+    require_db
+    sqlite3 -header -column "$DB" \
+      "SELECT id, username, status, COALESCE(client_name,'') AS client_name, datetime(created_at,'unixepoch') AS created_at FROM users ORDER BY id;"
+    ;;
+
+  pending)
+    require_db
+    sqlite3 -header -column "$DB" \
+      "SELECT id, username, datetime(created_at,'unixepoch') AS created_at FROM users WHERE status='pending' ORDER BY id;"
+    ;;
+
+  approve)
+    require_db
+    username="${1:-}"
+    client="${2:-}"
+
+    [ -n "$username" ] && [ -n "$client" ] || {
+      usage
+      exit 1
+    }
+
+    [ -f "$STATE_DIR/$client.meta" ] || {
+      echo "Client state not found: $STATE_DIR/$client.meta"
+      echo "Run: wg-client list"
+      exit 1
+    }
+
+    uesc="$(sql_escape "$username")"
+    cesc="$(sql_escape "$client")"
+
+    sql "UPDATE users SET status='approved', client_name='$cesc' WHERE username='$uesc';"
+    echo "Approved $username and assigned $client"
+    ;;
+
+  reject)
+    require_db
+    username="${1:-}"
+    [ -n "$username" ] || {
+      usage
+      exit 1
+    }
+
+    uesc="$(sql_escape "$username")"
+    sql "UPDATE users SET status='rejected' WHERE username='$uesc';"
+    echo "Rejected $username"
+    ;;
+
+  disable-user)
+    require_db
+    username="${1:-}"
+    [ -n "$username" ] || {
+      usage
+      exit 1
+    }
+
+    uesc="$(sql_escape "$username")"
+    sql "UPDATE users SET status='disabled' WHERE username='$uesc';"
+    echo "Disabled user $username"
+    ;;
+
+  enable-user)
+    require_db
+    username="${1:-}"
+    [ -n "$username" ] || {
+      usage
+      exit 1
+    }
+
+    uesc="$(sql_escape "$username")"
+    sql "UPDATE users SET status='approved' WHERE username='$uesc';"
+    echo "Enabled user $username"
+    ;;
+
+  requests)
+    require_db
+    sqlite3 -header -column "$DB" \
+      "SELECT requests.id, users.username, users.client_name, requests.action, requests.status, datetime(requests.created_at,'unixepoch') AS created_at FROM requests JOIN users ON users.id=requests.user_id ORDER BY requests.id DESC;"
+    ;;
+
+  reject-request)
+    require_db
+    id="${1:-}"
+    [ -n "$id" ] || {
+      usage
+      exit 1
+    }
+
+    sql "UPDATE requests SET status='rejected', processed_at=strftime('%s','now') WHERE id=$id;"
+    echo "Rejected request $id"
+    ;;
+
+  approve-request)
+    require_db
+    id="${1:-}"
+    [ -n "$id" ] || {
+      usage
+      exit 1
+    }
+    shift || true
+
+    row="$(sqlite3 -separator '|' "$DB" \
+      "SELECT users.username || '|' || users.client_name || '|' || requests.action FROM requests JOIN users ON users.id=requests.user_id WHERE requests.id=$id AND requests.status='pending';")"
+
+    [ -n "$row" ] || {
+      echo "Pending request not found"
+      exit 1
+    }
+
+    username="$(echo "$row" | cut -d'|' -f1)"
+    client="$(echo "$row" | cut -d'|' -f2)"
+    action="$(echo "$row" | cut -d'|' -f3)"
+
+    [ -n "$client" ] || {
+      echo "User has no assigned client"
+      exit 1
+    }
+
+    if [ "$action" = "renew" ]; then
+      if [ "$#" -eq 0 ]; then
+        set -- --days 30 --limit 20G --single-ip
+      fi
+
+      wg-client renew "$client" "$@"
+    elif [ "$action" = "enable" ]; then
+      wg-client enable "$client"
+    else
+      echo "Unknown action: $action"
+      exit 1
+    fi
+
+    sql "UPDATE requests SET status='approved', processed_at=strftime('%s','now') WHERE id=$id;"
+    echo "Approved request $id for $username / $client"
+    ;;
+
+  active-users|online)
+    seconds="${1:-120}"
+    print_connections active "$seconds"
+    ;;
+
+  active-count|online-count)
+    seconds="${1:-120}"
+    print_connections count "$seconds"
+    ;;
+
+  connections|connection-list)
+    seconds="${1:-120}"
+    print_connections all "$seconds"
+    ;;
+
+  help|-h|--help|"")
+    usage
+    ;;
+
+  *)
+    usage
+    echo "Unknown command: $cmd"
+    exit 1
+    ;;
+esac

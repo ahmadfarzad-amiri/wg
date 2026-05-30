@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+import os, sys, shlex, time, subprocess, re
+
+STATE_DIR = "/etc/wireguard/client-state"
+WG_IF = "wg-ir"
+
+VALID = {"off", "ip", "endpoint"}
+
+def die(msg):
+    print(f"ERROR: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+def q(v):
+    return shlex.quote(str(v))
+
+def parse_meta(path):
+    data = {}
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            line = line.strip()
+            if not line or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            try:
+                parts = shlex.split(v)
+                data[k] = parts[0] if parts else ""
+            except Exception:
+                data[k] = v.strip().strip("'\"")
+    return data
+
+def write_meta(path, data):
+    preferred = [
+        "NAME", "IP", "PUBLIC_KEY", "LIMIT_BYTES", "EXPIRES_AT",
+        "CREATED_AT", "USED_BYTES", "LAST_TOTAL", "SINGLE_MODE",
+        "LOCKED_ENDPOINT", "LOCKED_IP", "DISABLED", "DISABLED_REASON",
+        "TOKEN", "UPDATED_AT"
+    ]
+
+    keys = []
+    for k in preferred:
+        if k in data:
+            keys.append(k)
+    for k in sorted(data.keys()):
+        if k not in keys:
+            keys.append(k)
+
+    with open(path, "w", encoding="utf-8") as f:
+        for k in keys:
+            f.write(f"{k}={q(data.get(k, ''))}\n")
+
+    os.chmod(path, 0o600)
+
+def run(cmd):
+    try:
+        return subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
+    except Exception:
+        return ""
+
+def endpoint_ip(endpoint):
+    if not endpoint or endpoint == "none" or endpoint == "(none)":
+        return ""
+    if endpoint.startswith("["):
+        m = re.match(r"^\[([^\]]+)\]:\d+$", endpoint)
+        return m.group(1) if m else ""
+    return endpoint.rsplit(":", 1)[0]
+
+def current_endpoint(public_key):
+    out = run(["wg", "show", WG_IF, "endpoints"])
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] == public_key:
+            return parts[1]
+    return ""
+
+def usage():
+    print("""
+Usage:
+  wg-client-single CLIENT_NAME off
+  wg-client-single CLIENT_NAME ip
+  wg-client-single CLIENT_NAME endpoint
+  wg-client-single CLIENT_NAME ip --lock-current
+  wg-client-single CLIENT_NAME endpoint --lock-current
+  wg-client-single CLIENT_NAME MODE --keep-lock
+
+Modes:
+  off       no single-device restriction
+  ip        lock by first public IP
+  endpoint  lock by first IP:port, stricter
+
+Examples:
+  wg-client-single farzad_ ip
+  wg-client-single farzad_ endpoint
+  wg-client-single farzad_ off
+""".strip())
+
+def main():
+    if os.geteuid() != 0:
+        die("Run as root: sudo -i")
+
+    if len(sys.argv) < 3:
+        usage()
+        sys.exit(1)
+
+    name = sys.argv[1]
+    mode = sys.argv[2]
+    keep_lock = "--keep-lock" in sys.argv[3:]
+    lock_current = "--lock-current" in sys.argv[3:]
+
+    if mode not in VALID:
+        die("Mode must be one of: off, ip, endpoint")
+
+    meta_path = os.path.join(STATE_DIR, f"{name}.meta")
+    if not os.path.exists(meta_path):
+        die(f"Client state not found: {meta_path}")
+
+    data = parse_meta(meta_path)
+
+    data["SINGLE_MODE"] = mode
+
+    if not keep_lock:
+        data["LOCKED_ENDPOINT"] = ""
+        data["LOCKED_IP"] = ""
+
+    if lock_current and mode != "off":
+        pub = data.get("PUBLIC_KEY", "")
+        ep = current_endpoint(pub)
+
+        if not ep:
+            die("Client has no current endpoint. Connect the client first or run without --lock-current.")
+
+        if mode == "ip":
+            data["LOCKED_IP"] = endpoint_ip(ep)
+            data["LOCKED_ENDPOINT"] = ""
+        elif mode == "endpoint":
+            data["LOCKED_ENDPOINT"] = ep
+            data["LOCKED_IP"] = ""
+
+    data["UPDATED_AT"] = str(int(time.time()))
+
+    write_meta(meta_path, data)
+
+    print(f"Updated single mode for {name}")
+    print(f"Mode: {mode}")
+    print(f"Locked IP: {data.get('LOCKED_IP', '') or 'none'}")
+    print(f"Locked endpoint: {data.get('LOCKED_ENDPOINT', '') or 'none'}")
+
+if __name__ == "__main__":
+    main()
