@@ -430,6 +430,24 @@ ensure_wg_dirs() {
   chmod 700 /etc/wireguard /etc/wireguard/clients /etc/wireguard/client-state
 }
 
+wg_stop_if() {
+  local ifname="$1"
+  local conf="/etc/wireguard/${ifname}.conf"
+  if [[ -f "$conf" ]]; then
+    wg-quick down "$ifname" 2>/dev/null || true
+  fi
+  ip link del "$ifname" 2>/dev/null || true
+}
+
+wg_quick_up() {
+  local conf="$1"
+  local ifname="$2"
+  [[ -f "$conf" ]] || die "WireGuard config missing: $conf"
+  wg_stop_if "$ifname"
+  log "Starting ${ifname}..."
+  wg-quick up "$conf" || die "wg-quick up failed for ${ifname}"
+}
+
 write_env_file() {
   local path="$1"
   shift

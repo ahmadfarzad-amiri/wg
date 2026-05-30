@@ -122,11 +122,9 @@ rsync -a --delete \
 DEF_IF="$(default_route_iface)"
 DEF_IF="${DEF_IF:-eth0}"
 
-# Tear down stale interfaces from a previous interrupted install.
-systemctl enable "wg-quick@${CLIENT_IF}" "wg-quick@${TUNNEL_IF}" 2>/dev/null || true
-wg-quick down "$CLIENT_IF" 2>/dev/null || true
-wg-quick down "$TUNNEL_IF" 2>/dev/null || true
-rm -f /etc/wireguard/"${CLIENT_IF}.conf" /etc/wireguard/"${TUNNEL_IF}.conf"
+# Stop stale interfaces from a previous interrupted install (do not delete new configs).
+wg_stop_if "$CLIENT_IF"
+wg_stop_if "$TUNNEL_IF"
 
 # --- Client interface (devices connect here) ---
 CLIENT_PRIV="$(wg genkey)"
@@ -182,8 +180,9 @@ sysctl -w net.ipv4.ip_forward=1
 grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null \
   || echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
 
-wg-quick up "$CLIENT_CONF"
-wg-quick up "$TUNNEL_CONF"
+wg_quick_up "$CLIENT_CONF" "$CLIENT_IF"
+wg_quick_up "$TUNNEL_CONF" "$TUNNEL_IF"
+systemctl enable "wg-quick@${CLIENT_IF}" "wg-quick@${TUNNEL_IF}" 2>/dev/null || true
 
 write_env_file "$ENV_FILE" \
   WG_ROLE entry \
