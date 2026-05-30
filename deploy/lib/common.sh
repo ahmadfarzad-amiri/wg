@@ -2,7 +2,7 @@
 # Shared helpers for WireGuard panel deployment scripts.
 set -euo pipefail
 
-_DEPLOY_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_DEPLOY_LIB="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 if [[ -f "$_DEPLOY_LIB/../repo.conf" ]]; then
   # shellcheck source=../repo.conf
   source "$_DEPLOY_LIB/../repo.conf"
@@ -164,21 +164,7 @@ install_exit_proxy_nginx() {
 }
 
 load_deploy_bootstrap() {
-  local script_path="$1"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
-  if [[ -f "$(dirname "$script_path")/lib/common.sh" ]]; then
-    SCRIPT_DIR="$(cd "$(dirname "$script_path")" && pwd)"
-    # shellcheck source=lib/common.sh
-    source "$SCRIPT_DIR/lib/common.sh"
-    return
-  fi
-  _BOOT="$(mktemp -d)"
-  mkdir -p "$_BOOT/deploy/lib"
-  curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
-  curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
-  SCRIPT_DIR="$_BOOT/deploy"
-  # shellcheck source=lib/common.sh
-  source "$SCRIPT_DIR/lib/common.sh"
+  source_deploy_lib "${1:-}"
 }
 
 default_route_iface() {
@@ -209,6 +195,41 @@ install_packages() {
     return
   fi
   die "Unsupported package manager. Install manually: ${pkgs[*]}"
+}
+
+install_wg_tools() {
+  install_packages curl wireguard wireguard-tools iptables iproute2
+  command -v wg >/dev/null 2>&1 || die "WireGuard tools (wg) not found after install"
+  command -v wg-quick >/dev/null 2>&1 || die "WireGuard tools (wg-quick) not found after install"
+}
+
+fetch_deploy_helper_scripts() {
+  local name
+  for name in "$@"; do
+    if [[ -f "$SCRIPT_DIR/$name" ]]; then
+      continue
+    fi
+    curl -fsSL "$GITHUB_RAW_BASE/deploy/$name" -o "$SCRIPT_DIR/$name"
+    chmod +x "$SCRIPT_DIR/$name"
+  done
+}
+
+source_deploy_lib() {
+  local script_ref="${1:-}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
+  if [[ -n "$script_ref" && -f "$(dirname "$script_ref")/lib/common.sh" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "$script_ref")" && pwd)"
+    # shellcheck source=lib/common.sh
+    source "$SCRIPT_DIR/lib/common.sh"
+    return 0
+  fi
+  _BOOT="$(mktemp -d)"
+  mkdir -p "$_BOOT/deploy/lib"
+  curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
+  curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
+  SCRIPT_DIR="$_BOOT/deploy"
+  # shellcheck source=lib/common.sh
+  source "$SCRIPT_DIR/lib/common.sh"
 }
 
 clone_or_update_repo() {

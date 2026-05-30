@@ -7,19 +7,21 @@
 #   curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-entry-server.sh | sudo bash
 set -euo pipefail
 
-GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
-if [[ -f "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh" ]]; then
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_WG_SCRIPT="${BASH_SOURCE[0]:-}"
+if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "$_WG_SCRIPT")" && pwd)"
   # shellcheck source=lib/common.sh
   source "$SCRIPT_DIR/lib/common.sh"
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"
   # shellcheck source=lib/common.sh
   source "$SCRIPT_DIR/lib/common.sh"
+  fetch_deploy_helper_scripts test-connectivity.sh
 fi
 require_root
 
@@ -69,7 +71,8 @@ else
   clone_repo_if_needed "$REPO_DIR"
 fi
 
-install_packages python3 nginx qrencode wireguard wireguard-tools curl git iproute2
+install_wg_tools
+install_packages python3 nginx qrencode git
 
 ensure_wg_dirs
 install_bin_tools "$REPO_DIR/client-panel/bin"

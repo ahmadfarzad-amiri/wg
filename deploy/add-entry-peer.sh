@@ -3,14 +3,15 @@
 # Usage: sudo bash deploy/add-entry-peer.sh [ENTRY_TUNNEL_PUBLIC_KEY]
 set -euo pipefail
 
-GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
-if [[ -f "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh" ]]; then
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_WG_SCRIPT="${BASH_SOURCE[0]:-}"
+if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "$_WG_SCRIPT")" && pwd)"
   # shellcheck source=lib/common.sh
   source "$SCRIPT_DIR/lib/common.sh"
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"
@@ -18,6 +19,7 @@ else
   source "$SCRIPT_DIR/lib/common.sh"
 fi
 require_root
+install_wg_tools
 
 TUNNEL_IF="${WG_TUNNEL_IF:-wg-tunnel}"
 CLIENT_CIDR="${WG_CLIENT_CIDR:-10.10.10.0/24}"
