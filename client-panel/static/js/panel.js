@@ -8,7 +8,20 @@
     }
   }
 
-  function copyFromFetch() {
+  function setButtonLoading(btn, loading) {
+    if (!btn) return;
+    if (loading) {
+      btn.disabled = true;
+      btn.dataset.prevText = btn.textContent;
+      btn.textContent = "لطفاً صبر کنید…";
+    } else if (btn.dataset.prevText) {
+      btn.disabled = false;
+      btn.textContent = btn.dataset.prevText;
+    }
+  }
+
+  function copyFromFetch(btn) {
+    setButtonLoading(btn, true);
     return fetch("/config-text", { credentials: "same-origin" })
       .then(function (r) {
         if (!r.ok) throw new Error("fetch failed");
@@ -16,12 +29,15 @@
       })
       .then(function (text) {
         return navigator.clipboard.writeText(text);
+      })
+      .finally(function () {
+        setButtonLoading(btn, false);
       });
   }
 
   document.querySelectorAll("[data-copy-config]").forEach(function (btn) {
     btn.addEventListener("click", function () {
-      copyFromFetch()
+      copyFromFetch(btn)
         .then(function () {
           showCopyMsg("متن کانفیگ کپی شد.");
         })
@@ -124,4 +140,8 @@
       closeQrModal();
     }
   });
+
+  if (window.location.search.indexOf("qr=1") !== -1) {
+    openQrModal();
+  }
 })();

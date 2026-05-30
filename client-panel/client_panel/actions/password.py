@@ -1,5 +1,7 @@
 import subprocess
 
+from http.cookies import SimpleCookie
+
 from client_panel.config import ROTATE_KEYS_CMD
 from client_panel.core.auth import hash_password, verify_password
 from client_panel.db import db
@@ -25,17 +27,33 @@ def handle_change_password(handler, user, data):
         )
         return
 
+    result = subprocess.run(
+        [ROTATE_KEYS_CMD, user["client_name"]],
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        handler.render_settings(
+            f"خطا در تغییر کلید VPN. رمز تغییر نکرد. {detail}".strip()
+        )
+        return
+
     ph, salt = hash_password(newp)
     con = db()
     con.execute(
         "UPDATE users SET password_hash=?, salt=? WHERE id=?",
         (ph, salt, user["id"]),
     )
+    cookie = SimpleCookie(handler.headers.get("Cookie", ""))
+    token = cookie.get("session")
+    current = token.value if token else ""
+    if current:
+        con.execute(
+            "DELETE FROM sessions WHERE user_id=? AND token!=?",
+            (user["id"], current),
+        )
     con.commit()
     con.close()
 
-    subprocess.run([ROTATE_KEYS_CMD, user["client_name"]], text=True)
-
-    handler.render_settings(
-        "رمز تغییر کرد و کلیدهای VPN عوض شد. کانفیگ جدید را دانلود و در WireGuard وارد کنید."
-    )
+    handler.flash("/settings?newconfig=1", "رمز تغییر کرد و کلیدهای VPN عوض شد.")

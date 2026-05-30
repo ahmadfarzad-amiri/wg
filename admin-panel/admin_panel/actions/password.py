@@ -1,6 +1,5 @@
-from admin_panel.components.layout import page
+"""Admin password change."""
 from admin_panel.core.auth import admin_username, set_admin_password, verify_admin
-from admin_panel.views import settings
 
 
 def handle_change_password(handler, data):
@@ -9,24 +8,18 @@ def handle_change_password(handler, data):
     confirm = data.get("confirm_password", "")
 
     if new != confirm:
-        handler.send_html(
-            page("تنظیمات", settings.body("رمز جدید و تکرار آن یکسان نیست"), "settings")
-        )
+        handler.flash("/settings", "رمز جدید و تکرار آن یکسان نیست")
         return
 
     username = admin_username()
     if not verify_admin(username, old):
-        handler.send_html(
-            page("تنظیمات", settings.body("رمز فعلی اشتباه است"), "settings")
-        )
+        handler.flash("/settings", "رمز فعلی اشتباه است")
         return
 
     try:
         set_admin_password(username, new)
     except ValueError as e:
-        handler.send_html(page("تنظیمات", settings.body(str(e)), "settings"))
+        handler.flash("/settings", str(e))
         return
 
-    handler.send_html(
-        page("تنظیمات", settings.body("رمز عبور با موفقیت تغییر کرد"), "settings")
-    )
+    handler.flash("/settings", "رمز عبور با موفقیت تغییر کرد")

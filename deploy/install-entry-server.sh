@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # Entry VPS — where client devices connect + web panels.
 #
-# devices → THIS server (wg-clients) → tunnel (wg-tunnel) → exit server → internet
+# Non-interactive example:
+#   WG_EXIT_PUBLIC_IP=203.0.113.50 \
+#   WG_EXIT_TUNNEL_PUB='base64key=' \
+#   WG_ADMIN_PASS='secretpass' \
+#   sudo bash install-entry-server.sh
 #
-# One-liner:
-#   curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-entry-server.sh | sudo bash
+# Interactive:
+#   WG_INSTALL_INTERACTIVE=1 sudo bash install-entry-server.sh
 set -eo pipefail
 
-# curl | bash: save to a temp file and re-run so stdin is not the script body.
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main}"
   _WG_INSTALLER="$(mktemp /tmp/wg-install-XXXXXX.sh)"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/install-entry-server.sh" -o "$_WG_INSTALLER"
   chmod 700 "$_WG_INSTALLER"
@@ -28,7 +31,7 @@ if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main}"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"
@@ -41,7 +44,6 @@ require_root
 install_wg_tools
 
 log "Starting entry server installation..."
-log "You will be asked a series of questions — press Enter to accept [defaults]."
 
 REPO_DIR="${WG_REPO_DIR:-/opt/wg-src}"
 INSTALL_DIR="${WG_INSTALL_DIR:-/opt/wg}"
@@ -49,51 +51,73 @@ ENV_FILE="/etc/wireguard/entry-server.env"
 
 CLIENT_IF="wg-clients"
 TUNNEL_IF="wg-tunnel"
-CLIENT_PORT_WG="51820"
+CLIENT_PORT_WG="${WG_CLIENT_PORT:-51820}"
 VPN_PREFIX="10.10.10"
 TUNNEL_LOCAL="10.200.0.2/30"
 CLIENT_CIDR="10.10.10.0/24"
+CLIENT_CONF="/etc/wireguard/${CLIENT_IF}.conf"
+TUNNEL_CONF="/etc/wireguard/${TUNNEL_IF}.conf"
 
 log "=== ENTRY server — client entry + panels ==="
 log "Source: ${GITHUB_REPO_URL}"
 
 if [[ -n "${WG_ENTRY_PUBLIC_IP:-}" ]]; then
   ENTRY_IP="$WG_ENTRY_PUBLIC_IP"
-  log "Using WG_ENTRY_PUBLIC_IP: ${ENTRY_IP}"
 else
-  log "Detecting public IP..."
   ENTRY_IP="$(detect_public_ip)"
 fi
-prompt ENTRY_IP "Entry server public IP (client Endpoint — devices connect here)" "$ENTRY_IP"
-prompt CLIENT_PORT_WG "Client WireGuard UDP port" "51820"
-prompt EXIT_IP "Exit server public IP" ""
-prompt EXIT_TUNNEL_PORT "Exit tunnel UDP port" "51821"
-prompt EXIT_TUNNEL_PUB "Exit tunnel public key (from install-exit-server.sh)" ""
 
-prompt_optional PANEL_DOMAIN "Panel domain for web access" ""
-prompt PANEL_BRAND "Brand name shown in panels" "VPN Access"
-prompt CLIENT_PORT "Client panel HTTP port" "8088"
-prompt ADMIN_PORT "Admin panel HTTP port" "8090"
-prompt ADMIN_USER "Admin panel username" "admin"
-prompt_secret ADMIN_PASS "Admin panel password (min 8 chars)"
+EXIT_IP="${WG_EXIT_PUBLIC_IP:-}"
+EXIT_TUNNEL_PORT="${WG_EXIT_TUNNEL_PORT:-51821}"
+EXIT_TUNNEL_PUB="${WG_EXIT_TUNNEL_PUB:-}"
+PANEL_DOMAIN="${WG_PANEL_DOMAIN:-}"
+PANEL_BRAND="${WG_PANEL_BRAND:-VPN Access}"
+CLIENT_PORT="${WG_PANEL_PORT:-8088}"
+ADMIN_PORT="${WG_ADMIN_PORT:-8090}"
+ADMIN_USER="${WG_ADMIN_USER:-admin}"
+ENABLE_SSL="${WG_ENABLE_SSL:-no}"
+CERTBOT_EMAIL="${WG_CERTBOT_EMAIL:-}"
 
-ENABLE_SSL="no"
-CERTBOT_EMAIL=""
+if should_prompt; then
+  log "Interactive mode — press Enter to accept [defaults]."
+  prompt ENTRY_IP "Entry server public IP (client Endpoint)" "$ENTRY_IP"
+  prompt CLIENT_PORT_WG "Client WireGuard UDP port" "$CLIENT_PORT_WG"
+  prompt EXIT_IP "Exit server public IP" "$EXIT_IP"
+  prompt EXIT_TUNNEL_PORT "Exit tunnel UDP port" "$EXIT_TUNNEL_PORT"
+  prompt EXIT_TUNNEL_PUB "Exit tunnel public key (from install-exit-server.sh)" "$EXIT_TUNNEL_PUB"
+  prompt_optional PANEL_DOMAIN "Panel domain for web access" "$PANEL_DOMAIN"
+  prompt PANEL_BRAND "Brand name shown in panels" "$PANEL_BRAND"
+  prompt CLIENT_PORT "Client panel HTTP port" "$CLIENT_PORT"
+  prompt ADMIN_PORT "Admin panel HTTP port" "$ADMIN_PORT"
+  prompt ADMIN_USER "Admin panel username" "$ADMIN_USER"
+  read_admin_password
+  prompt_yes_no ENABLE_SSL "Enable HTTPS with Let's Encrypt (certbot)?" "N"
+  if [[ "$ENABLE_SSL" == "yes" ]]; then
+    prompt CERTBOT_EMAIL "Email for Let's Encrypt certificate notifications" "$CERTBOT_EMAIL"
+  fi
+else
+  log "Entry public IP   : ${ENTRY_IP}"
+  log "Exit public IP    : ${EXIT_IP}"
+  log "Exit tunnel port  : ${EXIT_TUNNEL_PORT}"
+  [[ -n "$EXIT_TUNNEL_PUB" ]] || die "Set WG_EXIT_TUNNEL_PUB (exit tunnel public key)"
+  [[ -n "$EXIT_IP" ]] || die "Set WG_EXIT_PUBLIC_IP"
+  if [[ -z "${WG_ADMIN_PASS:-}" && -z "${WG_ADMIN_PASS_FILE:-}" && "${WG_INSTALL_MODE:-fresh}" != "upgrade" ]]; then
+    die "Set WG_ADMIN_PASS or WG_ADMIN_PASS_FILE for non-interactive install"
+  fi
+  if [[ "${WG_INSTALL_MODE:-fresh}" != "upgrade" ]]; then
+    read_admin_password
+  fi
+fi
+
 PANEL_ADMIN_HOST="0.0.0.0"
 USE_NGINX="no"
-
 if [[ -n "$PANEL_DOMAIN" ]]; then
   USE_NGINX="yes"
   PANEL_ADMIN_HOST="127.0.0.1"
-  prompt_yes_no ENABLE_SSL "Enable HTTPS with Let's Encrypt (certbot)?" "N"
-  if [[ "$ENABLE_SSL" == "yes" ]]; then
-    prompt CERTBOT_EMAIL "Email for Let's Encrypt certificate notifications" ""
-  fi
-else
-  log "No domain — panels will use http://${ENTRY_IP}:${CLIENT_PORT} and http://${ENTRY_IP}:${ADMIN_PORT}/admin"
 fi
 
 WG_ENDPOINT="${ENTRY_IP}:${CLIENT_PORT_WG}"
+require_fresh_or_upgrade "$CLIENT_CONF"
 
 if [[ -f "$SCRIPT_DIR/../client-panel/app.py" ]]; then
   REPO_DIR="$SCRIPT_DIR/.."
@@ -122,17 +146,21 @@ rsync -a --delete \
 DEF_IF="$(default_route_iface)"
 DEF_IF="${DEF_IF:-eth0}"
 
-# Stop stale interfaces from a previous interrupted install (do not delete new configs).
 wg_stop_if "$CLIENT_IF"
 wg_stop_if "$TUNNEL_IF"
 
-# --- Client interface (devices connect here) ---
-CLIENT_PRIV="$(wg genkey)"
-CLIENT_PUB="$(printf '%s' "$CLIENT_PRIV" | wg pubkey)"
-CLIENT_CONF="/etc/wireguard/${CLIENT_IF}.conf"
-
-umask 077
-cat > "$CLIENT_CONF" <<EOF
+if [[ "${WG_INSTALL_MODE:-fresh}" == "upgrade" && -f "$CLIENT_CONF" ]]; then
+  log "Upgrade: preserving existing $CLIENT_CONF (including client peers)"
+  CLIENT_PUB="$(< /etc/wireguard/clients-server.pub 2>/dev/null || true)"
+  if [[ -z "$CLIENT_PUB" ]]; then
+    CLIENT_PRIV="$(wg_conf_private_key "$CLIENT_CONF")"
+    CLIENT_PUB="$(printf '%s' "$CLIENT_PRIV" | wg pubkey)"
+  fi
+else
+  CLIENT_PRIV="$(wg genkey)"
+  CLIENT_PUB="$(printf '%s' "$CLIENT_PRIV" | wg pubkey)"
+  umask 077
+  cat > "$CLIENT_CONF" <<EOF
 [Interface]
 Address = ${VPN_PREFIX}.1/24
 ListenPort = ${CLIENT_PORT_WG}
@@ -140,13 +168,16 @@ PrivateKey = ${CLIENT_PRIV}
 PostUp = iptables -A FORWARD -i ${CLIENT_IF} -j ACCEPT; iptables -A FORWARD -o ${CLIENT_IF} -j ACCEPT
 PostDown = iptables -D FORWARD -i ${CLIENT_IF} -j ACCEPT; iptables -D FORWARD -o ${CLIENT_IF} -j ACCEPT
 EOF
-printf '%s\n' "$CLIENT_PUB" > /etc/wireguard/clients-server.pub
-chmod 600 "$CLIENT_CONF" /etc/wireguard/clients-server.pub
+  printf '%s\n' "$CLIENT_PUB" > /etc/wireguard/clients-server.pub
+  chmod 600 "$CLIENT_CONF" /etc/wireguard/clients-server.pub
+fi
 
-# --- Tunnel to exit server ---
-TUNNEL_PRIV="$(wg genkey)"
-TUNNEL_PUB="$(printf '%s' "$TUNNEL_PRIV" | wg pubkey)"
-TUNNEL_CONF="/etc/wireguard/${TUNNEL_IF}.conf"
+if preserve_tunnel_keys "$TUNNEL_CONF" /etc/wireguard/tunnel-entry.pub; then
+  :
+else
+  TUNNEL_PRIV="$(wg genkey)"
+  TUNNEL_PUB="$(printf '%s' "$TUNNEL_PRIV" | wg pubkey)"
+fi
 
 cat > "$TUNNEL_CONF" <<EOF
 [Interface]
@@ -175,6 +206,7 @@ if command -v ufw >/dev/null 2>&1; then
     ufw allow "${ADMIN_PORT}/tcp" || true
   fi
 fi
+maybe_enable_ufw
 
 sysctl -w net.ipv4.ip_forward=1
 grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null \
@@ -199,7 +231,8 @@ write_env_file "$ENV_FILE" \
   WG_PANEL_BRAND "$PANEL_BRAND" \
   WG_ADMIN_BRAND "$PANEL_BRAND" \
   WG_EXIT_IP "$EXIT_IP" \
-  WG_EXIT_TUNNEL_PORT "$EXIT_TUNNEL_PORT"
+  WG_EXIT_TUNNEL_PORT "$EXIT_TUNNEL_PORT" \
+  WG_HTTPS "$([[ "$ENABLE_SSL" == "yes" ]] && echo 1 || echo 0)"
 
 cat > /etc/systemd/system/wg-panel.service <<EOF
 [Unit]
@@ -237,15 +270,21 @@ systemctl daemon-reload
 systemctl enable wg-panel wg-admin-panel
 systemctl restart wg-panel wg-admin-panel
 
-export WG_DATA_DIR=/etc/wireguard
-export ADMIN_USER ADMIN_PASS INSTALL_DIR
-python3 <<'PY'
+if [[ -n "${ADMIN_PASS:-}" ]]; then
+  export WG_DATA_DIR=/etc/wireguard
+  export ADMIN_USER ADMIN_PASS INSTALL_DIR
+  python3 <<'PY'
 import os, sys
 sys.path.insert(0, os.path.join(os.environ["INSTALL_DIR"], "admin-panel"))
 from admin_panel.core.auth import set_admin_password
 set_admin_password(os.environ["ADMIN_USER"], os.environ["ADMIN_PASS"])
 print("Admin user configured:", os.environ["ADMIN_USER"])
 PY
+fi
+
+if command -v wg-client >/dev/null 2>&1; then
+  wg-client install-timer 2>/dev/null || warn "wg-client install-timer failed (optional)"
+fi
 
 NGINX_CONF="/etc/nginx/sites-available/wg-panels.conf"
 NGINX_TEMPLATE="$INSTALL_DIR/client-panel/deploy/nginx-panels.conf.template"
@@ -260,7 +299,7 @@ if [[ "$USE_NGINX" == "yes" ]]; then
   nginx -t
   systemctl enable nginx
   systemctl reload nginx
-  if [[ "$ENABLE_SSL" == "yes" ]]; then
+  if [[ "$ENABLE_SSL" == "yes" && -n "$CERTBOT_EMAIL" ]]; then
     install_certbot_https "$PANEL_DOMAIN" "$CERTBOT_EMAIL" || true
     systemctl reload nginx 2>/dev/null || true
   fi
@@ -290,10 +329,9 @@ Web panels:
 Admin user                : ${ADMIN_USER}
 
 IMPORTANT — on the exit server, run:
-  bash deploy/add-entry-peer.sh ${TUNNEL_PUB}
+  bash deploy/add-entry-peer.sh ${TUNNEL_PUB} ${ENTRY_IP}
 
-Traffic path:
-  devices → ${ENTRY_IP}:${CLIENT_PORT_WG} → tunnel → ${EXIT_IP} → internet
+Cloud firewall: allow UDP ${CLIENT_PORT_WG} from clients; TCP 80/443 or panel ports.
 
 EOF
 

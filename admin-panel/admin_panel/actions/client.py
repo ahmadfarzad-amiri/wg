@@ -1,5 +1,5 @@
-from admin_panel.components.layout import page
 from admin_panel.config import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_SINGLE, WG_CLIENT_SINGLE
+from admin_panel.core.audit import log_admin_action
 from admin_panel.core.client_ops import (
     client_was_removed,
     ensure_client,
@@ -10,7 +10,6 @@ from admin_panel.core.client_ops import (
 from admin_panel.core.shell import run, safe_name, tail_message
 from admin_panel.core.wireguard import all_client_meta, find_client_status
 from admin_panel.db.panel_queries import detach_users_from_client
-from admin_panel.views import clients
 
 
 def handle(handler, data):
@@ -30,6 +29,7 @@ def handle(handler, data):
         if not ok:
             _render(handler, tail_message(out))
             return
+        log_admin_action("add_client", client)
         _render(handler, tail_message(out or f"کلاینت «{client}» آماده است"))
         return
 
@@ -90,10 +90,10 @@ def handle(handler, data):
         _render(handler, tail_message(out))
         return
 
+    log_admin_action(action, client)
+    log_admin_action(action, client)
     _render(handler, tail_message(out))
 
 
 def _render(handler, msg):
-    from admin_panel.core.wireguard import all_client_status
-
-    handler.send_html(page("کلاینت‌ها", clients.body(all_client_status(), msg), "clients"))
+    handler.flash("/clients", msg)

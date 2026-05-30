@@ -5,7 +5,18 @@ from admin_panel.config import BASE, SESSION_HOURS, admin_url
 from admin_panel.db import session_db
 
 
+def _secure_attrs():
+    import os
+
+    if os.environ.get("WG_HTTPS", "").strip() in ("1", "true", "yes"):
+        return "; Secure"
+    return ""
+
+
 def is_logged_in(handler):
+    from admin_panel.server import security
+
+    security.purge_expired_sessions()
     from http.cookies import SimpleCookie
 
     cookie = SimpleCookie(handler.headers.get("Cookie", ""))
@@ -36,7 +47,7 @@ def set_session(handler):
     handler.send_header(
         "Set-Cookie",
         f"admin_session={token}; HttpOnly; SameSite=Strict; Path={BASE}; "
-        f"Max-Age={SESSION_HOURS * 3600}",
+        f"Max-Age={SESSION_HOURS * 3600}{_secure_attrs()}",
     )
     handler.end_headers()
 
@@ -55,7 +66,7 @@ def clear_session(handler):
     handler.send_header("Location", admin_url("/login"))
     handler.send_header(
         "Set-Cookie",
-        f"admin_session=deleted; HttpOnly; SameSite=Strict; Path={BASE}; Max-Age=0",
+        f"admin_session=deleted; HttpOnly; SameSite=Strict; Path={BASE}; Max-Age=0{_secure_attrs()}",
     )
     handler.end_headers()
 

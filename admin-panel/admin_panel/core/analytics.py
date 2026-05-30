@@ -2,7 +2,7 @@
 import time
 
 from admin_panel.core.labels import label_action, label_request_status, label_user_status
-from admin_panel.core.wireguard import all_client_meta, human_bytes, human_duration, wg_map
+from admin_panel.core.wireguard import all_client_meta, build_wg_snapshot, human_bytes, human_duration
 from admin_panel.db import panel_db
 
 
@@ -119,9 +119,10 @@ def _fetch_request_stats():
 
 def dashboard_metrics():
     meta_list = all_client_meta()
-    transfers = wg_map("transfer")
-    endpoints = wg_map("endpoints")
-    handshakes = wg_map("latest-handshakes")
+    snapshot = build_wg_snapshot()
+    transfers = snapshot["transfers"]
+    endpoints = snapshot["endpoints"]
+    handshakes = snapshot["handshakes"]
 
     clients = [
         _status_from_meta(m, transfers, endpoints, handshakes) for m in meta_list

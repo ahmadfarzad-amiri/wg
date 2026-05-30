@@ -4,6 +4,7 @@ import time
 
 from client_panel.core.auth import hash_password, verify_password
 from client_panel.db import db
+from client_panel.server import security
 
 
 def handle_register(handler, data):
@@ -29,17 +30,24 @@ def handle_register(handler, data):
 
 
 def handle_login(handler, data):
+    username = data.get("username", "").strip()
+    blocked = security.check_login_rate_limit(handler, username)
+    if blocked:
+        handler.render_login(blocked)
+        return
     con = db()
     user = con.execute(
         "SELECT * FROM users WHERE username=?",
-        (data.get("username", "").strip(),),
+        (username,),
     ).fetchone()
     con.close()
     if not user or not verify_password(
         data.get("password", ""), user["password_hash"], user["salt"]
     ):
+        security.record_login_failure(handler, username)
         handler.render_login("نام کاربری یا رمز عبور اشتباه است.")
         return
+    security.clear_login_attempts(handler, username)
     handler.set_session(user["id"])
 
 
@@ -55,5 +63,5 @@ def handle_logout(handler):
         con.close()
     handler.send_response(302)
     handler.send_header("Location", "/login")
-    handler.send_header("Set-Cookie", "session=deleted; HttpOnly; SameSite=Strict; Path=/; Max-Age=0")
+    handler.send_header("Set-Cookie", "session=deleted; HttpOnly; SameSite=Strict; Path=/; Max-Age=0" + _secure_attrs())
     handler.end_headers()

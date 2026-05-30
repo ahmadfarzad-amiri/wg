@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 # Test connectivity for entry/exit VPN infrastructure.
 # Usage: bash deploy/test-connectivity.sh --role exit|entry|all
-#
-# Standalone — no repo clone required:
-#   curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/test-connectivity.sh -o /tmp/test-connectivity.sh
-#   sudo bash /tmp/test-connectivity.sh --role exit
 set -eo pipefail
 
 log() { printf '[wg-deploy] %s\n' "$*"; }
@@ -33,6 +29,16 @@ check() {
   fi
 }
 
+tunnel_handshake_recent() {
+  local max_age="${1:-180}"
+  local now hs age
+  now="$(date +%s)"
+  hs="$(wg show wg-tunnel latest-handshakes 2>/dev/null | awk 'NR>1 {print $2; exit}')"
+  hs="${hs:-0}"
+  age=$((now - hs))
+  [[ "$hs" -gt 0 && "$age" -le "$max_age" ]]
+}
+
 test_exit() {
   local tunnel_port="51821"
   if [[ -f /etc/wireguard/exit-server.env ]]; then
@@ -49,6 +55,7 @@ test_exit() {
   check "tunnel server pubkey saved" test -f /etc/wireguard/tunnel-server.pub
   check "outbound internet" curl -4fsS --max-time 5 https://api.ipify.org
   if [[ -f /etc/wireguard/tunnel-entry.pub ]]; then
+    check "entry peer in config" grep -q 'BEGIN ENTRY TUNNEL PEER' /etc/wireguard/wg-tunnel.conf
     check "entry server peer configured" wg show wg-tunnel peers
   else
     warn "Entry server peer not added yet — run add-entry-peer.sh on this host"
@@ -73,13 +80,18 @@ test_entry() {
     check "nginx running" systemctl is-active nginx
     check "client panel HTTP" curl -fsS "http://127.0.0.1/login" -H "Host: localhost"
     check "admin panel HTTP" curl -fsS "http://127.0.0.1/admin/login" -H "Host: localhost"
+    if [[ "${WG_HTTPS:-0}" == "1" ]]; then
+      check "client panel HTTPS" curl -fsSk "https://127.0.0.1/login" -H "Host: localhost"
+    fi
   else
     check "client panel HTTP" curl -fsS "http://127.0.0.1:${WG_PANEL_PORT:-8088}/login"
     check "admin panel HTTP" curl -fsS "http://127.0.0.1:${WG_ADMIN_PORT:-8090}/admin/login"
   fi
   check "admin config" test -f /etc/wireguard/admin-panel.json
   check "wg-client installed" command -v wg-client
-  check "tunnel handshake to exit" sh -c 'wg show wg-tunnel latest-handshakes | grep -qv "^$"'
+  check "tunnel handshake to exit (<=180s)" tunnel_handshake_recent 180
+  check "client panel health" curl -fsS "http://127.0.0.1:${WG_PANEL_PORT:-8088}/health"
+  check "admin panel health" curl -fsS "http://127.0.0.1:${WG_ADMIN_PORT:-8090}/admin/health"
 }
 
 case "$ROLE" in

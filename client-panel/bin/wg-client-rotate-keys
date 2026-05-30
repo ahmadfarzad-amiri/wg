@@ -153,13 +153,11 @@ def main():
         f.write("PersistentKeepalive = 25\n")
     os.chmod(client_conf, 0o600)
 
-    # Preserve usage/expiry/limit, but reset WireGuard live counter baseline.
+    # Preserve usage/expiry/limit and admin disable state.
     data["PUBLIC_KEY"] = public_key
     data["LAST_TOTAL"] = "0"
     data["LOCKED_ENDPOINT"] = ""
     data["LOCKED_IP"] = ""
-    data["DISABLED"] = "0"
-    data["DISABLED_REASON"] = ""
     data["UPDATED_AT"] = str(int(time.time()))
     write_meta(meta_path, data)
 

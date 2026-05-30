@@ -20,11 +20,13 @@ Install scripts pull from [github.com/ahmadfarzad-amiri/wg](https://github.com/a
 
 ## Step 1 — Exit server (run first)
 
+Non-interactive by default:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-exit-server.sh | sudo bash
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/install-exit-server.sh | sudo bash
 ```
 
-Prompts: exit public IP, tunnel UDP port (default `51821`).
+Override with env vars: `WG_EXIT_PUBLIC_IP`, `WG_TUNNEL_PORT`, `WG_CLIENT_CIDR`. Interactive: `WG_INSTALL_INTERACTIVE=1`.
 
 **Save from output:**
 - Tunnel public key
@@ -32,14 +34,16 @@ Prompts: exit public IP, tunnel UDP port (default `51821`).
 
 ## Step 2 — Entry server (run second)
 
+Non-interactive example:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-entry-server.sh | sudo bash
+WG_EXIT_PUBLIC_IP=203.0.113.50 \
+WG_EXIT_TUNNEL_PUB='paste-exit-pubkey' \
+WG_ADMIN_PASS='your-password' \
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/install-entry-server.sh | sudo bash
 ```
 
-Prompts:
-- Entry public IP (this becomes **client Endpoint** in device configs)
-- Exit server IP and tunnel public key (from step 1)
-- Panel domain, brand, admin password
+Interactive: `WG_INSTALL_INTERACTIVE=1`. Full env list: [config.env.example](config.env.example).
 
 **Save from output:**
 - Entry tunnel public key
@@ -47,13 +51,25 @@ Prompts:
 ## Step 3 — Link tunnel on exit server
 
 ```bash
-sudo bash deploy/add-entry-peer.sh ENTRY_TUNNEL_PUBLIC_KEY
+sudo bash deploy/add-entry-peer.sh ENTRY_TUNNEL_PUBLIC_KEY ENTRY_PUBLIC_IP
 ```
 
-Or run interactively (paste key when asked):
+The peer is persisted in `/etc/wireguard/wg-tunnel.conf` (survives reboot).
+
+## Cloud firewall
+
+| Server | Open ports |
+|--------|------------|
+| Entry | UDP 51820; TCP 80/443 (nginx) or 8088/8090 (direct) |
+| Exit | UDP 51821 — restrict to entry server IP when possible |
+
+## Upgrade / backup
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/add-entry-peer.sh | sudo bash
+WG_INSTALL_MODE=upgrade sudo bash deploy/install-entry-server.sh
+sudo bash deploy/backup.sh
+sudo bash deploy/update-panels.sh
+sudo bash deploy/restore.sh /etc/wireguard/backups/TIMESTAMP-label
 ```
 
 ## DNS and HTTPS (optional)

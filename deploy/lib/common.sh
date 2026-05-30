@@ -233,6 +233,8 @@ install_certbot_https() {
 }
 
 install_exit_proxy_nginx() {
+  # Legacy: panels now run on entry server only. Kept for reference.
+  warn "install_exit_proxy_nginx is deprecated — panels run on the entry server."
   local template="$1"
   local out="$2"
   local domain="$3"
@@ -459,4 +461,93 @@ write_env_file() {
   done
   chmod 600 "$path"
   log "Wrote $path"
+}
+
+backup_wg_configs() {
+  local label="${1:-manual}"
+  ensure_wg_dirs
+  local ts dest
+  ts="$(date +%Y%m%d-%H%M%S)"
+  dest="/etc/wireguard/backups/${ts}-${label}"
+  mkdir -p "$dest"
+  shopt -s nullglob
+  for f in /etc/wireguard/*.conf /etc/wireguard/*.env /etc/wireguard/*.pub \
+    /etc/wireguard/admin-panel.json /etc/wireguard/wg-endpoint; do
+    [[ -f "$f" ]] && cp -a "$f" "$dest/"
+  done
+  shopt -u nullglob
+  log "Backup saved to $dest"
+}
+
+read_admin_password() {
+  if [[ -n "${WG_ADMIN_PASS:-}" ]]; then
+    ADMIN_PASS="$WG_ADMIN_PASS"
+    return 0
+  fi
+  if [[ -n "${WG_ADMIN_PASS_FILE:-}" && -f "$WG_ADMIN_PASS_FILE" ]]; then
+    ADMIN_PASS="$(<"$WG_ADMIN_PASS_FILE")"
+    ADMIN_PASS="${ADMIN_PASS//$'\n'/}"
+    [[ -n "$ADMIN_PASS" ]] || die "WG_ADMIN_PASS_FILE is empty"
+    return 0
+  fi
+  if should_prompt; then
+    prompt_secret ADMIN_PASS "Admin panel password (min 8 chars)"
+  else
+    die "Set WG_ADMIN_PASS or WG_ADMIN_PASS_FILE for non-interactive install"
+  fi
+}
+
+require_fresh_or_upgrade() {
+  local marker="${1:-/etc/wireguard/wg-tunnel.conf}"
+  local mode="${WG_INSTALL_MODE:-fresh}"
+  if [[ "$mode" == "upgrade" ]]; then
+    log "Upgrade mode — preserving existing WireGuard keys where possible"
+    return 0
+  fi
+  if [[ -f "$marker" ]]; then
+    if [[ "${WG_INSTALL_FORCE:-0}" != "1" ]]; then
+      die "Existing install detected. Set WG_INSTALL_MODE=upgrade to preserve keys, or WG_INSTALL_FORCE=1 to overwrite."
+    fi
+    warn "WG_INSTALL_FORCE=1 — overwriting existing configuration"
+  fi
+  backup_wg_configs "pre-install"
+}
+
+maybe_enable_ufw() {
+  if [[ "${WG_UFW_ENABLE:-0}" == "1" ]] && command -v ufw >/dev/null 2>&1; then
+    ufw --force enable || true
+    log "ufw enabled (WG_UFW_ENABLE=1)"
+  fi
+}
+
+wg_conf_private_key() {
+  local conf="$1"
+  grep -m1 '^PrivateKey' "$conf" 2>/dev/null | cut -d= -f2- | tr -d ' \t'
+}
+
+wg_conf_public_key() {
+  local priv
+  priv="$(wg_conf_private_key "$1")"
+  [[ -n "$priv" ]] || return 1
+  printf '%s' "$priv" | wg pubkey
+}
+
+preserve_tunnel_keys() {
+  local conf="$1"
+  local pub_file="$2"
+  if [[ "${WG_INSTALL_MODE:-fresh}" != "upgrade" ]]; then
+    return 1
+  fi
+  if [[ ! -f "$conf" ]]; then
+    return 1
+  fi
+  TUNNEL_PRIV="$(wg_conf_private_key "$conf")"
+  [[ -n "$TUNNEL_PRIV" ]] || return 1
+  if [[ -f "$pub_file" ]]; then
+    TUNNEL_PUB="$(<"$pub_file")"
+  else
+    TUNNEL_PUB="$(printf '%s' "$TUNNEL_PRIV" | wg pubkey)"
+  fi
+  log "Reusing existing tunnel keys from $conf"
+  return 0
 }

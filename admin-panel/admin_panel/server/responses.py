@@ -4,6 +4,7 @@ import urllib.parse
 from pathlib import Path
 
 from admin_panel.config import BASE, STATIC_DIR, admin_url
+from admin_panel.server import security
 
 
 def clean_path(handler):
@@ -62,8 +63,11 @@ def serve_static(handler):
 
 def send_html(handler, content, code=200):
     raw = content.encode("utf-8")
+    token = security.get_csrf_token(handler)
     handler.send_response(code)
     handler.send_header("Content-Type", "text/html; charset=utf-8")
+    security.apply_security_headers(handler)
+    security.set_csrf_cookie(handler, token)
     handler.send_header("Content-Length", str(len(raw)))
     handler.end_headers()
     handler.wfile.write(raw)
@@ -73,6 +77,10 @@ def redirect(handler, path):
     handler.send_response(302)
     handler.send_header("Location", admin_url(path))
     handler.end_headers()
+
+
+def flash_redirect(handler, path, message):
+    security.flash_redirect(handler, admin_url(path), message)
 
 
 def send_config_file(handler, client_name, raw):

@@ -39,6 +39,21 @@ def run_client_remove(name):
     return output
 
 
+def _client_action_applied(action, name):
+    """Return True when a wg-client action succeeded for the given client."""
+    meta = find_client_meta_by_name(name)
+    if not meta:
+        return action == "remove"
+
+    if action == "enable":
+        return meta.get("DISABLED", "0") != "1"
+    if action == "disable":
+        return meta.get("DISABLED", "0") == "1"
+    if action == "remove":
+        return find_client_meta_by_name(name) is None
+    return True
+
+
 def ensure_client(name, *, days=None, limit=None, single=None):
     """Ensure a client exists. Returns (ok, created, output)."""
     if find_client_meta_by_name(name):

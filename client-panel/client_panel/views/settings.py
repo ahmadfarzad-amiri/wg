@@ -1,8 +1,20 @@
 import html
 
 
-def body(msg=""):
+def body(msg="", show_config_actions=False):
     notice = f'<div class="notice" role="alert">{html.escape(msg)}</div>' if msg else ""
+    config_actions = ""
+    if show_config_actions:
+        config_actions = """
+<section class="card card-spaced">
+  <h3>کانفیگ جدید</h3>
+  <p class="hint">کلیدهای VPN عوض شده — کانفیگ جدید را دانلود یا QR را اسکن کنید.</p>
+  <div class="settings-actions">
+    <a class="btn" href="/config">دانلود کانفیگ</a>
+    <button type="button" class="btn dark" data-qr-open>نمایش QR</button>
+  </div>
+</section>
+"""
     return f"""
 <h1>تنظیمات</h1>
 <p class="subtitle">مدیریت رمز عبور و خروج از پنل</p>
@@ -21,6 +33,8 @@ def body(msg=""):
     <button type="submit">تغییر رمز و ساخت کانفیگ جدید</button>
   </form>
 </section>
+
+{config_actions}
 
 <section class="card card-spaced">
   <h3>حساب کاربری</h3>

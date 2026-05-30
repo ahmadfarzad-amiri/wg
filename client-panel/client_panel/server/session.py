@@ -5,7 +5,18 @@ from client_panel.config import SESSION_DAYS
 from client_panel.db import db
 
 
+def _secure_attrs():
+    import os
+
+    if os.environ.get("WG_HTTPS", "").strip() in ("1", "true", "yes"):
+        return "; Secure"
+    return ""
+
+
 def current_user(handler):
+    from client_panel.server import security
+
+    security.purge_expired_sessions()
     from http.cookies import SimpleCookie
 
     cookie = SimpleCookie(handler.headers.get("Cookie", ""))
@@ -39,6 +50,6 @@ def set_session(handler, user_id):
     handler.send_header("Location", "/")
     handler.send_header(
         "Set-Cookie",
-        f"session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_DAYS * 86400}",
+        f"session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_DAYS * 86400}{_secure_attrs()}",
     )
     handler.end_headers()

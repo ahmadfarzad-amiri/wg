@@ -1,7 +1,5 @@
-from admin_panel.components.layout import page
-from admin_panel.config import DEFAULT_DAYS, DEFAULT_LIMIT, WG_CLIENT
+from admin_panel.core.audit import log_admin_action
 from admin_panel.core.shell import run, tail_message
-from admin_panel.views import tools
 
 
 def handle(handler, data):
@@ -22,4 +20,5 @@ def handle(handler, data):
     else:
         out = "عملیات ناشناخته"
 
-    handler.send_html(page("ابزارها", tools.body(tail_message(out)), "tools"))
+    log_admin_action(f"tool_{action}", out or "")
+    handler.flash("/tools", tail_message(out))

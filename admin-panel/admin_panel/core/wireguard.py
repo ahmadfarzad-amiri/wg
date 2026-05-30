@@ -117,11 +117,37 @@ def human_duration(seconds):
     return f"{seconds // 86400} روز قبل"
 
 
-def client_status(meta):
+def wg_map(command):
+    if not wg_interface_up():
+        return {}
+    out = run(_wg_cmd("show", WG_IF, command))
+    result = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if parts:
+            result[parts[0]] = parts[1:]
+    return result
+
+
+def build_wg_snapshot():
+    """Fetch transfer/endpoints/handshakes once for batch status reads."""
+    return {
+        "transfers": wg_map("transfer"),
+        "endpoints": wg_map("endpoints"),
+        "handshakes": wg_map("latest-handshakes"),
+    }
+
+
+def client_status(meta, snapshot=None):
     pub = meta.get("PUBLIC_KEY", "")
-    transfers = wg_map("transfer")
-    endpoints = wg_map("endpoints")
-    handshakes = wg_map("latest-handshakes")
+    if snapshot is None:
+        transfers = wg_map("transfer")
+        endpoints = wg_map("endpoints")
+        handshakes = wg_map("latest-handshakes")
+    else:
+        transfers = snapshot["transfers"]
+        endpoints = snapshot["endpoints"]
+        handshakes = snapshot["handshakes"]
 
     rx = tx = current_total = 0
     if pub in transfers and len(transfers[pub]) >= 2:
@@ -183,21 +209,25 @@ def client_status(meta):
     }
 
 
-def all_client_status():
-    return [client_status(m) for m in all_client_meta()]
+def all_client_status(snapshot=None):
+    if snapshot is None:
+        snapshot = build_wg_snapshot()
+    return [client_status(m, snapshot) for m in all_client_meta()]
+
+
+def find_client_status(client_name, snapshot=None):
+    if snapshot is None:
+        snapshot = build_wg_snapshot()
+    for meta in all_client_meta():
+        if meta.get("NAME") == client_name:
+            return client_status(meta, snapshot)
+    return None
 
 
 def find_client_meta_by_name(client_name):
     for meta in all_client_meta():
         if meta.get("NAME") == client_name:
             return meta
-    return None
-
-
-def find_client_status(client_name):
-    for meta in all_client_meta():
-        if meta.get("NAME") == client_name:
-            return client_status(meta)
     return None
 
 
@@ -213,7 +243,7 @@ def live_disconnect_client(client_name):
         return "اطلاعات PUBLIC_KEY یا IP در متادیتا موجود نیست"
 
     out1 = run(_wg_cmd("set", WG_IF, "peer", public_key, "remove"))
-    time.sleep(3)
+    time.sleep(1)
     out2 = run(_wg_cmd("set", WG_IF, "peer", public_key, "allowed-ips", f"{ip}/32"))
 
     return (
