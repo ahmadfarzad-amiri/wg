@@ -62,12 +62,17 @@ test_entry() {
   check "wg-clients up" wg show wg-clients
   check "wg-tunnel up (to exit)" wg show wg-tunnel
   check "client endpoint file" test -f /etc/wireguard/wg-endpoint
-  check "policy route table 100" ip rule show | grep -q 'lookup 100'
+  check "policy route table 100" sh -c "ip rule show | grep -q 'lookup 100'"
   check "wg-panel service" systemctl is-active wg-panel
   check "wg-admin-panel service" systemctl is-active wg-admin-panel
-  check "nginx running" systemctl is-active nginx
-  check "client panel HTTP" curl -fsS "http://127.0.0.1:${WG_PANEL_PORT:-8088}/login"
-  check "admin panel HTTP" curl -fsS "http://127.0.0.1:${WG_ADMIN_PORT:-8090}/admin/login"
+  if [[ -f /etc/nginx/sites-enabled/wg-panels.conf ]]; then
+    check "nginx running" systemctl is-active nginx
+    check "client panel HTTP" curl -fsS "http://127.0.0.1/login" -H "Host: localhost"
+    check "admin panel HTTP" curl -fsS "http://127.0.0.1/admin/login" -H "Host: localhost"
+  else
+    check "client panel HTTP" curl -fsS "http://127.0.0.1:${WG_PANEL_PORT:-8088}/login"
+    check "admin panel HTTP" curl -fsS "http://127.0.0.1:${WG_ADMIN_PORT:-8090}/admin/login"
+  fi
   check "admin config" test -f /etc/wireguard/admin-panel.json
   check "wg-client installed" command -v wg-client
   check "tunnel handshake to exit" sh -c 'wg show wg-tunnel latest-handshakes | grep -qv "^$"'

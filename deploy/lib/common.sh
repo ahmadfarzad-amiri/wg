@@ -82,6 +82,22 @@ prompt() {
   printf -v "$var_name" '%s' "$value"
 }
 
+# Like prompt(), but Enter without typing keeps empty (optional fields).
+prompt_optional() {
+  local var_name="$1"
+  local message="$2"
+  local default="${3:-}"
+  local value=""
+  if [[ -n "$default" ]]; then
+    _prompt_show "$message [$default]: "
+  else
+    _prompt_show "$message (optional, Enter to skip): "
+  fi
+  _read_line value
+  value="${value:-$default}"
+  printf -v "$var_name" '%s' "$value"
+}
+
 prompt_secret() {
   local var_name="$1"
   local message="$2"
@@ -191,6 +207,29 @@ install_panel_nginx() {
   if [[ -n "${6:-}" && -n "${7:-}" ]]; then
     nginx_ssl_server_block "$domain" "$6" "$7" "$client_port" "$admin_port" >> "$out"
   fi
+}
+
+install_certbot_https() {
+  local domain="$1"
+  local email="$2"
+  log "Installing certbot and requesting Let's Encrypt certificate for ${domain}..."
+  if command -v apt-get >/dev/null 2>&1; then
+    install_packages certbot python3-certbot-nginx
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y certbot python3-certbot-nginx 2>/dev/null || dnf install -y certbot
+  elif command -v yum >/dev/null 2>&1; then
+    yum install -y certbot python3-certbot-nginx 2>/dev/null || yum install -y certbot
+  else
+    warn "Install certbot manually, then run: certbot --nginx -d ${domain}"
+    return 1
+  fi
+  if certbot --nginx -d "$domain" --non-interactive --agree-tos -m "$email" --redirect; then
+    log "HTTPS enabled for ${domain}"
+    return 0
+  fi
+  warn "certbot failed — ensure DNS for ${domain} points to this server, then run:"
+  warn "  certbot --nginx -d ${domain}"
+  return 1
 }
 
 install_exit_proxy_nginx() {

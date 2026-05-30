@@ -56,13 +56,16 @@ Or run interactively (paste key when asked):
 curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/add-entry-peer.sh | sudo bash
 ```
 
-## DNS
+## DNS and HTTPS (optional)
 
-Point your panel domain A record to the **entry** server IP (panels run there).
+**No domain:** press Enter at the domain prompt during install. Panels are available at:
 
-## TLS (optional)
+- `http://ENTRY_IP:8088/login`
+- `http://ENTRY_IP:8090/admin/login`
 
-On the entry server after DNS works:
+**With domain:** point your panel domain A record to the entry server IP. During install, choose **Yes** for Let's Encrypt — certbot installs the certificate automatically (DNS must already resolve).
+
+Manual certbot later:
 
 ```bash
 sudo certbot --nginx -d your-domain.com

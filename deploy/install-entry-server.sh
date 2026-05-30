@@ -56,28 +56,41 @@ CLIENT_CIDR="10.10.10.0/24"
 
 log "=== ENTRY server — client entry + panels ==="
 log "Source: ${GITHUB_REPO_URL}"
-echo ""
 
-ENTRY_IP="$(detect_public_ip)"
+if [[ -n "${WG_ENTRY_PUBLIC_IP:-}" ]]; then
+  ENTRY_IP="$WG_ENTRY_PUBLIC_IP"
+  log "Using WG_ENTRY_PUBLIC_IP: ${ENTRY_IP}"
+else
+  log "Detecting public IP..."
+  ENTRY_IP="$(detect_public_ip)"
+fi
 prompt ENTRY_IP "Entry server public IP (client Endpoint — devices connect here)" "$ENTRY_IP"
 prompt CLIENT_PORT_WG "Client WireGuard UDP port" "51820"
 prompt EXIT_IP "Exit server public IP" ""
 prompt EXIT_TUNNEL_PORT "Exit tunnel UDP port" "51821"
 prompt EXIT_TUNNEL_PUB "Exit tunnel public key (from install-exit-server.sh)" ""
 
-prompt PANEL_DOMAIN "Public domain for web panels (e.g. vpn.example.com)" ""
+prompt_optional PANEL_DOMAIN "Panel domain for web access" ""
 prompt PANEL_BRAND "Brand name shown in panels" "VPN Access"
 prompt CLIENT_PORT "Client panel HTTP port" "8088"
 prompt ADMIN_PORT "Admin panel HTTP port" "8090"
 prompt ADMIN_USER "Admin panel username" "admin"
 prompt_secret ADMIN_PASS "Admin panel password (min 8 chars)"
 
-prompt_yes_no ENABLE_SSL "Add HTTPS nginx block (requires existing cert paths)?" "N"
-SSL_CERT=""
-SSL_KEY=""
-if [[ "$ENABLE_SSL" == "yes" ]]; then
-  prompt SSL_CERT "Full path to TLS certificate (fullchain.pem)" ""
-  prompt SSL_KEY "Full path to TLS private key (privkey.pem)" ""
+ENABLE_SSL="no"
+CERTBOT_EMAIL=""
+PANEL_ADMIN_HOST="0.0.0.0"
+USE_NGINX="no"
+
+if [[ -n "$PANEL_DOMAIN" ]]; then
+  USE_NGINX="yes"
+  PANEL_ADMIN_HOST="127.0.0.1"
+  prompt_yes_no ENABLE_SSL "Enable HTTPS with Let's Encrypt (certbot)?" "N"
+  if [[ "$ENABLE_SSL" == "yes" ]]; then
+    prompt CERTBOT_EMAIL "Email for Let's Encrypt certificate notifications" ""
+  fi
+else
+  log "No domain — panels will use http://${ENTRY_IP}:${CLIENT_PORT} and http://${ENTRY_IP}:${ADMIN_PORT}/admin"
 fi
 
 WG_ENDPOINT="${ENTRY_IP}:${CLIENT_PORT_WG}"
@@ -89,7 +102,10 @@ else
   clone_repo_if_needed "$REPO_DIR"
 fi
 
-install_packages python3 nginx qrencode git
+install_packages python3 qrencode git
+if [[ "$USE_NGINX" == "yes" ]]; then
+  install_packages nginx
+fi
 
 ensure_wg_dirs
 install_bin_tools "$REPO_DIR/client-panel/bin"
@@ -147,6 +163,13 @@ chmod 600 "$TUNNEL_CONF" /etc/wireguard/tunnel-entry.pub
 
 if command -v ufw >/dev/null 2>&1; then
   ufw allow "${CLIENT_PORT_WG}/udp" || true
+  if [[ "$USE_NGINX" == "yes" ]]; then
+    ufw allow 80/tcp || true
+    ufw allow 443/tcp || true
+  else
+    ufw allow "${CLIENT_PORT}/tcp" || true
+    ufw allow "${ADMIN_PORT}/tcp" || true
+  fi
 fi
 
 sysctl -w net.ipv4.ip_forward=1
@@ -156,6 +179,8 @@ grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null \
 systemctl enable "wg-quick@${CLIENT_IF}" "wg-quick@${TUNNEL_IF}" 2>/dev/null || true
 wg-quick down "$CLIENT_IF" 2>/dev/null || true
 wg-quick down "$TUNNEL_IF" 2>/dev/null || true
+# Clean partial state from a previous interrupted install.
+rm -f /etc/wireguard/"${CLIENT_IF}.conf" /etc/wireguard/"${TUNNEL_IF}.conf"
 wg-quick up "$CLIENT_CONF"
 wg-quick up "$TUNNEL_CONF"
 
@@ -168,7 +193,7 @@ write_env_file "$ENV_FILE" \
   WG_DEFAULT_ENDPOINT "$WG_ENDPOINT" \
   WG_PANEL_HOST 0.0.0.0 \
   WG_PANEL_PORT "$CLIENT_PORT" \
-  WG_ADMIN_HOST 127.0.0.1 \
+  WG_ADMIN_HOST "$PANEL_ADMIN_HOST" \
   WG_ADMIN_PORT "$ADMIN_PORT" \
   WG_ADMIN_BASE /admin \
   WG_PANEL_BRAND "$PANEL_BRAND" \
@@ -224,18 +249,33 @@ PY
 
 NGINX_CONF="/etc/nginx/sites-available/wg-panels.conf"
 NGINX_TEMPLATE="$INSTALL_DIR/client-panel/deploy/nginx-panels.conf.template"
-if [[ "$ENABLE_SSL" == "yes" ]]; then
-  install_panel_nginx "$NGINX_TEMPLATE" "$NGINX_CONF" \
-    "$PANEL_DOMAIN" "$CLIENT_PORT" "$ADMIN_PORT" "$SSL_CERT" "$SSL_KEY"
-else
+PANEL_URL_CLIENT=""
+PANEL_URL_ADMIN=""
+
+if [[ "$USE_NGINX" == "yes" ]]; then
   install_panel_nginx "$NGINX_TEMPLATE" "$NGINX_CONF" \
     "$PANEL_DOMAIN" "$CLIENT_PORT" "$ADMIN_PORT"
+  ln -sf "$NGINX_CONF" /etc/nginx/sites-enabled/wg-panels.conf
+  rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+  nginx -t
+  systemctl enable nginx
+  systemctl reload nginx
+  if [[ "$ENABLE_SSL" == "yes" ]]; then
+    install_certbot_https "$PANEL_DOMAIN" "$CERTBOT_EMAIL" || true
+    systemctl reload nginx 2>/dev/null || true
+  fi
+  if [[ "$ENABLE_SSL" == "yes" ]] && [[ -f "/etc/letsencrypt/live/${PANEL_DOMAIN}/fullchain.pem" ]]; then
+    PANEL_URL_CLIENT="https://${PANEL_DOMAIN}/login"
+    PANEL_URL_ADMIN="https://${PANEL_DOMAIN}/admin/login"
+  else
+    PANEL_URL_CLIENT="http://${PANEL_DOMAIN}/login"
+    PANEL_URL_ADMIN="http://${PANEL_DOMAIN}/admin/login"
+  fi
+else
+  log "Skipping nginx — panels listen directly on ports ${CLIENT_PORT} and ${ADMIN_PORT}"
+  PANEL_URL_CLIENT="http://${ENTRY_IP}:${CLIENT_PORT}/login"
+  PANEL_URL_ADMIN="http://${ENTRY_IP}:${ADMIN_PORT}/admin/login"
 fi
-ln -sf "$NGINX_CONF" /etc/nginx/sites-enabled/wg-panels.conf
-rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
-nginx -t
-systemctl enable nginx
-systemctl reload nginx
 
 cat <<EOF
 
@@ -245,8 +285,8 @@ Client server public key  : ${CLIENT_PUB}
 Tunnel public key (entry) : ${TUNNEL_PUB}
 
 Web panels:
-  http://${PANEL_DOMAIN}/login
-  http://${PANEL_DOMAIN}/admin/login
+  ${PANEL_URL_CLIENT}
+  ${PANEL_URL_ADMIN}
 Admin user                : ${ADMIN_USER}
 
 IMPORTANT — on the exit server, run:
