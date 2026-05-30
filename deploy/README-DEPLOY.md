@@ -76,14 +76,14 @@ sudo certbot --nginx -d your-domain.com
 Exit server:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/test-connectivity.sh -o /tmp/test-connectivity.sh
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/test-connectivity.sh -o /tmp/test-connectivity.sh
 sudo bash /tmp/test-connectivity.sh --role exit
 ```
 
 Entry server:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/test-connectivity.sh -o /tmp/test-connectivity.sh
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/test-connectivity.sh -o /tmp/test-connectivity.sh
 sudo bash /tmp/test-connectivity.sh --role entry
 ```
 

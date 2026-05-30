@@ -3,7 +3,7 @@
 # Usage: bash deploy/test-connectivity.sh --role exit|entry|all
 #
 # Standalone — no repo clone required:
-#   curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/test-connectivity.sh -o /tmp/test-connectivity.sh
+#   curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/test-connectivity.sh -o /tmp/test-connectivity.sh
 #   sudo bash /tmp/test-connectivity.sh --role exit
 set -eo pipefail
 
