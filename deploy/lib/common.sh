@@ -40,6 +40,117 @@ prompt_secret() {
   printf -v "$var_name" '%s' "$value"
 }
 
+prompt_yes_no() {
+  local var_name="$1"
+  local message="$2"
+  local default="${3:-N}"
+  local value=""
+  read -r -p "$message [y/N]: " value || true
+  value="${value:-$default}"
+  if [[ "${value,,}" == "y" || "${value,,}" == "yes" ]]; then
+    printf -v "$var_name" '%s' "yes"
+  else
+    printf -v "$var_name" '%s' "no"
+  fi
+}
+
+_sed_escape() {
+  printf '%s' "$1" | sed 's/[\\/&|]/\\&/g'
+}
+
+render_template() {
+  local src="$1"
+  local dst="$2"
+  shift 2
+  cp "$src" "$dst"
+  while [[ $# -ge 2 ]]; do
+    local key="$1"
+    local val="$2"
+    sed -i "s|$key|$(_sed_escape "$val")|g" "$dst"
+    shift 2
+  done
+}
+
+write_wg_endpoint() {
+  local endpoint="$1"
+  printf '%s\n' "$endpoint" > /etc/wireguard/wg-endpoint
+  chmod 600 /etc/wireguard/wg-endpoint
+  log "Wrote /etc/wireguard/wg-endpoint ($endpoint)"
+}
+
+nginx_ssl_server_block() {
+  local domain="$1"
+  local cert="$2"
+  local key="$3"
+  local client_port="$4"
+  local admin_port="$5"
+  cat <<EOF
+server {
+    listen 443 ssl;
+    server_name ${domain} localhost 127.0.0.1;
+
+    ssl_certificate ${cert};
+    ssl_certificate_key ${key};
+
+    client_max_body_size 10M;
+
+    location = /admin {
+        return 301 /admin/;
+    }
+
+    location ^~ /admin/ {
+        proxy_pass http://127.0.0.1:${admin_port}/;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_redirect off;
+        proxy_buffering off;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:${client_port};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_buffering off;
+    }
+}
+EOF
+}
+
+install_panel_nginx() {
+  local template="$1"
+  local out="$2"
+  local domain="$3"
+  local client_port="$4"
+  local admin_port="$5"
+  render_template "$template" "$out" \
+    __PANEL_DOMAIN__ "$domain" \
+    __CLIENT_PORT__ "$client_port" \
+    __ADMIN_PORT__ "$admin_port"
+  if [[ -n "${6:-}" && -n "${7:-}" ]]; then
+    nginx_ssl_server_block "$domain" "$6" "$7" "$client_port" "$admin_port" >> "$out"
+  fi
+}
+
+install_exit_proxy_nginx() {
+  local template="$1"
+  local out="$2"
+  local domain="$3"
+  local inside_ip="$4"
+  local client_port="$5"
+  local admin_port="$6"
+  render_template "$template" "$out" \
+    __PROXY_DOMAIN__ "$domain" \
+    __INSIDE_PANEL_IP__ "$inside_ip" \
+    __CLIENT_PORT__ "$client_port" \
+    __ADMIN_PORT__ "$admin_port"
+}
+
 detect_public_ip() {
   curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null \
     || curl -4fsS --max-time 5 https://ifconfig.me 2>/dev/null \

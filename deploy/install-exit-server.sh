@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Install WireGuard EXIT server (outside Iran).
-# Run on the public VPN / reverse-proxy server:
-#   curl -fsSL https://raw.githubusercontent.com/USER/REPO/main/deploy/install-exit-server.sh | sudo bash
-# Or after cloning:
+# Install WireGuard EXIT server (public VPN endpoint + optional reverse proxy).
+#
+#   curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/deploy/install-exit-server.sh | sudo bash
 #   sudo bash deploy/install-exit-server.sh
 set -euo pipefail
 
@@ -13,17 +12,25 @@ source "$SCRIPT_DIR/lib/common.sh"
 require_root
 
 REPO_DIR="${WG_REPO_DIR:-/opt/wg-src}"
-INSTALL_DIR="${WG_INSTALL_DIR:-/opt/wg}"
-LISTEN_PORT="${WG_LISTEN_PORT:-51820}"
-VPN_PREFIX="${WG_VPN_PREFIX:-10.10.10}"
+LISTEN_PORT="51820"
+VPN_PREFIX="10.10.10"
 
 log "=== WireGuard EXIT server installer ==="
+log "All values are asked interactively — nothing is hardcoded to a specific site."
+echo ""
+
+PUBLIC_IP="$(detect_public_ip)"
+prompt PUBLIC_IP "WireGuard public IP (shown in client configs as Endpoint)" "$PUBLIC_IP"
+prompt LISTEN_PORT "WireGuard UDP listen port" "51820"
+prompt VPN_PREFIX "VPN subnet prefix (first three octets, e.g. 10.10.10)" "10.10.10"
+
+WG_ENDPOINT="${PUBLIC_IP}:${LISTEN_PORT}"
 
 if [[ -f "$SCRIPT_DIR/../client-panel/bin/wg-client" ]]; then
   REPO_DIR="$SCRIPT_DIR/.."
   log "Using local repo at $REPO_DIR"
 else
-  prompt GITHUB_REPO "GitHub repo URL (https://github.com/USER/wg.git)" "https://github.com/YOUR_USER/wg.git"
+  prompt GITHUB_REPO "GitHub repo URL (https://github.com/OWNER/REPO.git)" ""
   prompt GITHUB_BRANCH "Git branch" "main"
   install_packages git curl wireguard wireguard-tools qrencode
   clone_or_update_repo "$GITHUB_REPO" "$GITHUB_BRANCH" "$REPO_DIR"
@@ -31,16 +38,12 @@ fi
 
 install_packages wireguard wireguard-tools qrencode curl
 
-PUBLIC_IP="$(detect_public_ip)"
-prompt PUBLIC_IP "Public IP for client Endpoint" "$PUBLIC_IP"
-prompt LISTEN_PORT "WireGuard UDP listen port" "$LISTEN_PORT"
-
 ensure_wg_dirs
 install_bin_tools "$REPO_DIR/client-panel/bin"
+write_wg_endpoint "$WG_ENDPOINT"
 
 WG_CONF="/etc/wireguard/wg-ir.conf"
 SERVER_PUB="/etc/wireguard/ir_client_public.key"
-
 DEF_IF="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
 DEF_IF="${DEF_IF:-eth0}"
 
@@ -76,43 +79,50 @@ wg-quick down wg-ir 2>/dev/null || true
 wg-quick up "$WG_CONF"
 
 write_env_file /etc/wireguard/exit-server.env \
-  WG_PUBLIC_ENDPOINT "${PUBLIC_IP}:${LISTEN_PORT}" \
+  WG_PUBLIC_ENDPOINT "$WG_ENDPOINT" \
   WG_IF wg-ir \
   WG_CONF "$WG_CONF"
 
 cat <<EOF
 
 === EXIT server ready ===
-Endpoint for clients : ${PUBLIC_IP}:${LISTEN_PORT}
+Client Endpoint      : ${WG_ENDPOINT}
 Server public key    : $(cat "$SERVER_PUB")
 Config               : $WG_CONF
+Endpoint file        : /etc/wireguard/wg-endpoint
 
-Next: run deploy/install-panel-server.sh on the INSIDE (Iran) server.
-Use these values when prompted:
-  Exit server IP/SSH : $(hostname -I | awk '{print $1}')
-  WG endpoint        : ${PUBLIC_IP}:${LISTEN_PORT}
+Use on the panel server when prompted:
+  WireGuard endpoint : ${WG_ENDPOINT}
+  Exit SSH target    : root@$(hostname -I | awk '{print $1}')
 
-Connection tests (run here):
+Tests:
   wg show wg-ir
   ss -ulnp | grep ${LISTEN_PORT}
-  curl -4fsS https://api.ipify.org
 
 EOF
 
 bash "$SCRIPT_DIR/test-connectivity.sh" --role exit || true
 
-prompt SETUP_PROXY "Configure nginx reverse proxy to inside panel server now? (y/N)" "N"
-if [[ "${SETUP_PROXY,,}" == "y" ]]; then
+prompt_yes_no SETUP_PROXY "Configure nginx reverse proxy to your panel server now?" "N"
+if [[ "$SETUP_PROXY" == "yes" ]]; then
   install_packages nginx
-  prompt INSIDE_IP "Inside panel server IP" ""
-  prompt PROXY_DOMAIN "Public domain" "access.bsla.dev"
+  prompt INSIDE_IP "Panel server private IP (reachable from this host)" ""
+  prompt PROXY_DOMAIN "Public domain (DNS A record → this server)" ""
+  prompt CLIENT_PORT "Client panel port on panel server" "8088"
+  prompt ADMIN_PORT "Admin panel port on panel server" "8090"
   PROXY_CONF="/etc/nginx/sites-available/wg-proxy.conf"
-  sed -e "s/INSIDE_PANEL_IP/${INSIDE_IP}/g" -e "s/access.bsla.dev/${PROXY_DOMAIN}/g" \
-    "$SCRIPT_DIR/nginx-exit-proxy.conf.template" > "$PROXY_CONF"
+  install_exit_proxy_nginx \
+    "$SCRIPT_DIR/nginx-exit-proxy.conf.template" \
+    "$PROXY_CONF" \
+    "$PROXY_DOMAIN" \
+    "$INSIDE_IP" \
+    "$CLIENT_PORT" \
+    "$ADMIN_PORT"
   ln -sf "$PROXY_CONF" /etc/nginx/sites-enabled/wg-proxy.conf
   rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
   nginx -t
   systemctl enable nginx
   systemctl reload nginx
-  log "Nginx proxy configured for ${PROXY_DOMAIN} -> ${INSIDE_IP}"
+  log "Nginx proxy: https://${PROXY_DOMAIN}/ → ${INSIDE_IP}:${CLIENT_PORT}"
+  log "Run after DNS works: certbot --nginx -d ${PROXY_DOMAIN}"
 fi

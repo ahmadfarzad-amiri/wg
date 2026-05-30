@@ -6,7 +6,19 @@ WG_CONF = "/etc/wireguard/wg-ir.conf"
 STATE_DIR = "/etc/wireguard/client-state"
 CLIENT_DIR = "/etc/wireguard/clients"
 SERVER_PUBLIC_KEY_FILE = "/etc/wireguard/ir_client_public.key"
-DEFAULT_ENDPOINT = "31.25.93.168:51820"
+
+
+def read_default_endpoint():
+    path = "/etc/wireguard/wg-endpoint"
+    if os.path.isfile(path):
+        with open(path, "r", encoding="utf-8", errors="ignore") as handle:
+            value = handle.read().strip()
+            if value:
+                return value
+    return os.environ.get("WG_DEFAULT_ENDPOINT", "127.0.0.1:51820")
+
+
+DEFAULT_ENDPOINT = read_default_endpoint()
 
 def die(msg):
     print(f"ERROR: {msg}", file=sys.stderr)

@@ -1,146 +1,117 @@
-# WireGuard Panel Deployment
+# Deployment guide
 
-Two-server layout for Iran + exit node abroad.
+Generic two-server setup. **Every install asks for your own IP, domain, ports, and brand.**
 
 ## Architecture
 
 ```
-Users (Iran)
-    |
-    | HTTPS (your domain)
-    v
-+---------------------------+     SSH (management)      +---------------------------+
-| EXIT server (outside)     | <------------------------ | PANEL server (inside Iran) |
-| - WireGuard wg-ir :51820  |                           | - client panel :8088       |
-| - nginx reverse proxy     | ------------------------> | - admin panel  :8090       |
-| - /etc/wireguard (master) |     HTTP proxy (optional) | - panel.db, admin login    |
-+---------------------------+                           +---------------------------+
+Users → your-domain.com (DNS → exit server)
+          ↓ nginx reverse proxy (optional)
+        panel server :8088 / :8090
+          ↓ SSH
+        exit server — WireGuard wg-ir (UDP)
 ```
 
-| Server | Role | Script |
-|--------|------|--------|
-| Outside Iran | WireGuard VPN + optional reverse proxy | `deploy/install-exit-server.sh` |
-| Inside Iran | Web panels + SSH to exit for `wg-client` | `deploy/install-panel-server.sh` |
+| Server | Script | Stores |
+|--------|--------|--------|
+| Exit | `install-exit-server.sh` | `/etc/wireguard/wg-ir.conf`, `wg-endpoint` |
+| Panel | `install-panel-server.sh` | `/opt/wg/`, `panel.db`, admin login |
 
-## 1. Push to GitHub (on your laptop)
+## 1. Push to GitHub
 
 ```bash
-cd /path/to/wg
-git init
-git add .
-git commit -m "Production WireGuard panels with two-server deploy scripts"
-git branch -M main
-gh repo create YOUR_USER/wg --private --source=. --push
-# or manually:
-# git remote add origin git@github.com:YOUR_USER/wg.git
-# git push -u origin main
+git remote add origin git@github.com:OWNER/REPO.git
+git push -u origin main
 ```
 
-**Important:** Copy `wg-client` into `client-panel/bin/` before pushing (see `client-panel/bin/README.md`).
+Replace `OWNER/REPO` in curl commands below.
 
-## 2. Exit server (outside Iran)
+## 2. Exit server (run first)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_USER/wg/main/deploy/install-exit-server.sh -o install-exit-server.sh
+curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/deploy/install-exit-server.sh -o install-exit-server.sh
 sudo bash install-exit-server.sh
 ```
 
-Or clone first:
+Prompts include:
+- WireGuard **public IP** (auto-detected, confirm or override)
+- **UDP port** (default 51820)
+- Optional **nginx proxy** → panel server IP + **your domain**
+
+Save the printed **Client Endpoint** (`IP:port`) for step 3.
+
+## 3. Panel server (run second)
 
 ```bash
-git clone https://github.com/YOUR_USER/wg.git /opt/wg-src
-sudo bash /opt/wg-src/deploy/install-exit-server.sh
-```
-
-The script will:
-- Install WireGuard and create `/etc/wireguard/wg-ir.conf`
-- Open UDP 51820, enable IP forwarding
-- Install CLI tools from `client-panel/bin/`
-- Print the public **Endpoint** (`IP:51820`) for client configs
-
-### Reverse proxy on exit server (optional)
-
-Point your domain to the **exit** server IP, then proxy to the **inside** panel server:
-
-```bash
-sudo cp deploy/nginx-exit-proxy.conf.template /etc/nginx/sites-available/wg-proxy.conf
-sudo sed -i 's/INSIDE_PANEL_IP/YOUR_INSIDE_SERVER_IP/g' /etc/nginx/sites-available/wg-proxy.conf
-sudo sed -i 's/access.bsla.dev/your.domain/g' /etc/nginx/sites-available/wg-proxy.conf
-sudo ln -sf /etc/nginx/sites-available/wg-proxy.conf /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d your.domain
-```
-
-## 3. Panel server (inside Iran)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_USER/wg/main/deploy/install-panel-server.sh -o install-panel-server.sh
+curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/deploy/install-panel-server.sh -o install-panel-server.sh
 sudo bash install-panel-server.sh
 ```
 
-Prompts:
-- GitHub repo URL
-- Exit server SSH (`root@EXIT_IP`)
-- WireGuard endpoint (`EXIT_PUBLIC_IP:51820`)
-- Domain, admin password, ports
+Prompts include:
+- GitHub repo (if not cloned)
+- Exit server **SSH** (`root@EXIT_IP`)
+- **WireGuard endpoint** (`EXIT_IP:51820`)
+- **Domain**, **brand**, **ports**, **admin user/password**
+- Optional **HTTPS** cert paths
 
-The script will:
-- Clone panels to `/opt/wg/`
-- Set up SSH key → exit server
-- Install `wg-client` wrapper (runs on exit via SSH)
-- Sync `client-state/` and `clients/` from exit every 2 minutes
-- Start systemd services + nginx
+Add the printed SSH public key to the exit server before continuing.
 
-**Before continuing:** add the printed SSH public key to `/root/.ssh/authorized_keys` on the exit server.
+## 4. DNS
 
-## 4. Connection tests
+| Record | Points to |
+|--------|-----------|
+| `your-domain.com` A | Exit server IP (if using exit nginx proxy) |
+| or | Panel server IP (if nginx only on panel server) |
 
-On exit server:
+## 5. TLS (optional)
+
+On the server that serves nginx to the public:
 
 ```bash
-bash deploy/test-connectivity.sh --role exit
+sudo certbot --nginx -d your-domain.com
 ```
 
-On panel server:
+Or provide cert paths during panel install (`ENABLE_SSL=yes`).
+
+## 6. Connection tests
 
 ```bash
-bash deploy/test-connectivity.sh --role panel
-```
-
-Manual checks:
-
-```bash
-# Exit — WireGuard up
+# Exit server
 wg show wg-ir
 ss -ulnp | grep 51820
+bash deploy/test-connectivity.sh --role exit
 
-# Panel — services up
+# Panel server
 systemctl status wg-panel wg-admin-panel nginx
 curl -fsS http://127.0.0.1:8088/login
 curl -fsS http://127.0.0.1:8090/admin/login
-
-# Panel — SSH to exit
 ssh -i /root/.ssh/wg_exit root@EXIT_IP 'wg show wg-ir'
-
-# Panel — remote client add (runs on exit)
-wg-client list
-
-# End-to-end — from a client device after downloading config
-ping 10.10.10.1
+bash deploy/test-connectivity.sh --role panel
 ```
 
-## Environment files
+## Configuration files
 
-| File | Server | Purpose |
-|------|--------|---------|
-| `/etc/wireguard/exit-server.env` | Exit | Public endpoint metadata |
-| `/etc/wireguard/panel-server.env` | Panel | Panel + SSH settings |
+| File | Purpose |
+|------|---------|
+| `/etc/wireguard/wg-endpoint` | `IP:port` in downloaded client configs |
+| `/etc/wireguard/exit-server.env` | Exit server metadata |
+| `/etc/wireguard/panel-server.env` | Panel systemd environment |
+| `deploy/config.env.example` | Reference for all variables |
+
+## Nginx templates
+
+| Template | Use |
+|----------|-----|
+| `client-panel/deploy/nginx-panels.conf.template` | Panel server |
+| `deploy/nginx-exit-proxy.conf.template` | Exit reverse proxy |
+
+Placeholders are filled by the install scripts — do not edit templates on the server; re-run install or edit generated files under `/etc/nginx/sites-available/`.
 
 ## Troubleshooting
 
-| Problem | Fix |
-|---------|-----|
-| `wg-client not found in repo` | Copy `wg-client` to `client-panel/bin/` and redeploy |
-| Panel cannot add clients | Check SSH: `ssh -i /root/.ssh/wg_exit root@EXIT_IP wg-client list` |
-| Online list empty | Exit `wg-ir` must be up; panel needs `WG_EXIT_SSH` in env file |
-| Domain shows nginx error | Configure exit nginx proxy to inside server IP:8088 / :8090 |
+| Problem | Check |
+|---------|--------|
+| Wrong endpoint in client `.conf` | `cat /etc/wireguard/wg-endpoint` on exit server |
+| Panel cannot add clients | `ssh -i /root/.ssh/wg_exit user@exit wg-client list` |
+| Online list empty | Exit `wg-ir` up; `WG_EXIT_SSH` in panel-server.env |
+| Domain 502 | Exit nginx → correct panel IP and ports |

@@ -7,7 +7,19 @@ CLIENT_DIR="/etc/wireguard/clients"
 STATE_DIR="/etc/wireguard/client-state"
 SERVER_PUBLIC_KEY_FILE="/etc/wireguard/ir_client_public.key"
 
-DEFAULT_ENDPOINT="31.25.93.168:51820"
+read_default_endpoint() {
+  if [[ -f /etc/wireguard/wg-endpoint ]]; then
+    tr -d '[:space:]' < /etc/wireguard/wg-endpoint
+    return
+  fi
+  if [[ -n "${WG_DEFAULT_ENDPOINT:-}" ]]; then
+    printf '%s' "$WG_DEFAULT_ENDPOINT"
+    return
+  fi
+  echo "127.0.0.1:51820"
+}
+
+DEFAULT_ENDPOINT="$(read_default_endpoint)"
 VPN_PREFIX="10.10.10"
 VPN_CIDR="10.10.10.0/24"
 MTU="1280"
@@ -32,7 +44,7 @@ Options for add/renew:
   --ip IP                  Example: 10.10.10.20
   --days DAYS              Expire after X days. Example: --days 30
   --limit SIZE             Total data limit. Examples: 5G, 500M, 20GB
-  --endpoint HOST:PORT     Default: 31.25.93.168:51820
+  --endpoint HOST:PORT     Default: from /etc/wireguard/wg-endpoint
   --single-ip              Lock to first source IP
   --single-endpoint        Lock to first source IP:port, stricter but may break on mobile networks
   --no-single              Disable single-device protection

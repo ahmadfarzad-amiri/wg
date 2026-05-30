@@ -25,7 +25,7 @@ SESSION_FILE = os.environ.get("WG_ADMIN_SESSION_FILE", _data("admin-sessions.db"
 STATIC_DIR = str(ROOT / "static")
 
 SESSION_HOURS = 24
-BRAND = os.environ.get("WG_ADMIN_BRAND", "BSLA Access")
+BRAND = os.environ.get("WG_ADMIN_BRAND", "VPN Access")
 VERSION = "1.0.0"
 
 DEFAULT_DAYS = os.environ.get("WG_ADMIN_DEFAULT_DAYS", "30")
