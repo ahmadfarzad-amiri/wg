@@ -76,25 +76,15 @@ sudo certbot --nginx -d your-domain.com
 Exit server:
 
 ```bash
-wg show wg-tunnel
-```
-
-```bash
-bash deploy/test-connectivity.sh --role exit
+curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/test-connectivity.sh -o /tmp/test-connectivity.sh
+sudo bash /tmp/test-connectivity.sh --role exit
 ```
 
 Entry server:
 
 ```bash
-wg show wg-clients
-```
-
-```bash
-wg show wg-tunnel
-```
-
-```bash
-bash deploy/test-connectivity.sh --role entry
+curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/test-connectivity.sh -o /tmp/test-connectivity.sh
+sudo bash /tmp/test-connectivity.sh --role entry
 ```
 
 From a connected client, traffic should exit via the exit server (check with `curl ifconfig.me` on the client).

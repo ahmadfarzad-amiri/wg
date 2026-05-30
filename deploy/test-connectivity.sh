@@ -1,10 +1,36 @@
 #!/usr/bin/env bash
 # Test connectivity for entry/exit VPN infrastructure.
+# Usage: bash deploy/test-connectivity.sh --role exit|entry|all
 set -eo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-# shellcheck source=lib/common.sh
-source "$SCRIPT_DIR/lib/common.sh"
+# curl | bash: save to a temp file and re-run so stdin is not the script body.
+if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
+  export WG_DEPLOY_REEXEC=1
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
+  _WG_INSTALLER="$(mktemp /tmp/wg-install-XXXXXX.sh)"
+  curl -fsSL "$GITHUB_RAW_BASE/deploy/test-connectivity.sh" -o "$_WG_INSTALLER"
+  chmod 700 "$_WG_INSTALLER"
+  exec bash "$_WG_INSTALLER" "$@"
+fi
+
+_WG_SCRIPT=""
+if [[ "${BASH_SOURCE[0]+set}" == "set" ]]; then
+  _WG_SCRIPT="${BASH_SOURCE[0]}"
+fi
+if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "$_WG_SCRIPT")" && pwd)"
+  # shellcheck source=lib/common.sh
+  source "$SCRIPT_DIR/lib/common.sh"
+else
+  _BOOT="$(mktemp -d)"
+  mkdir -p "$_BOOT/deploy/lib"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
+  curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
+  curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
+  SCRIPT_DIR="$_BOOT/deploy"
+  # shellcheck source=lib/common.sh
+  source "$SCRIPT_DIR/lib/common.sh"
+fi
 set -u
 
 ROLE="${1:-}"
@@ -47,7 +73,7 @@ test_exit() {
   if [[ -f /etc/wireguard/tunnel-entry.pub ]]; then
     check "entry server peer configured" wg show wg-tunnel peers
   else
-    warn "Entry server peer not added yet — run deploy/add-entry-peer.sh"
+    warn "Entry server peer not added yet — run add-entry-peer.sh on this host"
   fi
 }
 
