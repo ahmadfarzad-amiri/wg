@@ -1,6 +1,6 @@
 # Deployment guide
 
-**Traffic path:** phone/laptop → **entry server** (`wg-clients`) → **encrypted tunnel** → **exit server** → internet
+**Traffic path:** devices → **entry server** (`wg-clients`) → **encrypted tunnel** → **exit server** → internet
 
 Install scripts pull from [github.com/ahmadfarzad-amiri/wg](https://github.com/ahmadfarzad-amiri/wg).
 
@@ -8,7 +8,7 @@ Install scripts pull from [github.com/ahmadfarzad-amiri/wg](https://github.com/a
 
 ```
 ┌─────────────┐     UDP 51820      ┌──────────────────┐   tunnel 51821   ┌─────────────────┐
-│ phone/laptop│ ─────────────────► │ Entry VPS        │ ───────────────► │ Exit VPS        │ ──► internet
+│   devices   │ ─────────────────► │ Entry VPS        │ ───────────────► │ Exit VPS        │ ──► internet
 └─────────────┘   client Endpoint  │ wg-clients+panels│   wg-tunnel      │ NAT + egress    │
                                    └──────────────────┘                  └─────────────────┘
 ```
@@ -37,7 +37,7 @@ curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/in
 ```
 
 Prompts:
-- Entry public IP (this becomes **client Endpoint** in phone configs)
+- Entry public IP (this becomes **client Endpoint** in device configs)
 - Exit server IP and tunnel public key (from step 1)
 - Panel domain, brand, admin password
 

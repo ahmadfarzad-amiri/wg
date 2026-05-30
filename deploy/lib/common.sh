@@ -30,8 +30,9 @@ _prompt_show() {
   local text="$1"
   if _have_tty; then
     printf '%s' "$text" >/dev/tty
+  else
+    printf '[wg-deploy] %s\n' "$text"
   fi
-  printf '[wg-deploy] %s\n' "$text"
 }
 
 _read_line() {

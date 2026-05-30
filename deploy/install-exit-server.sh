@@ -2,7 +2,7 @@
 # Exit VPS — internet egress via site-to-site tunnel from entry server.
 # Clients never connect here directly.
 #
-# phone/laptop → entry server → encrypted tunnel → THIS server → internet
+# devices → entry server → encrypted tunnel → THIS server → internet
 #
 # One-liner:
 #   curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-exit-server.sh | sudo bash

@@ -2,7 +2,7 @@
 
 Client and admin web panels for a **two-hop VPN**:
 
-**phone/laptop → entry VPS → encrypted tunnel → exit VPS → internet**
+**devices → entry VPS → encrypted tunnel → exit VPS → internet**
 
 **Official repository:** [github.com/ahmadfarzad-amiri/wg](https://github.com/ahmadfarzad-amiri/wg)
 

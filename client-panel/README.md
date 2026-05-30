@@ -1,6 +1,6 @@
 # Client Panel
 
-WireGuard client web panel. Runs on the **entry** server (where phones connect).
+WireGuard client web panel. Runs on the **entry** server (where client devices connect).
 
 Deployed path: **`/opt/wg/client-panel/`**
 

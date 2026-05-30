@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Entry VPS — where phones/laptops connect + web panels.
+# Entry VPS — where client devices connect + web panels.
 #
-# phone/laptop → THIS server (wg-clients) → tunnel (wg-tunnel) → exit server → internet
+# devices → THIS server (wg-clients) → tunnel (wg-tunnel) → exit server → internet
 #
 # One-liner:
 #   curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-entry-server.sh | sudo bash
@@ -56,7 +56,7 @@ log "Source: ${GITHUB_REPO_URL}"
 echo ""
 
 ENTRY_IP="$(detect_public_ip)"
-prompt ENTRY_IP "Entry server public IP (client Endpoint — phones connect here)" "$ENTRY_IP"
+prompt ENTRY_IP "Entry server public IP (client Endpoint — devices connect here)" "$ENTRY_IP"
 prompt CLIENT_PORT_WG "Client WireGuard UDP port" "51820"
 prompt EXIT_IP "Exit server public IP" ""
 prompt EXIT_TUNNEL_PORT "Exit tunnel UDP port" "51821"
@@ -237,7 +237,7 @@ systemctl reload nginx
 cat <<EOF
 
 === ENTRY server ready ===
-Client Endpoint (phones)  : ${WG_ENDPOINT}
+Client Endpoint (devices): ${WG_ENDPOINT}
 Client server public key  : ${CLIENT_PUB}
 Tunnel public key (entry) : ${TUNNEL_PUB}
 
@@ -250,7 +250,7 @@ IMPORTANT — on the exit server, run:
   bash deploy/add-entry-peer.sh ${TUNNEL_PUB}
 
 Traffic path:
-  phone/laptop → ${ENTRY_IP}:${CLIENT_PORT_WG} → tunnel → ${EXIT_IP} → internet
+  devices → ${ENTRY_IP}:${CLIENT_PORT_WG} → tunnel → ${EXIT_IP} → internet
 
 EOF
 
