@@ -8,6 +8,13 @@
 #   curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-exit-server.sh | sudo bash
 set -eo pipefail
 
+# curl | bash: re-run from a script fd so prompts are not read from stdin.
+if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
+  export WG_DEPLOY_REEXEC=1
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
+  exec bash <(curl -fsSL "$GITHUB_RAW_BASE/deploy/install-exit-server.sh") "$@"
+fi
+
 _WG_SCRIPT=""
 if [[ "${BASH_SOURCE[0]+set}" == "set" ]]; then
   _WG_SCRIPT="${BASH_SOURCE[0]}"

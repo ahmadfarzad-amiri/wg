@@ -22,9 +22,12 @@ require_root() {
   [[ "$(id -u)" -eq 0 ]] || die "Run as root: sudo bash $0"
 }
 
-# Read user input from the terminal even when the script is piped (curl | bash).
+# Read user input from the terminal even when stdin is a pipe (curl | bash).
 _read_prompt() {
-  if [[ -r /dev/tty ]]; then
+  if exec 3<>/dev/tty 2>/dev/null; then
+    read -r "$@" <&3
+    exec 3<&-
+  elif [[ -r /dev/tty ]]; then
     read -r "$@" </dev/tty
   else
     read -r "$@" || true
