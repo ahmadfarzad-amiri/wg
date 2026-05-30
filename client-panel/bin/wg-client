@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WG_IF="wg-ir"
-WG_CONF="/etc/wireguard/wg-ir.conf"
+WG_IF="wg-clients"
+WG_CONF="/etc/wireguard/wg-clients.conf"
 CLIENT_DIR="/etc/wireguard/clients"
 STATE_DIR="/etc/wireguard/client-state"
-SERVER_PUBLIC_KEY_FILE="/etc/wireguard/ir_client_public.key"
+SERVER_PUBLIC_KEY_FILE="/etc/wireguard/clients-server.pub"
 
 read_default_endpoint() {
   if [[ -f /etc/wireguard/wg-endpoint ]]; then
@@ -83,7 +83,7 @@ now_epoch() {
 
 backup_conf() {
   mkdir -p /root/wg-client-backups
-  cp "$WG_CONF" "/root/wg-client-backups/wg-ir.conf.$(date +%F-%H%M%S)"
+  cp "$WG_CONF" "/root/wg-client-backups/wg-clients.conf.$(date +%F-%H%M%S)"
 }
 
 check_base_files() {

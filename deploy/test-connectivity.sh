@@ -54,7 +54,7 @@ test_entry() {
     source "$env_file"
   fi
 
-  check "wg-ir up (clients)" wg show wg-ir
+  check "wg-clients up" wg show wg-clients
   check "wg-tunnel up (to exit)" wg show wg-tunnel
   check "client endpoint file" test -f /etc/wireguard/wg-endpoint
   check "policy route table 100" ip rule show | grep -q 'lookup 100'

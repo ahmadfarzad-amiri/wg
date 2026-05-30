@@ -37,10 +37,10 @@ Set in `/etc/wireguard/entry-server.env` during install. See `deploy/config.env.
 | Variable | Default |
 |----------|---------|
 | `WG_DATA_DIR` | `/etc/wireguard` |
-| `WG_IF` | `wg-ir` |
+| `WG_IF` | `wg-clients` |
 | `WG_ADMIN_HOST` | `127.0.0.1` |
 | `WG_ADMIN_PORT` | `8090` |
 | `WG_ADMIN_BASE` | `/admin` |
 | `WG_ADMIN_BRAND` | set at install |
 
-The admin panel reads live client status from local `wg show wg-ir` on the entry server.
+The admin panel reads live client status from local `wg show wg-clients` on the entry server.

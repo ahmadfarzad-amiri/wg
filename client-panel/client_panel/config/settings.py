@@ -12,7 +12,7 @@ def _data(*parts: str) -> str:
     return os.path.join(_DATA, *parts)
 
 
-WG_IF = os.environ.get("WG_IF", "wg-ir")
+WG_IF = os.environ.get("WG_IF", "wg-clients")
 STATE_DIR = os.environ.get("WG_STATE_DIR", _data("client-state"))
 CLIENT_DIR = os.environ.get("WG_CLIENT_DIR", _data("clients"))
 DB_PATH = os.environ.get("WG_DB_PATH", _data("panel.db"))

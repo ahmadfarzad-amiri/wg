@@ -2,7 +2,7 @@
 import os, sys, shlex, time, subprocess, re
 
 STATE_DIR = "/etc/wireguard/client-state"
-WG_IF = "wg-ir"
+WG_IF = "wg-clients"
 
 VALID = {"off", "ip", "endpoint"}
 

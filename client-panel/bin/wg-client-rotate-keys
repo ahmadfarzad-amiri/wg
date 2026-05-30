@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 import os, sys, shlex, subprocess, time
 
-WG_IF = "wg-ir"
-WG_CONF = "/etc/wireguard/wg-ir.conf"
+WG_IF = "wg-clients"
+WG_CONF = "/etc/wireguard/wg-clients.conf"
 STATE_DIR = "/etc/wireguard/client-state"
 CLIENT_DIR = "/etc/wireguard/clients"
-SERVER_PUBLIC_KEY_FILE = "/etc/wireguard/ir_client_public.key"
+SERVER_PUBLIC_KEY_FILE = "/etc/wireguard/clients-server.pub"
 
 
 def read_default_endpoint():

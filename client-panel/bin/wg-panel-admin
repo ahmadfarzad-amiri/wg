@@ -3,7 +3,7 @@ set -euo pipefail
 
 DB="/etc/wireguard/panel.db"
 STATE_DIR="/etc/wireguard/client-state"
-WG_IF="wg-ir"
+WG_IF="wg-clients"
 
 usage() {
   cat <<USAGE

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Entry VPS — where phones/laptops connect + web panels.
 #
-# phone/laptop → THIS server (wg-ir) → tunnel (wg-tunnel) → exit server → internet
+# phone/laptop → THIS server (wg-clients) → tunnel (wg-tunnel) → exit server → internet
 #
 # One-liner:
 #   curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-entry-server.sh | sudo bash
@@ -27,7 +27,7 @@ REPO_DIR="${WG_REPO_DIR:-/opt/wg-src}"
 INSTALL_DIR="${WG_INSTALL_DIR:-/opt/wg}"
 ENV_FILE="/etc/wireguard/entry-server.env"
 
-CLIENT_IF="wg-ir"
+CLIENT_IF="wg-clients"
 TUNNEL_IF="wg-tunnel"
 CLIENT_PORT_WG="51820"
 VPN_PREFIX="10.10.10"
@@ -100,8 +100,8 @@ PrivateKey = ${CLIENT_PRIV}
 PostUp = iptables -A FORWARD -i ${CLIENT_IF} -j ACCEPT; iptables -A FORWARD -o ${CLIENT_IF} -j ACCEPT
 PostDown = iptables -D FORWARD -i ${CLIENT_IF} -j ACCEPT; iptables -D FORWARD -o ${CLIENT_IF} -j ACCEPT
 EOF
-printf '%s\n' "$CLIENT_PUB" > /etc/wireguard/ir_client_public.key
-chmod 600 "$CLIENT_CONF" /etc/wireguard/ir_client_public.key
+printf '%s\n' "$CLIENT_PUB" > /etc/wireguard/clients-server.pub
+chmod 600 "$CLIENT_CONF" /etc/wireguard/clients-server.pub
 
 # --- Tunnel to exit server ---
 TUNNEL_PRIV="$(wg genkey)"

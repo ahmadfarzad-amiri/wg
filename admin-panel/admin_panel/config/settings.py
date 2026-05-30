@@ -16,7 +16,7 @@ HOST = os.environ.get("WG_ADMIN_HOST", "127.0.0.1")
 PORT = int(os.environ.get("WG_ADMIN_PORT", "8090"))
 BASE = os.environ.get("WG_ADMIN_BASE", "/admin")
 
-WG_IF = os.environ.get("WG_IF", "wg-ir")
+WG_IF = os.environ.get("WG_IF", "wg-clients")
 DB_PATH = os.environ.get("WG_DB_PATH", _data("panel.db"))
 ADMIN_CONFIG = os.environ.get("WG_ADMIN_CONFIG", _data("admin-panel.json"))
 STATE_DIR = os.environ.get("WG_STATE_DIR", _data("client-state"))

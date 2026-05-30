@@ -1,6 +1,6 @@
 # Deployment guide
 
-**Traffic path:** phone/laptop → **entry server** (`wg-ir`) → **encrypted tunnel** → **exit server** → internet
+**Traffic path:** phone/laptop → **entry server** (`wg-clients`) → **encrypted tunnel** → **exit server** → internet
 
 Install scripts pull from [github.com/ahmadfarzad-amiri/wg](https://github.com/ahmadfarzad-amiri/wg).
 
@@ -9,13 +9,13 @@ Install scripts pull from [github.com/ahmadfarzad-amiri/wg](https://github.com/a
 ```
 ┌─────────────┐     UDP 51820      ┌──────────────────┐   tunnel 51821   ┌─────────────────┐
 │ phone/laptop│ ─────────────────► │ Entry VPS        │ ───────────────► │ Exit VPS        │ ──► internet
-└─────────────┘   client Endpoint  │ wg-ir + panels   │   wg-tunnel      │ NAT + egress    │
+└─────────────┘   client Endpoint  │ wg-clients+panels│   wg-tunnel      │ NAT + egress    │
                                    └──────────────────┘                  └─────────────────┘
 ```
 
 | Server | Role | Interface | Who connects |
 |--------|------|-----------|--------------|
-| Entry VPS | Entry | `wg-ir` (clients), `wg-tunnel` (to exit) | Users + admin panels |
+| Entry VPS | Entry | `wg-clients`, `wg-tunnel` (to exit) | Users + admin panels |
 | Exit VPS | Exit | `wg-tunnel` (from entry) | Entry server only — not end users |
 
 ## Step 1 — Exit server (run first)
@@ -83,7 +83,7 @@ bash deploy/test-connectivity.sh --role exit
 Entry server:
 
 ```bash
-wg show wg-ir
+wg show wg-clients
 ```
 
 ```bash

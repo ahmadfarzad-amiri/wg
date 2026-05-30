@@ -85,8 +85,7 @@ def active_list_hint():
         return "WireGuard tools نصب نیست."
     if not wg_interface_up():
         return (
-            "رابط WireGuard (<code>wg-ir</code>) روی سرور خروجی فعال نیست "
-            "یا SSH به سرور خروجی برقرار نیست."
+            "رابط WireGuard (<code>wg-clients</code>) روی سرور ورودی فعال نیست."
         )
     return ""
 

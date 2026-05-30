@@ -11,7 +11,7 @@ DB_PATH = "/etc/wireguard/panel.db"
 ADMIN_CONFIG = "/etc/wireguard/admin-panel.json"
 STATE_DIR = "/etc/wireguard/client-state"
 CLIENT_DIR = "/etc/wireguard/clients"
-WG_IF = "wg-ir"
+WG_IF = "wg-clients"
 
 SESSION_FILE = "/etc/wireguard/admin-sessions.db"
 

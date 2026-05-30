@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WG_IF="wg-ir"
-WG_CONF="/etc/wireguard/wg-ir.conf"
+WG_IF="wg-clients"
+WG_CONF="/etc/wireguard/wg-clients.conf"
 STATE_DIR="/etc/wireguard/client-state"
 
 DAYS="${DAYS:-30}"
