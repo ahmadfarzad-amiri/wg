@@ -1,14 +1,25 @@
 #!/usr/bin/env bash
 # Install client + admin panels on the management server.
-# WireGuard runs on the exit server; this host manages it over SSH.
 #
-#   curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/deploy/install-panel-server.sh | sudo bash
-#   sudo bash deploy/install-panel-server.sh
+# One-liner (official repo):
+#   curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-panel-server.sh | sudo bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib/common.sh
-source "$SCRIPT_DIR/lib/common.sh"
+GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
+
+if [[ -f "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck source=lib/common.sh
+  source "$SCRIPT_DIR/lib/common.sh"
+else
+  _BOOT="$(mktemp -d)"
+  mkdir -p "$_BOOT/deploy/lib"
+  curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
+  curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
+  SCRIPT_DIR="$_BOOT/deploy"
+  # shellcheck source=lib/common.sh
+  source "$SCRIPT_DIR/lib/common.sh"
+fi
 
 require_root
 
@@ -17,17 +28,14 @@ INSTALL_DIR="${WG_INSTALL_DIR:-/opt/wg}"
 ENV_FILE="/etc/wireguard/panel-server.env"
 
 log "=== WireGuard panel server installer ==="
-log "Enter your domain, IPs, and credentials — nothing is pre-filled for a specific site."
+log "Source: ${GITHUB_REPO_URL}"
 echo ""
 
 if [[ -f "$SCRIPT_DIR/../client-panel/app.py" ]]; then
   REPO_DIR="$SCRIPT_DIR/.."
-  log "Using local repo at $REPO_DIR"
 else
-  prompt GITHUB_REPO "GitHub repo URL (https://github.com/OWNER/REPO.git)" ""
-  prompt GITHUB_BRANCH "Git branch" "main"
-  install_packages git curl rsync openssh-client
-  clone_or_update_repo "$GITHUB_REPO" "$GITHUB_BRANCH" "$REPO_DIR"
+  install_packages git curl
+  clone_repo_if_needed "$REPO_DIR"
 fi
 
 install_packages python3 nginx qrencode rsync openssh-client wireguard-tools curl git

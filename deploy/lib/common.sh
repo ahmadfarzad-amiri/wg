@@ -2,6 +2,18 @@
 # Shared helpers for WireGuard panel deployment scripts.
 set -euo pipefail
 
+_DEPLOY_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$_DEPLOY_LIB/../repo.conf" ]]; then
+  # shellcheck source=../repo.conf
+  source "$_DEPLOY_LIB/../repo.conf"
+fi
+
+GITHUB_OWNER="${GITHUB_OWNER:-ahmadfarzad-amiri}"
+GITHUB_REPO_NAME="${GITHUB_REPO_NAME:-wg}"
+GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
+GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/${GITHUB_OWNER}/${GITHUB_REPO_NAME}.git}"
+GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/${GITHUB_BRANCH}}"
+
 log() { printf '[wg-deploy] %s\n' "$*"; }
 warn() { printf '[wg-deploy] WARN: %s\n' "$*" >&2; }
 die() { printf '[wg-deploy] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -190,6 +202,18 @@ clone_or_update_repo() {
     log "Cloning $repo_url (branch $branch) -> $dest"
     git clone --depth 1 --branch "$branch" "$repo_url" "$dest"
   fi
+}
+
+clone_repo_if_needed() {
+  local dest="$1"
+  if [[ -f "$dest/client-panel/bin/wg-client" ]]; then
+    log "Using existing repo at $dest"
+    return 0
+  fi
+  prompt GITHUB_REPO "GitHub repo URL" "$GITHUB_REPO_URL"
+  prompt GITHUB_BRANCH "Git branch" "$GITHUB_BRANCH"
+  install_packages git curl
+  clone_or_update_repo "$GITHUB_REPO" "$GITHUB_BRANCH" "$dest"
 }
 
 install_bin_tools() {
