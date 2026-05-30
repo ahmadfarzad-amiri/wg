@@ -163,6 +163,28 @@ install_exit_proxy_nginx() {
     __ADMIN_PORT__ "$admin_port"
 }
 
+load_deploy_bootstrap() {
+  local script_path="$1"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
+  if [[ -f "$(dirname "$script_path")/lib/common.sh" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "$script_path")" && pwd)"
+    # shellcheck source=lib/common.sh
+    source "$SCRIPT_DIR/lib/common.sh"
+    return
+  fi
+  _BOOT="$(mktemp -d)"
+  mkdir -p "$_BOOT/deploy/lib"
+  curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
+  curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
+  SCRIPT_DIR="$_BOOT/deploy"
+  # shellcheck source=lib/common.sh
+  source "$SCRIPT_DIR/lib/common.sh"
+}
+
+default_route_iface() {
+  ip route show default 2>/dev/null | awk '{print $5; exit}'
+}
+
 detect_public_ip() {
   curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null \
     || curl -4fsS --max-time 5 https://ifconfig.me 2>/dev/null \

@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Install WireGuard EXIT server (public VPN endpoint + optional reverse proxy).
+# Exit VPS — internet egress via site-to-site tunnel from entry server.
+# Clients never connect here directly.
 #
-# One-liner (official repo):
+# phone/laptop → entry server → encrypted tunnel → THIS server → internet
+#
+# One-liner:
 #   curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-exit-server.sh | sudo bash
 set -euo pipefail
 
 GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
-
 if [[ -f "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh" ]]; then
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   # shellcheck source=lib/common.sh
@@ -20,117 +22,87 @@ else
   # shellcheck source=lib/common.sh
   source "$SCRIPT_DIR/lib/common.sh"
 fi
-
 require_root
 
 REPO_DIR="${WG_REPO_DIR:-/opt/wg-src}"
-LISTEN_PORT="51820"
-VPN_PREFIX="10.10.10"
+TUNNEL_PORT="51821"
+TUNNEL_IF="wg-tunnel"
+CLIENT_CIDR="10.10.10.0/24"
+TUNNEL_LOCAL="10.200.0.1/30"
+TUNNEL_PEER_IP="10.200.0.2"
 
-log "=== WireGuard EXIT server installer ==="
+log "=== EXIT server — internet egress ==="
 log "Source: ${GITHUB_REPO_URL}"
+log "Clients connect to the entry server, not this host."
 echo ""
 
 PUBLIC_IP="$(detect_public_ip)"
-prompt PUBLIC_IP "WireGuard public IP (shown in client configs as Endpoint)" "$PUBLIC_IP"
-prompt LISTEN_PORT "WireGuard UDP listen port" "51820"
-prompt VPN_PREFIX "VPN subnet prefix (first three octets, e.g. 10.10.10)" "10.10.10"
+prompt PUBLIC_IP "This server's public IP (exit)" "$PUBLIC_IP"
+prompt TUNNEL_PORT "Tunnel UDP port (entry server connects here)" "51821"
+prompt CLIENT_CIDR "Client subnet forwarded from entry" "10.10.10.0/24"
 
-WG_ENDPOINT="${PUBLIC_IP}:${LISTEN_PORT}"
-
-if [[ -f "$SCRIPT_DIR/../client-panel/bin/wg-client" ]]; then
-  REPO_DIR="$SCRIPT_DIR/.."
-else
-  clone_repo_if_needed "$REPO_DIR"
-fi
-
-install_packages wireguard wireguard-tools qrencode curl
-
-ensure_wg_dirs
-install_bin_tools "$REPO_DIR/client-panel/bin"
-write_wg_endpoint "$WG_ENDPOINT"
-
-WG_CONF="/etc/wireguard/wg-ir.conf"
-SERVER_PUB="/etc/wireguard/ir_client_public.key"
-DEF_IF="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
+DEF_IF="$(default_route_iface)"
 DEF_IF="${DEF_IF:-eth0}"
 
-if [[ ! -f "$WG_CONF" ]]; then
-  SERVER_PRIV="$(wg genkey)"
-  SERVER_PUB_KEY="$(printf '%s' "$SERVER_PRIV" | wg pubkey)"
-  umask 077
-  cat > "$WG_CONF" <<EOF
+ensure_wg_dirs
+
+TUNNEL_PRIV="$(wg genkey)"
+TUNNEL_PUB="$(printf '%s' "$TUNNEL_PRIV" | wg pubkey)"
+TUNNEL_CONF="/etc/wireguard/${TUNNEL_IF}.conf"
+
+umask 077
+cat > "$TUNNEL_CONF" <<EOF
 [Interface]
-Address = ${VPN_PREFIX}.1/24
-ListenPort = ${LISTEN_PORT}
-PrivateKey = ${SERVER_PRIV}
-PostUp = iptables -t nat -A POSTROUTING -s ${VPN_PREFIX}.0/24 -o ${DEF_IF} -j MASQUERADE; iptables -A FORWARD -i wg-ir -j ACCEPT; iptables -A FORWARD -o wg-ir -j ACCEPT
-PostDown = iptables -t nat -D POSTROUTING -s ${VPN_PREFIX}.0/24 -o ${DEF_IF} -j MASQUERADE; iptables -D FORWARD -i wg-ir -j ACCEPT; iptables -D FORWARD -o wg-ir -j ACCEPT
+Address = ${TUNNEL_LOCAL}
+ListenPort = ${TUNNEL_PORT}
+PrivateKey = ${TUNNEL_PRIV}
+PostUp = iptables -t nat -A POSTROUTING -s ${CLIENT_CIDR} -o ${DEF_IF} -j MASQUERADE; iptables -A FORWARD -i ${TUNNEL_IF} -j ACCEPT; iptables -A FORWARD -o ${TUNNEL_IF} -j ACCEPT
+PostDown = iptables -t nat -D POSTROUTING -s ${CLIENT_CIDR} -o ${DEF_IF} -j MASQUERADE; iptables -D FORWARD -i ${TUNNEL_IF} -j ACCEPT; iptables -D FORWARD -o ${TUNNEL_IF} -j ACCEPT
 EOF
-  printf '%s\n' "$SERVER_PUB_KEY" > "$SERVER_PUB"
-  chmod 600 "$WG_CONF" "$SERVER_PUB"
-  log "Created $WG_CONF"
-else
-  log "Using existing $WG_CONF"
-fi
+printf '%s\n' "$TUNNEL_PUB" > /etc/wireguard/tunnel-server.pub
+chmod 600 "$TUNNEL_CONF" /etc/wireguard/tunnel-server.pub
 
 if command -v ufw >/dev/null 2>&1; then
-  ufw allow "${LISTEN_PORT}/udp" || true
+  ufw allow "${TUNNEL_PORT}/udp" || true
 fi
 
 sysctl -w net.ipv4.ip_forward=1
 grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null \
   || echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
 
-systemctl enable wg-quick@wg-ir 2>/dev/null || true
-wg-quick down wg-ir 2>/dev/null || true
-wg-quick up "$WG_CONF"
+systemctl enable "wg-quick@${TUNNEL_IF}" 2>/dev/null || true
+wg-quick down "$TUNNEL_IF" 2>/dev/null || true
+wg-quick up "$TUNNEL_CONF"
 
 write_env_file /etc/wireguard/exit-server.env \
-  WG_PUBLIC_ENDPOINT "$WG_ENDPOINT" \
-  WG_IF wg-ir \
-  WG_CONF "$WG_CONF"
+  WG_ROLE exit \
+  WG_TUNNEL_IF "$TUNNEL_IF" \
+  WG_TUNNEL_PORT "$TUNNEL_PORT" \
+  WG_TUNNEL_PUBLIC_IP "$PUBLIC_IP" \
+  WG_CLIENT_CIDR "$CLIENT_CIDR"
 
 cat <<EOF
 
 === EXIT server ready ===
-Client Endpoint      : ${WG_ENDPOINT}
-Server public key    : $(cat "$SERVER_PUB")
-Config               : $WG_CONF
-Endpoint file        : /etc/wireguard/wg-endpoint
+Tunnel endpoint     : ${PUBLIC_IP}:${TUNNEL_PORT}
+Tunnel public key   : ${TUNNEL_PUB}
+Client subnet       : ${CLIENT_CIDR} (from entry server)
 
-Use on the panel server when prompted:
-  WireGuard endpoint : ${WG_ENDPOINT}
-  Exit SSH target    : root@$(hostname -I | awk '{print $1}')
+NEXT: run install-entry-server.sh on your ENTRY VPS.
+When prompted, enter:
+  Exit server IP         : ${PUBLIC_IP}
+  Exit tunnel port       : ${TUNNEL_PORT}
+  Exit tunnel pubkey     : ${TUNNEL_PUB}
 
-Tests:
-  wg show wg-ir
-  ss -ulnp | grep ${LISTEN_PORT}
+After entry server is installed, run on THIS server:
+  bash deploy/add-entry-peer.sh
 
 EOF
 
-bash "$SCRIPT_DIR/test-connectivity.sh" --role exit || true
-
-prompt_yes_no SETUP_PROXY "Configure nginx reverse proxy to your panel server now?" "N"
-if [[ "$SETUP_PROXY" == "yes" ]]; then
-  install_packages nginx
-  prompt INSIDE_IP "Panel server private IP (reachable from this host)" ""
-  prompt PROXY_DOMAIN "Public domain (DNS A record → this server)" ""
-  prompt CLIENT_PORT "Client panel port on panel server" "8088"
-  prompt ADMIN_PORT "Admin panel port on panel server" "8090"
-  PROXY_CONF="/etc/nginx/sites-available/wg-proxy.conf"
-  install_exit_proxy_nginx \
-    "$SCRIPT_DIR/nginx-exit-proxy.conf.template" \
-    "$PROXY_CONF" \
-    "$PROXY_DOMAIN" \
-    "$INSIDE_IP" \
-    "$CLIENT_PORT" \
-    "$ADMIN_PORT"
-  ln -sf "$PROXY_CONF" /etc/nginx/sites-enabled/wg-proxy.conf
-  rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
-  nginx -t
-  systemctl enable nginx
-  systemctl reload nginx
-  log "Nginx proxy: https://${PROXY_DOMAIN}/ → ${INSIDE_IP}:${CLIENT_PORT}"
-  log "Run after DNS works: certbot --nginx -d ${PROXY_DOMAIN}"
+prompt_yes_no ADD_PEER "Entry tunnel public key already available?" "N"
+if [[ "$ADD_PEER" == "yes" ]]; then
+  prompt ENTRY_TUNNEL_PUB "Entry server tunnel public key" ""
+  bash "$SCRIPT_DIR/add-entry-peer.sh" "$ENTRY_TUNNEL_PUB"
 fi
+
+bash "$SCRIPT_DIR/test-connectivity.sh" --role exit || true

@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Test connectivity between exit server, panel server, and WireGuard.
+# Test connectivity for entry/exit VPN infrastructure.
 # Usage:
 #   bash deploy/test-connectivity.sh --role exit
-#   bash deploy/test-connectivity.sh --role panel
-#   bash deploy/test-connectivity.sh --role all
+#   bash deploy/test-connectivity.sh --role entry
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,49 +34,50 @@ check() {
 test_exit() {
   log "Exit server checks"
   check "wg command" command -v wg
-  check "wg-ir interface up" wg show wg-ir
-  check "UDP port listening" sh -c 'ss -ulnp | grep -q wg'
-  check "IP forwarding" sh -c '[[ "$(sysctl -n net.ipv4.ip_forward)" == "1" ]]'
-  check "server public key file" test -f /etc/wireguard/ir_client_public.key
+  check "wg-tunnel interface up" wg show wg-tunnel
+  check "tunnel UDP listening" sh -c 'ss -ulnp | grep -q wg'
+  check "IP forwarding enabled" sh -c '[[ "$(sysctl -n net.ipv4.ip_forward)" == "1" ]]'
+  check "tunnel server pubkey saved" test -f /etc/wireguard/tunnel-server.pub
   check "outbound internet" curl -4fsS --max-time 5 https://api.ipify.org
+  if [[ -f /etc/wireguard/tunnel-entry.pub ]]; then
+    check "entry server peer configured" wg show wg-tunnel peers
+  else
+    warn "Entry server peer not added yet — run deploy/add-entry-peer.sh"
+  fi
 }
 
-test_panel() {
-  log "Panel server checks"
-  local env_file="/etc/wireguard/panel-server.env"
+test_entry() {
+  log "Entry server checks"
+  local env_file="/etc/wireguard/entry-server.env"
   if [[ -f "$env_file" ]]; then
     # shellcheck disable=SC1090
     source "$env_file"
   fi
 
-  check "python3" command -v python3
-  check "nginx running" systemctl is-active nginx
+  check "wg-ir up (clients)" wg show wg-ir
+  check "wg-tunnel up (to exit)" wg show wg-tunnel
+  check "client endpoint file" test -f /etc/wireguard/wg-endpoint
+  check "policy route table 100" ip rule show | grep -q 'lookup 100'
   check "wg-panel service" systemctl is-active wg-panel
   check "wg-admin-panel service" systemctl is-active wg-admin-panel
+  check "nginx running" systemctl is-active nginx
   check "client panel HTTP" curl -fsS "http://127.0.0.1:${WG_PANEL_PORT:-8088}/login"
   check "admin panel HTTP" curl -fsS "http://127.0.0.1:${WG_ADMIN_PORT:-8090}/admin/login"
-  check "panel.db exists" sh -c 'test -f /etc/wireguard/panel.db || python3 -c "import sys; sys.path.insert(0,\"/opt/wg/client-panel\"); from client_panel.db import db; db().close()"'
-  check "admin config exists" test -f /etc/wireguard/admin-panel.json
-  check "client-state synced" sh -c 'ls /etc/wireguard/client-state/*.meta >/dev/null 2>&1 || test -d /etc/wireguard/client-state'
-  check "wg-client wrapper" test -x /usr/local/bin/wg-client
-
-  if [[ -n "${WG_EXIT_SSH:-}" && -f "${WG_EXIT_SSH_KEY:-/root/.ssh/wg_exit}" ]]; then
-    check "SSH to exit server" \
-      ssh -o BatchMode=yes -i "${WG_EXIT_SSH_KEY}" "$WG_EXIT_SSH" 'echo ok'
-    check "remote wg show" \
-      ssh -o BatchMode=yes -i "${WG_EXIT_SSH_KEY}" "$WG_EXIT_SSH" 'wg show wg-ir'
-  fi
+  check "admin config" test -f /etc/wireguard/admin-panel.json
+  check "wg-client installed" command -v wg-client
+  check "tunnel handshake to exit" sh -c 'wg show wg-tunnel latest-handshakes | grep -qv "^$"'
 }
 
 case "$ROLE" in
   exit) test_exit ;;
-  panel) test_panel ;;
+  entry) test_entry ;;
+  panel) test_entry ;;
   all)
     test_exit || true
-    test_panel || true
+    test_entry || true
     ;;
   *)
-    die "Usage: $0 --role exit|panel|all"
+    die "Usage: $0 --role exit|entry|all"
     ;;
 esac
 

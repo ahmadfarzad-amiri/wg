@@ -1,38 +1,52 @@
 # WireGuard Access Panels
 
-Client and admin web panels for managing WireGuard VPN users.
+Client and admin web panels for a **two-hop VPN**:
+
+**phone/laptop → entry VPS → encrypted tunnel → exit VPS → internet**
 
 **Official repository:** [github.com/ahmadfarzad-amiri/wg](https://github.com/ahmadfarzad-amiri/wg)
 
-## Install (two servers)
+## Install order
 
-Run on the **exit server** (public VPN, outside):
+### 1. Exit VPS (internet egress)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-exit-server.sh | sudo bash
 ```
 
-Run on the **panel server** (management, inside):
+Save the **tunnel public key** and **exit IP:port** printed at the end.
+
+### 2. Entry VPS (clients + panels)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-panel-server.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-entry-server.sh | sudo bash
 ```
 
-Each script clones from **ahmadfarzad-amiri/wg** (press Enter to accept the default repo URL) and asks for **your** IP, domain, brand, and passwords.
+Enter your domain, entry IP, exit tunnel details, and admin password when prompted.
 
-Full guide: **[deploy/README-DEPLOY.md](deploy/README-DEPLOY.md)**
+### 3. Exit VPS — link the tunnel
 
-## What you configure at install time
+Copy the **entry tunnel public key** from step 2, then on the exit server:
 
-- WireGuard public IP and UDP port
-- Domain name and panel brand
-- Exit server SSH (`user@host`)
-- Admin username and password
-- Optional TLS certificate paths
+```bash
+curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/add-entry-peer.sh | sudo bash
+```
 
-Client configs use the endpoint saved to `/etc/wireguard/wg-endpoint`.
+Or from a clone:
 
-## Test after install
+```bash
+sudo bash deploy/add-entry-peer.sh ENTRY_TUNNEL_PUBLIC_KEY
+```
+
+## What users connect to
+
+| Setting | Value |
+|---------|--------|
+| WireGuard Endpoint | **Entry server IP:51820** (not the exit server) |
+| Web panels | Your domain on the **entry** server |
+| Internet exit | **Exit** VPS (NAT) |
+
+## Test
 
 On the exit server:
 
@@ -40,16 +54,10 @@ On the exit server:
 bash deploy/test-connectivity.sh --role exit
 ```
 
-On the panel server:
+On the entry server:
 
 ```bash
-bash deploy/test-connectivity.sh --role panel
+bash deploy/test-connectivity.sh --role entry
 ```
 
-## Repo layout
-
-| Directory | Description |
-|-----------|-------------|
-| `client-panel/` | User login, config download, QR |
-| `admin-panel/` | Client/user management |
-| `deploy/` | Install scripts — source URL in `deploy/repo.conf` |
+Full guide: **[deploy/README-DEPLOY.md](deploy/README-DEPLOY.md)**

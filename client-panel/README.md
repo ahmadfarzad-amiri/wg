@@ -1,6 +1,6 @@
 # Client Panel
 
-WireGuard client web panel.
+WireGuard client web panel. Runs on the **entry** server (where phones connect).
 
 Deployed path: **`/opt/wg/client-panel/`**
 
@@ -9,20 +9,20 @@ Deployed path: **`/opt/wg/client-panel/`**
 From GitHub (recommended):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-panel-server.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-entry-server.sh | sudo bash
 ```
 
 From a cloned repo:
 
 ```bash
-sudo bash deploy/install-panel-server.sh
+sudo bash deploy/install-entry-server.sh
 ```
 
 See **[../deploy/README-DEPLOY.md](../deploy/README-DEPLOY.md)**.
 
 ## Environment
 
-Set in `/etc/wireguard/panel-server.env`. See `deploy/config.env.example`.
+Set in `/etc/wireguard/entry-server.env`. See `deploy/config.env.example`.
 
 | Variable | Default |
 |----------|---------|
@@ -30,6 +30,6 @@ Set in `/etc/wireguard/panel-server.env`. See `deploy/config.env.example`.
 | `WG_PANEL_HOST` | `0.0.0.0` |
 | `WG_PANEL_PORT` | `8088` |
 | `WG_PANEL_BRAND` | set at install |
-| `WG_DEFAULT_ENDPOINT` | set at install (WireGuard `IP:port`) |
+| `WG_DEFAULT_ENDPOINT` | Entry server `IP:51820` |
 
-Client configs read endpoint from `/etc/wireguard/wg-endpoint` on the exit server.
+Client configs use the endpoint in `/etc/wireguard/wg-endpoint` on the **entry** server.

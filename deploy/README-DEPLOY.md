@@ -1,86 +1,111 @@
 # Deployment guide
 
-Install scripts always pull from **[github.com/ahmadfarzad-amiri/wg](https://github.com/ahmadfarzad-amiri/wg)**.  
-Site-specific values (IP, domain, brand) are entered during install.
+**Traffic path:** phone/laptop → **entry server** (`wg-ir`) → **encrypted tunnel** → **exit server** → internet
+
+Install scripts pull from [github.com/ahmadfarzad-amiri/wg](https://github.com/ahmadfarzad-amiri/wg).
 
 ## Architecture
 
 ```
-Users → your-domain.com (DNS → exit server)
-          ↓ nginx reverse proxy (optional)
-        panel server :8088 / :8090
-          ↓ SSH
-        exit server — WireGuard wg-ir (UDP)
+┌─────────────┐     UDP 51820      ┌──────────────────┐   tunnel 51821   ┌─────────────────┐
+│ phone/laptop│ ─────────────────► │ Entry VPS        │ ───────────────► │ Exit VPS        │ ──► internet
+└─────────────┘   client Endpoint  │ wg-ir + panels   │   wg-tunnel      │ NAT + egress    │
+                                   └──────────────────┘                  └─────────────────┘
 ```
 
-## 1. Exit server (run first)
+| Server | Role | Interface | Who connects |
+|--------|------|-----------|--------------|
+| Entry VPS | Entry | `wg-ir` (clients), `wg-tunnel` (to exit) | Users + admin panels |
+| Exit VPS | Exit | `wg-tunnel` (from entry) | Entry server only — not end users |
+
+## Step 1 — Exit server (run first)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-exit-server.sh | sudo bash
 ```
 
-Clones `https://github.com/ahmadfarzad-amiri/wg.git` (default — press Enter to accept).
+Prompts: exit public IP, tunnel UDP port (default `51821`).
 
-Asks for: public IP, UDP port, optional nginx proxy + domain.
+**Save from output:**
+- Tunnel public key
+- `ExitIP:51821`
 
-Save the printed **Client Endpoint** for step 2.
-
-## 2. Panel server (run second)
+## Step 2 — Entry server (run second)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-panel-server.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-entry-server.sh | sudo bash
 ```
 
-Asks for: exit SSH, WireGuard endpoint, domain, brand, admin password, ports.
+Prompts:
+- Entry public IP (this becomes **client Endpoint** in phone configs)
+- Exit server IP and tunnel public key (from step 1)
+- Panel domain, brand, admin password
 
-Add the printed SSH public key to the exit server when prompted.
+**Save from output:**
+- Entry tunnel public key
 
-## 3. DNS
+## Step 3 — Link tunnel on exit server
 
-Point your domain A record to the server that serves nginx (usually the **exit** server if using reverse proxy).
+```bash
+sudo bash deploy/add-entry-peer.sh ENTRY_TUNNEL_PUBLIC_KEY
+```
 
-## 4. TLS (optional)
+Or run interactively (paste key when asked):
 
-Replace `your-domain.com` with your domain:
+```bash
+curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/add-entry-peer.sh | sudo bash
+```
+
+## DNS
+
+Point your panel domain A record to the **entry** server IP (panels run there).
+
+## TLS (optional)
+
+On the entry server after DNS works:
 
 ```bash
 sudo certbot --nginx -d your-domain.com
 ```
 
-Or provide cert paths when the panel installer asks for HTTPS.
-
-## 5. Connection tests
+## Connection tests
 
 Exit server:
 
 ```bash
-wg show wg-ir
+wg show wg-tunnel
 ```
 
 ```bash
 bash deploy/test-connectivity.sh --role exit
 ```
 
-Panel server:
+Entry server:
 
 ```bash
-bash deploy/test-connectivity.sh --role panel
+wg show wg-ir
 ```
-
-Replace `YOUR_EXIT_IP` with your exit server IP:
 
 ```bash
-ssh -i /root/.ssh/wg_exit root@YOUR_EXIT_IP 'wg show wg-ir'
+wg show wg-tunnel
 ```
-
-## Source configuration
-
-Official repo URL is defined once in **`deploy/repo.conf`**:
 
 ```bash
-GITHUB_REPO_URL=https://github.com/ahmadfarzad-amiri/wg.git
+bash deploy/test-connectivity.sh --role entry
 ```
 
-Forks can edit that file; install scripts read it automatically.
+From a connected client, traffic should exit via the exit server (check with `curl ifconfig.me` on the client).
 
-See also `deploy/config.env.example` for runtime environment variables.
+## Legacy script
+
+`install-panel-server.sh` redirects to `install-entry-server.sh`.
+
+## Config files
+
+| File | Server |
+|------|--------|
+| `/etc/wireguard/wg-endpoint` | Entry — `ENTRY_IP:51820` for client configs |
+| `/etc/wireguard/entry-server.env` | Entry — panel environment |
+| `/etc/wireguard/exit-server.env` | Exit — tunnel metadata |
+
+See `deploy/config.env.example`.

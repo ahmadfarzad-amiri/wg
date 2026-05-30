@@ -1,6 +1,6 @@
 # Admin Panel
 
-WireGuard admin web panel.
+WireGuard admin web panel. Runs on the **entry** server with the client panel.
 
 Deployed path: **`/opt/wg/admin-panel/`**
 
@@ -9,13 +9,13 @@ Deployed path: **`/opt/wg/admin-panel/`**
 From GitHub (recommended):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-panel-server.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-entry-server.sh | sudo bash
 ```
 
 From a cloned repo:
 
 ```bash
-sudo bash deploy/install-panel-server.sh
+sudo bash deploy/install-entry-server.sh
 ```
 
 See **[../deploy/README-DEPLOY.md](../deploy/README-DEPLOY.md)**.
@@ -32,13 +32,15 @@ sudo systemctl status wg-admin-panel
 
 ## Environment
 
-All set in `/etc/wireguard/panel-server.env` during install. See `deploy/config.env.example`.
+Set in `/etc/wireguard/entry-server.env` during install. See `deploy/config.env.example`.
 
 | Variable | Default |
 |----------|---------|
 | `WG_DATA_DIR` | `/etc/wireguard` |
+| `WG_IF` | `wg-ir` |
 | `WG_ADMIN_HOST` | `127.0.0.1` |
 | `WG_ADMIN_PORT` | `8090` |
 | `WG_ADMIN_BASE` | `/admin` |
 | `WG_ADMIN_BRAND` | set at install |
-| `WG_EXIT_SSH` | exit server for remote `wg show` |
+
+The admin panel reads live client status from local `wg show wg-ir` on the entry server.
