@@ -350,14 +350,14 @@ clone_or_update_repo() {
 
 clone_repo_if_needed() {
   local dest="$1"
+  local repo_url="${WG_GITHUB_REPO:-$GITHUB_REPO_URL}"
+  local branch="${WG_GITHUB_BRANCH:-$GITHUB_BRANCH}"
   if [[ -f "$dest/client-panel/bin/wg-client" ]]; then
     log "Using existing repo at $dest"
     return 0
   fi
-  prompt GITHUB_REPO "GitHub repo URL" "$GITHUB_REPO_URL"
-  prompt GITHUB_BRANCH "Git branch" "$GITHUB_BRANCH"
   install_packages git curl
-  clone_or_update_repo "$GITHUB_REPO" "$GITHUB_BRANCH" "$dest"
+  clone_or_update_repo "$repo_url" "$branch" "$dest"
 }
 
 install_bin_tools() {
