@@ -30,11 +30,18 @@ check() {
 }
 
 test_exit() {
+  local tunnel_port="51821"
+  if [[ -f /etc/wireguard/exit-server.env ]]; then
+    # shellcheck disable=SC1090
+    source /etc/wireguard/exit-server.env
+    tunnel_port="${WG_TUNNEL_PORT:-51821}"
+  fi
+
   log "Exit server checks"
   check "wg command" command -v wg
   check "wg-tunnel interface up" wg show wg-tunnel
-  check "tunnel UDP listening" sh -c 'ss -ulnp | grep -q wg'
-  check "IP forwarding enabled" sh -c '[[ "$(sysctl -n net.ipv4.ip_forward)" == "1" ]]'
+  check "tunnel UDP listening" sh -c "ss -ulnp 2>/dev/null | grep -q ':${tunnel_port} '"
+  check "IP forwarding enabled" sh -c '[ "$(sysctl -n net.ipv4.ip_forward 2>/dev/null)" = "1" ]'
   check "tunnel server pubkey saved" test -f /etc/wireguard/tunnel-server.pub
   check "outbound internet" curl -4fsS --max-time 5 https://api.ipify.org
   if [[ -f /etc/wireguard/tunnel-entry.pub ]]; then
