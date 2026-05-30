@@ -215,10 +215,25 @@ default_route_iface() {
 }
 
 detect_public_ip() {
-  curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null \
-    || curl -4fsS --max-time 5 https://ifconfig.me 2>/dev/null \
-    || hostname -I 2>/dev/null | awk '{print $1}' \
-    || echo "127.0.0.1"
+  local ip=""
+  ip="$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null)" && {
+    printf '%s' "$ip"
+    return 0
+  }
+  ip="$(curl -4fsS --connect-timeout 3 --max-time 5 https://ifconfig.me 2>/dev/null)" && {
+    printf '%s' "$ip"
+    return 0
+  }
+  ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  if [[ -n "$ip" ]]; then
+    printf '%s' "$ip"
+    return 0
+  fi
+  printf '%s' "127.0.0.1"
+}
+
+should_prompt() {
+  [[ "${WG_INSTALL_INTERACTIVE:-0}" == "1" ]] && _have_tty
 }
 
 install_packages() {

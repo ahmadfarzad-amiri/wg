@@ -51,13 +51,24 @@ TUNNEL_PEER_IP="10.200.0.2"
 log "=== EXIT server — internet egress ==="
 log "Source: ${GITHUB_REPO_URL}"
 log "Clients connect to the entry server, not this host."
-log "Answer the prompts below (press Enter to accept the value in brackets)."
-echo ""
 
-PUBLIC_IP="$(detect_public_ip)"
-prompt PUBLIC_IP "This server's public IP (exit)" "$PUBLIC_IP"
-prompt TUNNEL_PORT "Tunnel UDP port (entry server connects here)" "51821"
-prompt CLIENT_CIDR "Client subnet forwarded from entry" "10.10.10.0/24"
+log "Detecting public IP..."
+PUBLIC_IP="${WG_EXIT_PUBLIC_IP:-$(detect_public_ip)}"
+TUNNEL_PORT="${WG_TUNNEL_PORT:-51821}"
+CLIENT_CIDR="${WG_CLIENT_CIDR:-10.10.10.0/24}"
+
+if should_prompt; then
+  prompt PUBLIC_IP "This server's public IP (exit)" "$PUBLIC_IP"
+  prompt TUNNEL_PORT "Tunnel UDP port (entry server connects here)" "$TUNNEL_PORT"
+  prompt CLIENT_CIDR "Client subnet forwarded from entry" "$CLIENT_CIDR"
+else
+  log "Exit public IP  : ${PUBLIC_IP}"
+  log "Tunnel UDP port : ${TUNNEL_PORT}"
+  log "Client subnet   : ${CLIENT_CIDR}"
+  if [[ "$PUBLIC_IP" == "127.0.0.1" ]]; then
+    warn "Could not detect public IP — set WG_EXIT_PUBLIC_IP and re-run, or use WG_INSTALL_INTERACTIVE=1"
+  fi
+fi
 
 DEF_IF="$(default_route_iface)"
 DEF_IF="${DEF_IF:-eth0}"
@@ -117,7 +128,10 @@ After entry server is installed, run on THIS server:
 
 EOF
 
-prompt_yes_no ADD_PEER "Entry tunnel public key already available?" "N"
+ADD_PEER="no"
+if should_prompt; then
+  prompt_yes_no ADD_PEER "Entry tunnel public key already available?" "N"
+fi
 if [[ "$ADD_PEER" == "yes" ]]; then
   prompt ENTRY_TUNNEL_PUB "Entry server tunnel public key" ""
   bash "$SCRIPT_DIR/add-entry-peer.sh" "$ENTRY_TUNNEL_PUB"
