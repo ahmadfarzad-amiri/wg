@@ -216,19 +216,39 @@ default_route_iface() {
 
 detect_public_ip() {
   local ip=""
-  ip="$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null)" && {
-    printf '%s' "$ip"
-    return 0
-  }
-  ip="$(curl -4fsS --connect-timeout 3 --max-time 5 https://ifconfig.me 2>/dev/null)" && {
-    printf '%s' "$ip"
-    return 0
-  }
-  ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
-  if [[ -n "$ip" ]]; then
+
+  # Fast local methods first (no outbound network — avoids DNS hangs on restricted VPS).
+  ip="$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)"
+  if [[ -n "$ip" && "$ip" != "127.0.0.1" ]]; then
     printf '%s' "$ip"
     return 0
   fi
+
+  ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  if [[ -n "$ip" && "$ip" != "127.0.0.1" ]]; then
+    printf '%s' "$ip"
+    return 0
+  fi
+
+  # External lookup with a hard cap (curl alone can hang on DNS).
+  if command -v timeout >/dev/null 2>&1; then
+    ip="$(timeout 6 bash -c '
+      curl -4fsS --connect-timeout 2 --max-time 3 https://ifconfig.me 2>/dev/null ||
+      curl -4fsS --connect-timeout 2 --max-time 3 https://api.ipify.org 2>/dev/null
+    ' 2>/dev/null || true)"
+    ip="${ip//$'\n'/}"
+    if [[ -n "$ip" ]]; then
+      printf '%s' "$ip"
+      return 0
+    fi
+  else
+    ip="$(curl -4fsS --connect-timeout 2 --max-time 3 https://ifconfig.me 2>/dev/null || true)"
+    if [[ -n "$ip" ]]; then
+      printf '%s' "$ip"
+      return 0
+    fi
+  fi
+
   printf '%s' "127.0.0.1"
 }
 

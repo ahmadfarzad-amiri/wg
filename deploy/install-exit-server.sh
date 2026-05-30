@@ -52,8 +52,13 @@ log "=== EXIT server — internet egress ==="
 log "Source: ${GITHUB_REPO_URL}"
 log "Clients connect to the entry server, not this host."
 
-log "Detecting public IP..."
-PUBLIC_IP="${WG_EXIT_PUBLIC_IP:-$(detect_public_ip)}"
+if [[ -n "${WG_EXIT_PUBLIC_IP:-}" ]]; then
+  PUBLIC_IP="$WG_EXIT_PUBLIC_IP"
+  log "Using WG_EXIT_PUBLIC_IP: ${PUBLIC_IP}"
+else
+  log "Detecting public IP..."
+  PUBLIC_IP="$(detect_public_ip)"
+fi
 TUNNEL_PORT="${WG_TUNNEL_PORT:-51821}"
 CLIENT_CIDR="${WG_CLIENT_CIDR:-10.10.10.0/24}"
 
