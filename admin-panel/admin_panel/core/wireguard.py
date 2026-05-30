@@ -5,6 +5,7 @@ import shutil
 import time
 
 from admin_panel.config import CLIENT_DIR, STATE_DIR, WG_IF
+from admin_panel.core.i18n import human_duration, t, tf
 from admin_panel.core.shell import run
 
 
@@ -82,11 +83,9 @@ def wg_interface_up():
 
 def active_list_hint():
     if not shutil.which("wg"):
-        return "WireGuard tools نصب نیست."
+        return t("wg.tools_not_installed")
     if not wg_interface_up():
-        return (
-            "رابط WireGuard (<code>wg-clients</code>) روی سرور ورودی فعال نیست."
-        )
+        return t("wg.interface_down")
     return ""
 
 
@@ -101,20 +100,6 @@ def human_bytes(n):
         if size < 1024 or u == units[-1]:
             return f"{int(size)} {u}" if u == "B" else f"{size:.2f} {u}"
         size /= 1024
-
-
-def human_duration(seconds):
-    try:
-        seconds = int(seconds)
-    except (TypeError, ValueError):
-        return "هرگز"
-    if seconds < 60:
-        return f"{seconds} ثانیه قبل"
-    if seconds < 3600:
-        return f"{seconds // 60} دقیقه قبل"
-    if seconds < 86400:
-        return f"{seconds // 3600} ساعت قبل"
-    return f"{seconds // 86400} روز قبل"
 
 
 def wg_map(command):
@@ -188,12 +173,12 @@ def client_status(meta, snapshot=None):
         "ip": meta.get("IP", ""),
         "public_key": pub,
         "used": human_bytes(used_now),
-        "limit": "نامحدود" if limit_raw == 0 else human_bytes(limit_raw),
+        "limit": t("unlimited") if limit_raw == 0 else human_bytes(limit_raw),
         "disabled": meta.get("DISABLED", "0") == "1",
         "reason": meta.get("DISABLED_REASON", "") or "—",
         "single": meta.get("SINGLE_MODE", "off"),
         "endpoint": endpoints.get(pub, ["none"])[0] if pub in endpoints else "none",
-        "last": "هرگز" if not hs else human_duration(diff),
+        "last": t("never") if not hs else human_duration(diff),
         "active": active,
         "rx": human_bytes(rx),
         "tx": human_bytes(tx),
@@ -234,19 +219,17 @@ def find_client_meta_by_name(client_name):
 def live_disconnect_client(client_name):
     meta = find_client_meta_by_name(client_name)
     if not meta:
-        return "کلاینت پیدا نشد"
+        return t("msg.client_not_found")
 
     public_key = meta.get("PUBLIC_KEY", "")
     ip = meta.get("IP", "")
 
     if not public_key or not ip:
-        return "اطلاعات PUBLIC_KEY یا IP در متادیتا موجود نیست"
+        return t("msg.no_pubkey")
 
     out1 = run(_wg_cmd("set", WG_IF, "peer", public_key, "remove"))
     time.sleep(1)
     out2 = run(_wg_cmd("set", WG_IF, "peer", public_key, "allowed-ips", f"{ip}/32"))
 
-    return (
-        f"اتصال فعال {client_name} قطع شد. کلاینت می‌تواند دوباره وصل شود. "
-        f"{out1} {out2}"
-    ).strip()
+    details = f"{out1} {out2}".strip()
+    return tf("msg.disconnect_success", name=client_name, details=details)

@@ -1,6 +1,7 @@
 import html
 
 from admin_panel.config import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_SINGLE, admin_url
+from admin_panel.core.i18n import t, tf
 from admin_panel.core.labels import label_client_status, label_single_mode
 
 
@@ -14,14 +15,10 @@ def _badge_class(state_key):
 
 def _remove_confirm_message(client_name, assigned_users):
     if not assigned_users:
-        return "حذف این کلاینت؟"
-    users_text = "، ".join(html.escape(u) for u in assigned_users)
+        return t("client.remove_confirm")
+    users_text = t("fmt.list_sep").join(html.escape(u) for u in assigned_users)
     name = html.escape(client_name)
-    return (
-        f"کلاینت «{name}» به کاربر(ان) {users_text} اختصاص داده شده است. "
-        "با حذف، اختصاص پاک می‌شود و کاربر غیرفعال می‌شود. "
-        "بعداً از صفحه کاربران می‌توانید کلاینت جدید اختصاص دهید. ادامه می‌دهید؟"
-    )
+    return tf("client.remove_confirm_assigned", name=name, users=users_text)
 
 
 def _client_actions(c, assigned_users=None):
@@ -31,23 +28,23 @@ def _client_actions(c, assigned_users=None):
     can_disable = not c["disabled"]
     can_renew = c.get("expired") or c.get("over_limit")
 
-    enable_attr = "" if can_enable else 'disabled title="کلاینت از قبل فعال است"'
-    disable_attr = "" if can_disable else 'disabled title="کلاینت از قبل غیرفعال است"'
+    enable_attr = "" if can_enable else f'disabled title="{html.escape(t("client.title_already_active"), quote=True)}"'
+    disable_attr = "" if can_disable else f'disabled title="{html.escape(t("client.title_already_disabled"), quote=True)}"'
     renew_attr = (
         ""
         if can_renew
-        else 'disabled title="تمدید فقط وقتی منقضی یا حجم تمام شده باشد"'
+        else f'disabled title="{html.escape(t("client.title_renew_only"), quote=True)}"'
     )
 
     if c["has_config"]:
         config_btn = (
             f'<a class="btn dark btn-sm" href="{admin_url("/config/" + c["name"])}">'
-            f"دانلود</a>"
+            f"{html.escape(t('client.download'))}</a>"
         )
     else:
         config_btn = (
-            '<button class="dark btn-sm" disabled title="فایل کانفیگ پیدا نشد">'
-            "دانلود</button>"
+            f'<button class="dark btn-sm" disabled title="{html.escape(t("client.download_missing"), quote=True)}">'
+            f"{html.escape(t('client.download'))}</button>"
         )
 
     selected = {m: ("selected" if c.get("single") == m else "") for m in ("off", "ip", "endpoint")}
@@ -61,7 +58,7 @@ def _client_actions(c, assigned_users=None):
     <option value="ip" {selected["ip"]}>{html.escape(label_single_mode("ip"))}</option>
     <option value="endpoint" {selected["endpoint"]}>{html.escape(label_single_mode("endpoint"))}</option>
   </select>
-  <button type="submit" class="dark btn-sm">ذخیره</button>
+  <button type="submit" class="dark btn-sm">{html.escape(t("client.save"))}</button>
 </form>
 """
 
@@ -73,22 +70,22 @@ def _client_actions(c, assigned_users=None):
   <form class="inline-form" method="post" action="{admin_url("/client-action")}">
     <input type="hidden" name="client" value="{name}">
     <input type="hidden" name="action" value="enable">
-    <button type="submit" class="btn-sm" {enable_attr}>فعال‌سازی</button>
+    <button type="submit" class="btn-sm" {enable_attr}>{html.escape(t("client.enable"))}</button>
   </form>
   <form class="inline-form" method="post" action="{admin_url("/client-action")}">
     <input type="hidden" name="client" value="{name}">
     <input type="hidden" name="action" value="disable">
-    <button type="submit" class="dark btn-sm" {disable_attr}>غیرفعال</button>
+    <button type="submit" class="dark btn-sm" {disable_attr}>{html.escape(t("client.disable"))}</button>
   </form>
   <form class="inline-form" method="post" action="{admin_url("/client-action")}">
     <input type="hidden" name="client" value="{name}">
     <input type="hidden" name="action" value="renew">
-    <button type="submit" class="dark btn-sm" {renew_attr}>تمدید</button>
+    <button type="submit" class="dark btn-sm" {renew_attr}>{html.escape(t("client.renew"))}</button>
   </form>
   <form class="inline-form" method="post" action="{admin_url("/client-action")}">
     <input type="hidden" name="client" value="{name}">
     <input type="hidden" name="action" value="remove">
-    <button type="submit" class="bad btn-sm" data-confirm="{remove_confirm}">حذف</button>
+    <button type="submit" class="bad btn-sm" data-confirm="{remove_confirm}">{html.escape(t("client.remove"))}</button>
   </form>
 </div>
 """
@@ -137,11 +134,11 @@ def client_rows(clients, assigned_names=None, users_by_client_map=None):
         cards += f"""
 <div class="rowcard" {item_attrs}>
   <div class="rowcard-title">{html.escape(c['name'])} <span class="badge {badge}">{html.escape(status)}</span></div>
-  <div class="rowline"><div class="rowlabel">IP</div><div class="rowvalue">{html.escape(c['ip'])}</div></div>
-  <div class="rowline"><div class="rowlabel">مصرف</div><div class="rowvalue">{html.escape(c['used'])} / {html.escape(c['limit'])}</div></div>
-  <div class="rowline"><div class="rowlabel">آخرین اتصال</div><div class="rowvalue">{html.escape(c['last'])}</div></div>
-  <div class="rowline"><div class="rowlabel">Endpoint</div><div class="rowvalue">{html.escape(c['endpoint'])}</div></div>
-  <div class="rowline"><div class="rowlabel">محدودیت دستگاه</div><div class="rowvalue">{single_form}</div></div>
+  <div class="rowline"><div class="rowlabel">{html.escape(t("col.ip"))}</div><div class="rowvalue">{html.escape(c['ip'])}</div></div>
+  <div class="rowline"><div class="rowlabel">{html.escape(t("col.usage"))}</div><div class="rowvalue">{html.escape(c['used'])} / {html.escape(c['limit'])}</div></div>
+  <div class="rowline"><div class="rowlabel">{html.escape(t("col.last_connection"))}</div><div class="rowvalue">{html.escape(c['last'])}</div></div>
+  <div class="rowline"><div class="rowlabel">{html.escape(t("col.endpoint"))}</div><div class="rowvalue">{html.escape(c['endpoint'])}</div></div>
+  <div class="rowline"><div class="rowlabel">{html.escape(t("client.device_limit"))}</div><div class="rowvalue">{single_form}</div></div>
   <div class="rowactions">{buttons}</div>
 </div>
 """
@@ -150,9 +147,9 @@ def client_rows(clients, assigned_names=None, users_by_client_map=None):
 
 def add_client_form():
     single_opts = [
-        ("--single-ip", "محدود به IP"),
-        ("--single-endpoint", "محدود به endpoint"),
-        ("--no-single", "بدون محدودیت"),
+        ("--single-ip", label_single_mode("ip")),
+        ("--single-endpoint", label_single_mode("endpoint")),
+        ("--no-single", label_single_mode("off")),
     ]
     tabs = "".join(
         f'<label class="option-tab">'
@@ -161,30 +158,31 @@ def add_client_form():
         f"<span>{html.escape(label)}</span></label>"
         for value, label in single_opts
     )
+    device_limit = html.escape(t("client.device_limit"))
     return f"""
 <form method="post" action="{admin_url("/client-action")}" class="add-client-form">
   <input type="hidden" name="action" value="add">
   <div class="add-client-fields">
     <label class="field field-name">
-      <span class="field-label">نام کلاینت</span>
+      <span class="field-label">{html.escape(t("client.name"))}</span>
       <input name="client" class="field-input" placeholder="farzad_" required autocomplete="off">
     </label>
     <label class="field field-days">
-      <span class="field-label">مدت (روز)</span>
+      <span class="field-label">{html.escape(t("client.days"))}</span>
       <input name="days" class="field-input" value="{html.escape(DEFAULT_DAYS)}" inputmode="numeric">
     </label>
     <label class="field field-limit">
-      <span class="field-label">سقف حجم</span>
+      <span class="field-label">{html.escape(t("client.limit"))}</span>
       <input name="limit" class="field-input" value="{html.escape(DEFAULT_LIMIT)}" placeholder="20G">
     </label>
     <div class="field field-single">
-      <span class="field-label">محدودیت دستگاه</span>
-      <div class="option-tabs" role="radiogroup" aria-label="محدودیت دستگاه">
+      <span class="field-label">{device_limit}</span>
+      <div class="option-tabs" role="radiogroup" aria-label="{device_limit}">
         {tabs}
       </div>
     </div>
     <div class="field field-submit">
-      <button type="submit" class="btn btn-sm add-client-submit">افزودن</button>
+      <button type="submit" class="btn btn-sm add-client-submit">{html.escape(t("client.add"))}</button>
     </div>
   </div>
 </form>

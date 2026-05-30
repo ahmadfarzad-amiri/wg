@@ -2,6 +2,7 @@ import html
 import time
 
 from client_panel.components.layout import page
+from client_panel.core.i18n import t
 from client_panel.core.wireguard import can_request_for_user
 from client_panel.db import db
 
@@ -9,15 +10,23 @@ from client_panel.db import db
 def handle_request(handler, user, data):
     action = data.get("action", "")
     if action not in ["renew", "enable"]:
-        handler.send_html(page("خطا", "<h1>درخواست نامعتبر</h1>", user), 400)
+        handler.send_html(
+            page(
+                t("page.error"),
+                f"<h1>{html.escape(t('request.invalid_title'))}</h1>",
+                user,
+            ),
+            400,
+        )
         return
     allowed, reason = can_request_for_user(user, action)
     if not allowed:
         handler.send_html(
             page(
-                "مجاز نیست",
-                f"<h1>درخواست مجاز نیست</h1><div class='notice'>{html.escape(reason)}</div>"
-                "<a class='btn' href='/support'>بازگشت به پشتیبانی</a>",
+                t("page.forbidden"),
+                f"<h1>{html.escape(t('request.forbidden_title'))}</h1>"
+                f"<div class='notice'>{html.escape(reason)}</div>"
+                f"<a class='btn' href='/support'>{html.escape(t('support.back'))}</a>",
                 user,
             ),
             403,

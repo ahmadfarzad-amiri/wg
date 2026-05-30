@@ -1,40 +1,49 @@
 from admin_panel.components.client_rows import add_client_form, client_rows
-from admin_panel.components.list_search import CLIENT_FILTERS, CLIENT_SORTS, list_controls
+from admin_panel.components.list_search import client_filters, client_sorts, list_controls
 from admin_panel.components.notice import notice
 from admin_panel.components.table import data_table
+from admin_panel.core.i18n import t
 from admin_panel.db.panel_queries import assigned_client_names, users_by_client
 
 
 def body(clients, msg=""):
     rows, cards = client_rows(clients, assigned_client_names(), users_by_client())
     table = data_table(
-        ["نام", "IP", "وضعیت", "مصرف", "آخرین اتصال", "Endpoint", "محدودیت"],
+        [
+            t("col.name"),
+            t("col.ip"),
+            t("col.status"),
+            t("col.usage"),
+            t("col.last_connection"),
+            t("col.endpoint"),
+            t("col.limit"),
+        ],
         rows,
         cards,
-        empty="هنوز کلاینتی ثبت نشده",
+        empty=t("empty.no_clients"),
         table_class="table-clients",
     )
     return f"""
-<h1>کلاینت‌ها</h1>
-<p class="subtitle">مدیریت کانفیگ‌های WireGuard</p>
+<h1>{t("clients.title")}</h1>
+<p class="subtitle">{t("clients.subtitle")}</p>
 {notice(msg, role="alert")}
 
 <section class="card add-client-card">
-  <h3>افزودن کلاینت</h3>
-  <p class="hint add-client-intro">نام یکتا، مدت اشتراک، سقف حجم و محدودیت دستگاه را مشخص کنید.</p>
+  <h3>{t("clients.add_title")}</h3>
+  <p class="hint add-client-intro">{t("clients.add_intro")}</p>
   {add_client_form()}
 </section>
 
 <section class="card card-spaced list-filterable">
   <div class="list-section-head">
-    <h3>همه کلاینت‌ها</h3>
+    <h3>{t("clients.all_title")}</h3>
     {list_controls(
-        search_placeholder="جستجو در کلاینت‌ها…",
-        filters=CLIENT_FILTERS,
-        sorts=CLIENT_SORTS,
+        search_placeholder=t("list.search_clients"),
+        filters=client_filters(),
+        sorts=client_sorts(),
     )}
   </div>
   {table}
-  <p class="list-search-empty" data-list-search-empty hidden>نتیجه‌ای برای جستجو پیدا نشد.</p>
+  <p class="list-search-empty" data-list-search-empty hidden>{t("empty.no_results")}</p>
 </section>
 """

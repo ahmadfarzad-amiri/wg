@@ -1,6 +1,8 @@
 (function () {
   "use strict";
 
+  var i18n = window.__I18N || {};
+
   function showCopyMsg(text) {
     var el = document.getElementById("copy-config-msg");
     if (el) {
@@ -13,7 +15,7 @@
     if (loading) {
       btn.disabled = true;
       btn.dataset.prevText = btn.textContent;
-      btn.textContent = "لطفاً صبر کنید…";
+      btn.textContent = i18n.pleaseWait || "…";
     } else if (btn.dataset.prevText) {
       btn.disabled = false;
       btn.textContent = btn.dataset.prevText;
@@ -39,10 +41,10 @@
     btn.addEventListener("click", function () {
       copyFromFetch(btn)
         .then(function () {
-          showCopyMsg("متن کانفیگ کپی شد.");
+          showCopyMsg(i18n.copyOk || "");
         })
         .catch(function () {
-          showCopyMsg("کپی انجام نشد. از صفحه «کپی کانفیگ» استفاده کنید.");
+          showCopyMsg(i18n.copyFailRedirect || "");
           window.location.href = "/copy-config";
         });
     });
@@ -56,11 +58,11 @@
         .writeText(cfg.value)
         .then(function () {
           var msg = document.getElementById("copy-msg");
-          if (msg) msg.textContent = "متن کانفیگ کپی شد.";
+          if (msg) msg.textContent = i18n.copyOk || "";
         })
         .catch(function () {
           var msg = document.getElementById("copy-msg");
-          if (msg) msg.textContent = "کپی انجام نشد — متن را دستی انتخاب کنید.";
+          if (msg) msg.textContent = i18n.copyFailManual || "";
         });
     });
   }
@@ -99,14 +101,15 @@
     document.body.classList.add("modal-open");
     setModalError("");
     if (modalBody) {
-      modalBody.innerHTML = '<p class="modal-loading">در حال ساخت QR…</p>';
+      modalBody.innerHTML =
+        '<p class="modal-loading">' + (i18n.qrLoading || "") + "</p>";
     }
 
     fetch("/config-qr.svg", { credentials: "same-origin" })
       .then(function (r) {
         if (!r.ok) {
           return r.text().then(function (t) {
-            throw new Error(t || "خطا در ساخت QR");
+            throw new Error(t || i18n.qrError || "");
           });
         }
         return r.text();
@@ -120,7 +123,7 @@
         if (modalBody) {
           modalBody.innerHTML = "";
         }
-        setModalError(err.message || "خطا در ساخت QR کد");
+        setModalError(err.message || i18n.qrErrorFull || "");
       });
 
     var closeBtn = modal.querySelector(".modal-close");

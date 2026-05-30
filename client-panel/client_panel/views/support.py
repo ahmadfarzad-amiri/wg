@@ -1,6 +1,7 @@
 import html
 
 from client_panel.components.forms import request_controls
+from client_panel.core.i18n import t
 from client_panel.core.labels import badge_request_status, label_action, label_request_status
 from client_panel.core.wireguard import human_time
 
@@ -16,22 +17,22 @@ def body(user, rows, s=None):
             f"<td>{human_time(r['created_at'])}</td></tr>"
         )
     if not tr:
-        tr = '<tr><td colspan="4" class="empty">هنوز درخواستی ثبت نشده است.</td></tr>'
+        tr = f'<tr><td colspan="4" class="empty">{html.escape(t("support.empty"))}</td></tr>'
 
     controls = ""
     if user["status"] == "approved" and user["client_name"] and s:
         controls = request_controls(s, include_download=False)
     else:
-        controls = '<div class="notice">حساب شما هنوز تایید یا به کانفیگ متصل نشده است.</div>'
+        controls = f'<div class="notice">{html.escape(t("error.not_approved"))}</div>'
 
     return f"""
-<h1>پشتیبانی</h1>
-<p class="subtitle">درخواست‌های تمدید و فعال‌سازی و تاریخچه تیکت‌ها</p>
+<h1>{html.escape(t("page.support"))}</h1>
+<p class="subtitle">{html.escape(t("support.subtitle"))}</p>
 <section class="card">
   {controls}
   <div class="table-wrap">
     <table class="table">
-      <thead><tr><th>شناسه</th><th>موضوع</th><th>وضعیت</th><th>تاریخ</th></tr></thead>
+      <thead><tr><th>{html.escape(t("support.col.id"))}</th><th>{html.escape(t("support.col.subject"))}</th><th>{html.escape(t("support.col.status"))}</th><th>{html.escape(t("support.col.date"))}</th></tr></thead>
       <tbody>{tr}</tbody>
     </table>
   </div>

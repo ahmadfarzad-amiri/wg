@@ -1,4 +1,6 @@
+from admin_panel.config import DEFAULT_DAYS, DEFAULT_LIMIT, WG_CLIENT
 from admin_panel.core.audit import log_admin_action
+from admin_panel.core.i18n import t
 from admin_panel.core.shell import run, tail_message
 
 
@@ -18,7 +20,7 @@ def handle(handler, data):
             ]
         )
     else:
-        out = "عملیات ناشناخته"
+        out = t("msg.unknown_action")
 
     log_admin_action(f"tool_{action}", out or "")
     handler.flash("/tools", tail_message(out))

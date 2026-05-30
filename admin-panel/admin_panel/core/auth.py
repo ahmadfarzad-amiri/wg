@@ -6,6 +6,7 @@ import os
 import secrets
 
 from admin_panel.config import ADMIN_CONFIG
+from admin_panel.core.i18n import t
 
 
 def load_admin():
@@ -30,7 +31,7 @@ def verify_admin(username, password):
 
 def set_admin_password(username, password):
     if len(password) < 8:
-        raise ValueError("رمز عبور باید حداقل ۸ کاراکتر باشد")
+        raise ValueError(t("msg.admin_password_min_length"))
     salt = secrets.token_hex(16)
     password_hash = hashlib.pbkdf2_hmac(
         "sha256", password.encode(), salt.encode(), 300000

@@ -1,24 +1,25 @@
-from admin_panel.components.list_search import REQUEST_FILTERS, REQUEST_SORTS, list_controls
+from admin_panel.components.list_search import list_controls, request_filters, request_sorts
 from admin_panel.components.notice import notice
 from admin_panel.components.request_rows import request_list
+from admin_panel.core.i18n import t
 
 
 def body(items, msg=""):
     listing = request_list(items)
     return f"""
-<h1>درخواست‌ها</h1>
-<p class="subtitle">تمدید و فعال‌سازی در انتظار بررسی</p>
+<h1>{t("requests.title")}</h1>
+<p class="subtitle">{t("requests.subtitle")}</p>
 {notice(msg, role="alert")}
 
 <section class="card card-requests list-filterable">
   <div class="list-section-head">
     {list_controls(
-        search_placeholder="جستجو در درخواست‌ها…",
-        filters=REQUEST_FILTERS,
-        sorts=REQUEST_SORTS,
+        search_placeholder=t("list.search_requests"),
+        filters=request_filters(),
+        sorts=request_sorts(),
     )}
   </div>
   {listing}
-  <p class="list-search-empty" data-list-search-empty hidden>نتیجه‌ای برای جستجو پیدا نشد.</p>
+  <p class="list-search-empty" data-list-search-empty hidden>{t("empty.no_results")}</p>
 </section>
 """

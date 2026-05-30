@@ -1,24 +1,25 @@
-from admin_panel.components.list_search import USER_FILTERS, USER_SORTS, list_controls
+from admin_panel.components.list_search import list_controls, user_filters, user_sorts
 from admin_panel.components.notice import notice
 from admin_panel.components.user_rows import user_rows
+from admin_panel.core.i18n import t
 
 
 def body(users, msg=""):
     listing = user_rows(users)
     return f"""
-<h1>کاربران</h1>
-<p class="subtitle">نام کلاینت را وارد کنید: اگر وجود داشته باشد اختصاص می‌یابد، در غیر این صورت ساخته می‌شود.</p>
+<h1>{t("users.title")}</h1>
+<p class="subtitle">{t("users.subtitle")}</p>
 {notice(msg, role="alert")}
 
 <section class="card card-users list-filterable">
   <div class="list-section-head">
     {list_controls(
-        search_placeholder="جستجو در کاربران…",
-        filters=USER_FILTERS,
-        sorts=USER_SORTS,
+        search_placeholder=t("list.search_users"),
+        filters=user_filters(),
+        sorts=user_sorts(),
     )}
   </div>
   {listing}
-  <p class="list-search-empty" data-list-search-empty hidden>نتیجه‌ای برای جستجو پیدا نشد.</p>
+  <p class="list-search-empty" data-list-search-empty hidden>{t("empty.no_results")}</p>
 </section>
 """

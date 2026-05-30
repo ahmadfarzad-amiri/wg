@@ -9,6 +9,7 @@ import urllib.parse
 from http.cookies import SimpleCookie
 
 from client_panel.config import DB_PATH
+from client_panel.core.i18n import tf
 
 
 def client_ip(handler):
@@ -71,7 +72,7 @@ def check_login_rate_limit(handler, username):
     if row and row[1] > now:
         con.close()
         wait = row[1] - now
-        return f"تلاش‌های زیاد. {wait} ثانیه صبر کنید."
+        return tf("security.rate_limit", wait=wait)
     con.close()
     return None
 

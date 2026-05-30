@@ -7,6 +7,7 @@ from admin_panel.core.client_ops import (
     run_client_remove,
     run_client_renew,
 )
+from admin_panel.core.i18n import t, tf
 from admin_panel.core.shell import run, safe_name, tail_message
 from admin_panel.core.wireguard import all_client_meta, find_client_status
 from admin_panel.db.panel_queries import detach_users_from_client
@@ -18,7 +19,7 @@ def handle(handler, data):
 
     if action == "add":
         if not client:
-            _render(handler, "نام کلاینت الزامی است")
+            _render(handler, t("msg.client_name_required"))
             return
         ok, _, out = ensure_client(
             client,
@@ -30,11 +31,11 @@ def handle(handler, data):
             _render(handler, tail_message(out))
             return
         log_admin_action("add_client", client)
-        _render(handler, tail_message(out or f"کلاینت «{client}» آماده است"))
+        _render(handler, tail_message(out or tf("msg.client_ready", name=client)))
         return
 
     if not client:
-        _render(handler, "نام کلاینت الزامی است")
+        _render(handler, t("msg.client_name_required"))
         return
 
     status = find_client_status(client)
@@ -43,31 +44,31 @@ def handle(handler, data):
     if action == "set-single":
         mode = data.get("single_mode", "ip")
         if mode not in ("off", "ip", "endpoint"):
-            _render(handler, "حالت محدودیت نامعتبر است")
+            _render(handler, t("msg.invalid_single_mode"))
             return
         out = run([WG_CLIENT_SINGLE, client, mode])
         _render(handler, tail_message(out))
         return
 
     if not meta_exists or not status:
-        _render(handler, "کلاینت پیدا نشد")
+        _render(handler, t("msg.client_not_found"))
         return
 
     if action == "enable":
         if not status["disabled"]:
-            _render(handler, "این کلاینت از قبل فعال است")
+            _render(handler, t("msg.client_already_active"))
             return
         out = run_client_action("enable", client)
 
     elif action == "disable":
         if status["disabled"]:
-            _render(handler, "این کلاینت از قبل غیرفعال است")
+            _render(handler, t("msg.client_already_disabled"))
             return
         out = run_client_action("disable", client, ["disabled from admin panel"])
 
     elif action == "renew":
         if not (status.get("expired") or status.get("over_limit")):
-            _render(handler, "تمدید فقط برای منقضی یا اتمام حجم مجاز است")
+            _render(handler, t("msg.renew_only_expired"))
             return
         out = run_client_renew(
             client,
@@ -81,12 +82,12 @@ def handle(handler, data):
         if client_was_removed(client):
             detached = detach_users_from_client(client)
             if detached:
-                names = "، ".join(detached)
-                out = (out or f"کلاینت «{client}» حذف شد.").strip()
-                out += f" کاربر(ان) {names} غیرفعال شدند؛ از صفحه کاربران کلاینت جدید اختصاص دهید."
+                names = t("fmt.list_sep").join(detached)
+                out = (out or tf("msg.client_removed", name=client)).strip()
+                out += tf("msg.users_deactivated", names=names)
 
     else:
-        out = "عملیات ناشناخته"
+        out = t("msg.unknown_action")
         _render(handler, tail_message(out))
         return
 

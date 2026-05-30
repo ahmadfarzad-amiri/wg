@@ -1,8 +1,14 @@
 """Dashboard metrics and analytics aggregation."""
 import time
 
-from admin_panel.core.labels import label_action, label_request_status, label_user_status
-from admin_panel.core.wireguard import all_client_meta, build_wg_snapshot, human_bytes, human_duration
+from admin_panel.core.i18n import human_duration, t
+from admin_panel.core.labels import (
+    label_action,
+    label_client_status,
+    label_request_status,
+    label_user_status,
+)
+from admin_panel.core.wireguard import all_client_meta, build_wg_snapshot, human_bytes
 from admin_panel.db import panel_db
 
 
@@ -59,7 +65,7 @@ def _status_from_meta(meta, transfers, endpoints, handshakes):
         "limit_bytes": limit_bytes,
         "expires_at": expires_at,
         "days_left": days_left,
-        "last": "هرگز" if not hs else human_duration(diff),
+        "last": t("never") if not hs else human_duration(diff),
     }
 
 
@@ -154,11 +160,11 @@ def dashboard_metrics():
     online_pct = round(active * 100 / total) if total else 0
 
     health = [
-        ("active", "آنلاین", active, "ok"),
-        ("offline", "آفلاین", offline, "bad"),
-        ("disabled", "غیرفعال", disabled, "warn"),
-        ("expired", "منقضی", expired, "warn"),
-        ("over_limit", "اتمام حجم", over_limit, "warn"),
+        ("active", label_client_status("active"), active, "ok"),
+        ("offline", label_client_status("offline"), offline, "bad"),
+        ("disabled", label_client_status("disabled"), disabled, "warn"),
+        ("expired", label_client_status("expired"), expired, "warn"),
+        ("over_limit", label_client_status("over_limit"), over_limit, "warn"),
     ]
 
     top_usage = sorted(clients, key=lambda c: c["used_bytes"], reverse=True)[:5]

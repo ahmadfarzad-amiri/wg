@@ -3,15 +3,17 @@ import sqlite3
 import time
 
 from client_panel.core.auth import hash_password, verify_password
+from client_panel.core.i18n import t
 from client_panel.db import db
 from client_panel.server import security
+from client_panel.server.session import _secure_attrs
 
 
 def handle_register(handler, data):
     username = re.sub(r"[^A-Za-z0-9_.-]", "_", data.get("username", "").strip())
     password = data.get("password", "")
     if len(username) < 3 or len(password) < 6:
-        handler.render_register("نام کاربری حداقل ۳ و رمز حداقل ۶ کاراکتر باشد.")
+        handler.render_register(t("auth.register_invalid"))
         return
     ph, salt = hash_password(password)
     con = db()
@@ -23,10 +25,10 @@ def handle_register(handler, data):
         con.commit()
     except sqlite3.IntegrityError:
         con.close()
-        handler.render_register("این نام کاربری قبلا ثبت شده است.")
+        handler.render_register(t("auth.username_taken"))
         return
     con.close()
-    handler.render_login("حساب ساخته شد. منتظر تایید ادمین باشید.")
+    handler.render_login(t("auth.register_success"))
 
 
 def handle_login(handler, data):
@@ -45,7 +47,7 @@ def handle_login(handler, data):
         data.get("password", ""), user["password_hash"], user["salt"]
     ):
         security.record_login_failure(handler, username)
-        handler.render_login("نام کاربری یا رمز عبور اشتباه است.")
+        handler.render_login(t("auth.invalid_credentials"))
         return
     security.clear_login_attempts(handler, username)
     handler.set_session(user["id"])

@@ -4,6 +4,7 @@ from http.cookies import SimpleCookie
 
 from client_panel.config import ROTATE_KEYS_CMD
 from client_panel.core.auth import hash_password, verify_password
+from client_panel.core.i18n import t, tf
 from client_panel.db import db
 
 
@@ -13,18 +14,16 @@ def handle_change_password(handler, user, data):
     confp = data.get("confirm_password", "")
 
     if not verify_password(oldp, user["password_hash"], user["salt"]):
-        handler.render_settings("رمز فعلی اشتباه است.")
+        handler.render_settings(t("password.wrong_old"))
         return
     if len(newp) < 6:
-        handler.render_settings("رمز جدید باید حداقل ۶ کاراکتر باشد.")
+        handler.render_settings(t("password.too_short"))
         return
     if newp != confp:
-        handler.render_settings("تکرار رمز جدید درست نیست.")
+        handler.render_settings(t("password.mismatch"))
         return
     if user["status"] != "approved" or not user["client_name"]:
-        handler.render_settings(
-            "برای تغییر کلید کانفیگ، ابتدا حساب باید تایید و کانفیگ اختصاص داده شود."
-        )
+        handler.render_settings(t("password.not_ready"))
         return
 
     result = subprocess.run(
@@ -34,9 +33,7 @@ def handle_change_password(handler, user, data):
     )
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "").strip()
-        handler.render_settings(
-            f"خطا در تغییر کلید VPN. رمز تغییر نکرد. {detail}".strip()
-        )
+        handler.render_settings(tf("password.rotate_failed", detail=detail).strip())
         return
 
     ph, salt = hash_password(newp)
@@ -56,4 +53,4 @@ def handle_change_password(handler, user, data):
     con.commit()
     con.close()
 
-    handler.flash("/settings?newconfig=1", "رمز تغییر کرد و کلیدهای VPN عوض شد.")
+    handler.flash("/settings?newconfig=1", t("password.success"))

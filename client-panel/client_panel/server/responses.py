@@ -5,6 +5,7 @@ import urllib.parse
 from pathlib import Path
 
 from client_panel.config import CLIENT_DIR, STATE_DIR, STATIC_DIR
+from client_panel.core.i18n import t
 from client_panel.core.wireguard import parse_meta
 
 
@@ -110,23 +111,23 @@ def _ensure_valid_client_config(client_name):
     """Raise ValueError when client config is missing or out of sync with meta."""
     meta = parse_meta(client_name)
     if not meta.get("PUBLIC_KEY"):
-        raise ValueError("متادیتای کلاینت پیدا نشد.")
+        raise ValueError(t("error.meta_not_found"))
 
     conf_path = os.path.join(CLIENT_DIR, f"{client_name}.conf")
     if not os.path.isfile(conf_path):
-        raise ValueError("فایل کانفیگ پیدا نشد.")
+        raise ValueError(t("error.conf_not_found"))
 
     conf_pub = _conf_public_key(conf_path)
     meta_pub = meta.get("PUBLIC_KEY", "")
     if conf_pub and meta_pub and conf_pub != meta_pub:
-        raise ValueError("کانفیگ با کلید فعلی سرور هماهنگ نیست. رمز را تغییر دهید یا از پشتیبانی بخواهید.")
+        raise ValueError(t("error.conf_key_mismatch"))
 
 
 def get_user_config_text(user):
     if not user:
-        return None, "ابتدا وارد شوید."
+        return None, t("error.sign_in_first")
     if user["status"] != "approved" or not user["client_name"]:
-        return None, "کانفیگ اختصاص داده نشده است."
+        return None, t("error.config_not_assigned")
     try:
         _ensure_valid_client_config(user["client_name"])
     except ValueError as exc:
@@ -148,5 +149,5 @@ def build_qr_svg(user):
             stderr=subprocess.DEVNULL,
         )
     except Exception:
-        return None, "qrencode روی سرور نصب نیست یا خطا داده است."
+        return None, t("error.qrencode")
     return qr, None

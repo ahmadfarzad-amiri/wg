@@ -5,6 +5,7 @@ import subprocess
 import time
 
 from client_panel.config import STATE_DIR, WG_IF
+from client_panel.core.i18n import t, tf
 
 
 def run(cmd):
@@ -62,54 +63,54 @@ def human_time(epoch):
     except Exception:
         epoch = 0
     if epoch <= 0:
-        return "نامحدود"
+        return t("unlimited")
     return time.strftime("%Y-%m-%d", time.localtime(epoch))
 
 
 def single_mode_text(mode):
     mode = (mode or "off").strip()
     if mode == "ip":
-        return "محدود به یک آدرس اینترنتی؛ اولین IP ثبت می‌شود و اتصال از IP دیگر مجاز نیست."
+        return t("single.ip")
     if mode == "endpoint":
-        return "محدودیت سخت‌گیرانه؛ اتصال فقط از همان IP و پورت اولیه مجاز است."
-    return "بدون محدودیت دستگاه؛ قابل استفاده از چند دستگاه یا شبکه."
+        return t("single.endpoint")
+    return t("single.off")
 
 
-def human_duration_fa(seconds):
+def human_duration(seconds):
     try:
         seconds = int(seconds)
     except Exception:
-        return "نامشخص"
+        return t("duration.unknown")
     if seconds < 0:
         seconds = 0
     if seconds < 60:
-        return f"{seconds} ثانیه قبل"
+        return tf("duration.seconds_ago", n=seconds)
     minutes = seconds // 60
     if minutes < 60:
-        return f"{minutes} دقیقه قبل"
+        return tf("duration.minutes_ago", n=minutes)
     hours = minutes // 60
     if hours < 24:
         remaining_minutes = minutes % 60
         if remaining_minutes:
-            return f"{hours} ساعت و {remaining_minutes} دقیقه قبل"
-        return f"{hours} ساعت قبل"
+            return tf("duration.hours_minutes_ago", hours=hours, minutes=remaining_minutes)
+        return tf("duration.hours_ago", n=hours)
     days = hours // 24
     if days < 30:
         remaining_hours = hours % 24
         if remaining_hours:
-            return f"{days} روز و {remaining_hours} ساعت قبل"
-        return f"{days} روز قبل"
+            return tf("duration.days_hours_ago", days=days, hours=remaining_hours)
+        return tf("duration.days_ago", n=days)
     months = days // 30
     if months < 12:
         remaining_days = days % 30
         if remaining_days:
-            return f"{months} ماه و {remaining_days} روز قبل"
-        return f"{months} ماه قبل"
+            return tf("duration.months_days_ago", months=months, days=remaining_days)
+        return tf("duration.months_ago", n=months)
     years = days // 365
     remaining_months = (days % 365) // 30
     if remaining_months:
-        return f"{years} سال و {remaining_months} ماه قبل"
-    return f"{years} سال قبل"
+        return tf("duration.years_months_ago", years=years, months=remaining_months)
+    return tf("duration.years_ago", n=years)
 
 
 def status_for_client(client_name):
@@ -138,13 +139,13 @@ def status_for_client(client_name):
     disabled = c.get("DISABLED", "0") == "1"
     now = int(time.time())
 
-    endpoint = endpoints.get(pub, ["هیچ‌کدام"])[0] if pub in endpoints else "هیچ‌کدام"
+    endpoint = endpoints.get(pub, [t("none")])[0] if pub in endpoints else t("none")
 
     hs = 0
     if pub in handshakes and handshakes[pub]:
         hs = int(handshakes[pub][0])
 
-    handshake = "هرگز" if hs <= 0 else human_duration_fa(now - hs)
+    handshake = t("never") if hs <= 0 else human_duration(now - hs)
 
     disabled_reason = (c.get("DISABLED_REASON", "") or "").lower()
 
@@ -160,22 +161,20 @@ def status_for_client(client_name):
     )
 
     if expired_by_time or expired_by_reason:
-        state = "منقضی"
+        state_key = "expired"
         badge = "warn"
     elif limit_finished_by_usage or limit_finished_by_reason:
-        state = "اتمام حجم"
+        state_key = "over_limit"
         badge = "warn"
     elif disabled:
-        state = "غیرفعال"
+        state_key = "disabled"
         badge = "bad"
     else:
-        state = "فعال"
+        state_key = "active"
         badge = "ok"
 
-    percent = min(100, int((used_now / limit) * 100)) if limit else 0
-
     if expires == 0:
-        days_left = "نامحدود"
+        days_left = t("unlimited")
         expiry_percent = 0
     else:
         days_left_num = max(0, int((expires - now) / 86400))
@@ -183,14 +182,17 @@ def status_for_client(client_name):
         span = max(1, expires - (created or (expires - 86400 * 30)))
         expiry_percent = min(100, max(0, int(((expires - now) / span) * 100)))
 
+    percent = min(100, int((used_now / limit) * 100)) if limit else 0
+
     return {
         "client_name": client_name,
         "ip": c.get("IP", ""),
-        "state": state,
+        "state_key": state_key,
+        "state": t(f"state.{state_key}"),
         "badge": badge,
         "used": human_bytes(used_now),
-        "limit": "نامحدود" if limit == 0 else human_bytes(limit),
-        "remaining": "نامحدود" if limit == 0 else human_bytes(max(0, limit - used_now)),
+        "limit": t("unlimited") if limit == 0 else human_bytes(limit),
+        "remaining": t("unlimited") if limit == 0 else human_bytes(max(0, limit - used_now)),
         "percent": percent,
         "expires": human_time(expires),
         "days_left": days_left,
@@ -199,29 +201,29 @@ def status_for_client(client_name):
         "handshake": handshake,
         "single": c.get("SINGLE_MODE", "off"),
         "single_text": single_mode_text(c.get("SINGLE_MODE", "off")),
-        "disabled_reason": c.get("DISABLED_REASON", "") or "ندارد",
+        "disabled_reason": c.get("DISABLED_REASON", "") or t("disabled_reason.none"),
     }
 
 
 def can_request_status(s, action):
     if not s:
-        return False, "کانفیگ پیدا نشد."
-    state = s.get("state", "")
+        return False, t("error.config_not_found")
+    state_key = s.get("state_key", "")
     if action == "enable":
-        if state == "غیرفعال":
+        if state_key == "disabled":
             return True, ""
-        return False, "کانفیگ شما غیرفعال نیست؛ درخواست فعال‌سازی لازم نیست."
+        return False, t("error.enable_not_needed")
     if action == "renew":
-        if state in ["منقضی", "اتمام حجم"]:
+        if state_key in ("expired", "over_limit"):
             return True, ""
-        return False, "اشتراک هنوز منقضی نشده و حجم تمام نشده؛ درخواست تمدید فعال نیست."
-    return False, "درخواست نامعتبر است."
+        return False, t("error.renew_not_needed")
+    return False, t("error.invalid_request")
 
 
 def can_request_for_user(user, action):
     if not user:
-        return False, "ابتدا وارد شوید."
+        return False, t("error.sign_in_first")
     if user["status"] != "approved" or not user["client_name"]:
-        return False, "حساب شما هنوز تایید یا به کانفیگ متصل نشده است."
+        return False, t("error.not_approved")
     s = status_for_client(user["client_name"])
     return can_request_status(s, action)

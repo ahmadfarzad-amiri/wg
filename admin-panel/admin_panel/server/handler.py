@@ -1,4 +1,5 @@
 """HTTP request routing."""
+import html
 import json
 import os
 import re
@@ -7,7 +8,9 @@ from http.server import BaseHTTPRequestHandler
 
 from admin_panel.actions import active_action, auth, client, password, request, tool, user
 from admin_panel.components.layout import page
-from admin_panel.config import CLIENT_DIR
+from admin_panel.config import CLIENT_DIR, admin_url
+from admin_panel.core import i18n
+from admin_panel.core.i18n import t, tf
 from admin_panel.core.shell import safe_name
 from admin_panel.core.analytics import dashboard_metrics
 from admin_panel.core.wireguard import active_list_hint, all_client_status, build_wg_snapshot
@@ -45,7 +48,25 @@ class Handler(BaseHTTPRequestHandler):
         return responses.post_data(self)
 
     def render_login(self, msg=""):
-        self.send_html(page("ورود", login.body(msg), auth=True))
+        i18n.begin_request(self)
+        self.send_html(
+            page(t("auth.login_title"), login.body(msg), auth=True, next_path="/login")
+        )
+
+    def _set_lang(self):
+        import urllib.parse
+
+        params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        lang = (params.get("lang") or [""])[0]
+        nxt = (params.get("next") or ["/"])[0]
+        if not nxt.startswith("/"):
+            nxt = "/"
+        if lang not in ("fa", "en"):
+            lang = "fa"
+        self.send_response(302)
+        i18n.set_lang_cookie(self, lang)
+        self.send_header("Location", admin_url(nxt))
+        self.end_headers()
 
     def do_GET(self):
         path = responses.clean_path(self)
@@ -53,6 +74,12 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/static/"):
             responses.serve_static(self)
             return
+
+        if path == "/set-lang":
+            self._set_lang()
+            return
+
+        i18n.begin_request(self)
 
         if path == "/login":
             self.render_login(security.notice_from_query(self))
@@ -71,7 +98,7 @@ class Handler(BaseHTTPRequestHandler):
             snap = build_wg_snapshot()
             self.send_html(
                 page(
-                    "کلاینت‌ها",
+                    t("nav.clients"),
                     clients.body(all_client_status(snap), security.notice_from_query(self)),
                     "clients",
                 )
@@ -85,7 +112,7 @@ class Handler(BaseHTTPRequestHandler):
             online = [c for c in all_client_status(snap) if c["active"]]
             self.send_html(
                 page(
-                    "آنلاین",
+                    t("nav.active"),
                     active.body(
                         online,
                         security.notice_from_query(self),
@@ -97,23 +124,24 @@ class Handler(BaseHTTPRequestHandler):
             )
         elif path == "/tools":
             self.send_html(
-                page("ابزارها", tools.body(security.notice_from_query(self)), "tools")
+                page(t("nav.tools"), tools.body(security.notice_from_query(self)), "tools")
             )
         elif path == "/settings":
             self.send_html(
-                page("تنظیمات", settings.body(security.notice_from_query(self)), "settings")
+                page(t("nav.settings"), settings.body(security.notice_from_query(self)), "settings")
             )
         elif path.startswith("/config/"):
             self._download_config(path.split("/config/", 1)[1])
         else:
-            self.send_html(page("پیدا نشد", "<h1>صفحه پیدا نشد</h1>"), 404)
+            self.send_html(page(t("page.not_found"), f"<h1>{html.escape(t('page.not_found'))}</h1>"), 404)
 
     def do_POST(self):
         path = responses.clean_path(self)
+        i18n.begin_request(self)
         data = self.post_data()
 
         if not security.validate_csrf(self, data):
-            self.send_html(page("خطا", "<h1>درخواست نامعتبر (CSRF)</h1>"), 403)
+            self.send_html(page(t("page.error"), f"<h1>{html.escape(t('csrf_error'))}</h1>"), 403)
             return
 
         if path == "/login":
@@ -140,12 +168,12 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/settings/password":
             password.handle_change_password(self, data)
         else:
-            self.send_html(page("پیدا نشد", "<h1>صفحه پیدا نشد</h1>"), 404)
+            self.send_html(page(t("page.not_found"), f"<h1>{html.escape(t('page.not_found'))}</h1>"), 404)
 
     def _dashboard(self):
         self.send_html(
             page(
-                "داشبورد",
+                t("nav.dashboard"),
                 dashboard.body(dashboard_metrics()),
                 "dashboard",
                 extra_head='<meta http-equiv="refresh" content="60">',
@@ -178,7 +206,7 @@ class Handler(BaseHTTPRequestHandler):
         db_err = ""
         rows = []
         if not os.path.isfile(DB_PATH):
-            db_err = "پایگاه داده panel.db پیدا نشد — کاربران نمایش داده نمی‌شوند."
+            db_err = t("error.db_not_found_users")
         else:
             try:
                 con = panel_db()
@@ -190,9 +218,9 @@ class Handler(BaseHTTPRequestHandler):
                 ).fetchall()
                 con.close()
             except Exception as exc:
-                db_err = f"خطا در خواندن پایگاه داده: {exc}"
+                db_err = tf("error.db_read", err=exc)
         self.send_html(
-            page("کاربران", users.body(rows, db_err or security.notice_from_query(self)), "users")
+            page(t("nav.users"), users.body(rows, db_err or security.notice_from_query(self)), "users")
         )
 
     def _requests(self):
@@ -201,7 +229,7 @@ class Handler(BaseHTTPRequestHandler):
         db_err = ""
         rows = []
         if not os.path.isfile(DB_PATH):
-            db_err = "پایگاه داده panel.db پیدا نشد — درخواست‌ها نمایش داده نمی‌شوند."
+            db_err = t("error.db_not_found_requests")
         else:
             try:
                 con = panel_db()
@@ -215,10 +243,10 @@ class Handler(BaseHTTPRequestHandler):
                 ).fetchall()
                 con.close()
             except Exception as exc:
-                db_err = f"خطا در خواندن پایگاه داده: {exc}"
+                db_err = tf("error.db_read", err=exc)
         self.send_html(
             page(
-                "درخواست‌ها",
+                t("nav.requests"),
                 requests.body(rows, db_err or security.notice_from_query(self)),
                 "requests",
             )
@@ -228,7 +256,13 @@ class Handler(BaseHTTPRequestHandler):
         client_name = safe_name(client_name)
         path = os.path.join(CLIENT_DIR, f"{client_name}.conf")
         if not os.path.exists(path):
-            self.send_html(page("پیدا نشد", "<h1>فایل کانفیگ پیدا نشد</h1>"), 404)
+            self.send_html(
+                page(
+                    t("page.config_not_found"),
+                    f"<h1>{html.escape(t('page.config_file_not_found'))}</h1>",
+                ),
+                404,
+            )
             return
         with open(path, "rb") as f:
             raw = f.read()

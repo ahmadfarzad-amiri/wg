@@ -2179,3 +2179,21 @@ body.admin-shell .main{
   }
   body.admin-shell .bottom-nav{min-height:62px}
 }
+
+.lang-toggle,.lang-bar .lang-toggle{
+  display:inline-flex;
+  align-items:center;
+  padding:6px 10px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  color:var(--muted);
+  text-decoration:none;
+  font-size:13px;
+}
+.lang-toggle:hover{color:var(--text);border-color:var(--blue)}
+.sidebar-top .lang-toggle{margin-top:10px}
+.lang-bar{position:absolute;top:12px;left:12px;z-index:5}
+body.ltr .lang-bar{left:auto;right:12px}
+body.ltr{font-family:system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif}
+body.ltr .sidebar{border-left:0;border-right:1px solid var(--line)}
+body.ltr .layout{direction:ltr}

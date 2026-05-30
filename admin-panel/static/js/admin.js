@@ -1,9 +1,17 @@
 (function () {
   "use strict";
 
+  var i18n = window.__I18N || {};
+  var listLocale = i18n.locale || document.documentElement.lang || "fa";
+
+  function formatListMeta(visible, total) {
+    var template = i18n.listMeta || "{visible} of {total}";
+    return template.replace("{visible}", visible).replace("{total}", total);
+  }
+
   document.querySelectorAll("[data-confirm]").forEach(function (btn) {
     btn.addEventListener("click", function (e) {
-      var msg = btn.getAttribute("data-confirm") || "ادامه می‌دهید؟";
+      var msg = btn.getAttribute("data-confirm") || i18n.confirmDefault || "Continue?";
       if (!window.confirm(msg)) {
         e.preventDefault();
       }
@@ -108,7 +116,7 @@
     if (typeof av === "number" && typeof bv === "number") {
       cmp = av - bv;
     } else {
-      cmp = String(av).localeCompare(String(bv), "fa", { numeric: true, sensitivity: "base" });
+      cmp = String(av).localeCompare(String(bv), listLocale, { numeric: true, sensitivity: "base" });
     }
 
     return sort.dir === "desc" ? -cmp : cmp;
@@ -215,7 +223,7 @@
     if (metaEl) {
       if (hasActiveFilter && total > 0) {
         metaEl.hidden = false;
-        metaEl.textContent = visible + " از " + total;
+        metaEl.textContent = formatListMeta(visible, total);
       } else {
         metaEl.hidden = true;
         metaEl.textContent = "";

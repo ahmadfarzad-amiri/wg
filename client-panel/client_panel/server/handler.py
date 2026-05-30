@@ -13,6 +13,8 @@ from client_panel.actions import password as password_actions
 from client_panel.actions import requests as request_actions
 from client_panel.components.layout import page
 from client_panel.config import CLIENT_DIR
+from client_panel.core import i18n
+from client_panel.core.i18n import t
 from client_panel.core.wireguard import status_for_client
 from client_panel.db import db
 from client_panel.server import responses, security, session
@@ -51,16 +53,40 @@ class Handler(BaseHTTPRequestHandler):
         session.set_session(self, user_id)
 
     def render_login(self, msg=""):
-        self.send_html(page("ورود", login.body(msg), auth=True))
+        i18n.begin_request(self)
+        self.send_html(page(t("auth.welcome"), login.body(msg), auth=True, next_path="/login"))
 
     def render_register(self, msg=""):
-        self.send_html(page("ثبت نام", register.body(msg), auth=True))
+        i18n.begin_request(self)
+        self.send_html(
+            page(t("auth.register_title"), register.body(msg), auth=True, next_path="/register")
+        )
 
     def render_settings(self, msg="", show_config_actions=False):
+        i18n.begin_request(self)
         user = self.current_user()
         self.send_html(
-            page("تنظیمات", settings.body(msg, show_config_actions), user, "settings")
+            page(
+                t("page.settings"),
+                settings.body(msg, show_config_actions),
+                user,
+                "settings",
+                next_path="/settings",
+            )
         )
+
+    def _set_lang(self):
+        params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        lang = (params.get("lang") or [""])[0]
+        nxt = (params.get("next") or ["/"])[0]
+        if not nxt.startswith("/"):
+            nxt = "/"
+        if lang not in ("fa", "en"):
+            lang = "fa"
+        self.send_response(302)
+        i18n.set_lang_cookie(self, lang)
+        self.send_header("Location", nxt)
+        self.end_headers()
 
     def do_GET(self):
         if self.path.startswith("/static/"):
@@ -68,6 +94,11 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         path_only = self.path.split("?", 1)[0]
+        if path_only == "/set-lang":
+            self._set_lang()
+            return
+
+        i18n.begin_request(self)
         user = self.current_user()
         if path_only == "/login":
             self.render_login(security.notice_from_query(self))
@@ -84,17 +115,23 @@ class Handler(BaseHTTPRequestHandler):
 
         if path_only == "/":
             if user["status"] == "pending":
-                self.send_html(page("در انتظار تایید", dashboard.body_pending(), user))
+                self.send_html(
+                    page(t("page.pending"), dashboard.body_pending(), user, next_path="/")
+                )
                 return
             if user["status"] != "approved":
-                self.send_html(page("غیرفعال", dashboard.body_inactive(), user))
+                self.send_html(
+                    page(t("page.inactive"), dashboard.body_inactive(), user, next_path="/")
+                )
                 return
             s = status_for_client(user["client_name"])
             if not s:
-                self.send_html(page("بدون کانفیگ", dashboard.body_no_config(), user))
+                self.send_html(
+                    page(t("page.no_config"), dashboard.body_no_config(), user, next_path="/")
+                )
                 return
             self.send_html(
-                page("نمای کلی", dashboard.body(user, s), user, "dashboard")
+                page(t("page.dashboard"), dashboard.body(user, s), user, "dashboard", next_path="/")
             )
             return
 
@@ -107,7 +144,7 @@ class Handler(BaseHTTPRequestHandler):
             con.close()
             s = status_for_client(user["client_name"]) if user["client_name"] else None
             self.send_html(
-                page("پشتیبانی", support.body(user, rows, s), user, "support")
+                page(t("page.support"), support.body(user, rows, s), user, "support", next_path="/support")
             )
             return
 
@@ -121,7 +158,7 @@ class Handler(BaseHTTPRequestHandler):
         if path_only == "/config-text":
             config_text, err = responses.get_user_config_text(user)
             if err:
-                self.send_html(page("خطا", f"<h1>{html.escape(err)}</h1>", user), 403)
+                self.send_html(page(t("page.error"), f"<h1>{html.escape(err)}</h1>", user), 403)
                 return
             self.send_plain(config_text)
             return
@@ -144,22 +181,27 @@ class Handler(BaseHTTPRequestHandler):
         if path_only == "/copy-config":
             config_text, err = responses.get_user_config_text(user)
             if err:
-                self.send_html(page("خطا", f"<h1>{html.escape(err)}</h1>", user), 403)
+                self.send_html(page(t("page.error"), f"<h1>{html.escape(err)}</h1>", user), 403)
                 return
-            self.send_html(page("کپی کانفیگ", copy_config.body(config_text), user))
+            self.send_html(page(t("page.copy_config"), copy_config.body(config_text), user))
             return
 
         if path_only == "/config":
             if user["status"] != "approved" or not user["client_name"]:
                 self.send_html(
-                    page("خطا", "<h1>کانفیگ اختصاص داده نشده</h1>", user), 403
+                    page(
+                        t("page.error"),
+                        f"<h1>{html.escape(t('error.config_not_assigned'))}</h1>",
+                        user,
+                    ),
+                    403,
                 )
                 return
             try:
                 responses._ensure_valid_client_config(user["client_name"])
             except ValueError as exc:
                 self.send_html(
-                    page("خطا", f"<h1>{html.escape(str(exc))}</h1>", user), 404
+                    page(t("page.error"), f"<h1>{html.escape(str(exc))}</h1>", user), 404
                 )
                 return
             conf_path = os.path.join(CLIENT_DIR, f"{user['client_name']}.conf")
@@ -175,7 +217,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(raw)
             return
 
-        self.send_html(page("پیدا نشد", "<h1>صفحه پیدا نشد</h1>", user), 404)
+        self.send_html(page(t("page.not_found"), f"<h1>{html.escape(t('page.not_found'))}</h1>", user), 404)
 
     def _health(self):
         import shutil
@@ -203,9 +245,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path_only = self.path.split("?", 1)[0]
+        i18n.begin_request(self)
         data = self.post_data()
         if not security.validate_csrf(self, data):
-            self.send_html(page("خطا", "<h1>درخواست نامعتبر (CSRF)</h1>"), 403)
+            self.send_html(page(t("page.error"), f"<h1>{html.escape(t('csrf_error'))}</h1>"), 403)
             return
 
         if path_only == "/register":
@@ -230,4 +273,4 @@ class Handler(BaseHTTPRequestHandler):
             password_actions.handle_change_password(self, user, data)
             return
 
-        self.send_html(page("پیدا نشد", "<h1>صفحه پیدا نشد</h1>", user), 404)
+        self.send_html(page(t("page.not_found"), f"<h1>{html.escape(t('page.not_found'))}</h1>", user), 404)

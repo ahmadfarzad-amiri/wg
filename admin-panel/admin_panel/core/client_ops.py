@@ -8,6 +8,7 @@ from admin_panel.config import (
     DEFAULT_SINGLE,
     WG_CLIENT,
 )
+from admin_panel.core.i18n import tf
 from admin_panel.core.shell import run
 from admin_panel.core.wireguard import find_client_meta_by_name
 
@@ -35,7 +36,7 @@ def run_client_remove(name):
     if find_client_meta_by_name(name) is None:
         conf_path = os.path.join(CLIENT_DIR, f"{name}.conf")
         if not os.path.isfile(conf_path):
-            return output or f"کلاینت «{name}» حذف شد."
+            return output or tf("msg.client_removed", name=name)
     return output
 
 

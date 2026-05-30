@@ -1,6 +1,7 @@
 import html
 
 from client_panel.components.auth_card import auth_card
+from client_panel.core.i18n import t
 
 
 def body(msg=""):
@@ -8,17 +9,17 @@ def body(msg=""):
     form = f"""
 {notice}
 <form method="post" action="/login" class="form-stack">
-  <label for="username">نام کاربری</label>
+  <label for="username">{html.escape(t("auth.username"))}</label>
   <input id="username" name="username" autocomplete="username" required>
-  <label for="password">رمز عبور</label>
+  <label for="password">{html.escape(t("auth.password"))}</label>
   <input id="password" name="password" type="password" autocomplete="current-password" required>
-  <button type="submit" class="btn-block">ورود به پنل</button>
+  <button type="submit" class="btn-block">{html.escape(t("auth.login_btn"))}</button>
 </form>
 """
     return auth_card(
-        "خوش آمدید",
-        "برای مشاهده وضعیت VPN و مدیریت کانفیگ وارد شوید.",
+        t("auth.welcome"),
+        t("auth.login_sub"),
         form,
         "/register",
-        "ساخت حساب جدید",
+        t("auth.register_link"),
     )

@@ -1,5 +1,6 @@
 """Admin password change."""
 from admin_panel.core.auth import admin_username, set_admin_password, verify_admin
+from admin_panel.core.i18n import t
 
 
 def handle_change_password(handler, data):
@@ -8,12 +9,12 @@ def handle_change_password(handler, data):
     confirm = data.get("confirm_password", "")
 
     if new != confirm:
-        handler.flash("/settings", "رمز جدید و تکرار آن یکسان نیست")
+        handler.flash("/settings", t("msg.password_mismatch"))
         return
 
     username = admin_username()
     if not verify_admin(username, old):
-        handler.flash("/settings", "رمز فعلی اشتباه است")
+        handler.flash("/settings", t("msg.old_password_wrong"))
         return
 
     try:
@@ -22,4 +23,4 @@ def handle_change_password(handler, data):
         handler.flash("/settings", str(e))
         return
 
-    handler.flash("/settings", "رمز عبور با موفقیت تغییر کرد")
+    handler.flash("/settings", t("msg.admin_password_changed"))

@@ -1,15 +1,18 @@
 """Responsive table + mobile card wrapper."""
 import html
 
+from admin_panel.core.i18n import t
+
 
 def data_table(
     headers,
     rows_html,
     cards_html,
     *,
-    empty="موردی یافت نشد",
+    empty=None,
     table_class="",
 ):
+    empty = empty if empty is not None else t("empty.no_items")
     if not rows_html:
         cols = len(headers)
         rows_html = (
