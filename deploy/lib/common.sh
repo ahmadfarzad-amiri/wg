@@ -22,18 +22,27 @@ require_root() {
   [[ "$(id -u)" -eq 0 ]] || die "Run as root: sudo bash $0"
 }
 
+# Read user input from the terminal even when the script is piped (curl | bash).
+_read_prompt() {
+  if [[ -r /dev/tty ]]; then
+    read -r "$@" </dev/tty
+  else
+    read -r "$@" || true
+  fi
+}
+
 prompt() {
   local var_name="$1"
   local message="$2"
   local default="${3:-}"
   local value=""
   if [[ -n "$default" ]]; then
-    read -r -p "$message [$default]: " value || true
+    _read_prompt -p "$message [$default]: " value
     value="${value:-$default}"
   else
-    read -r -p "$message: " value || true
+    _read_prompt -p "$message: " value
     while [[ -z "$value" ]]; do
-      read -r -p "$message: " value || true
+      _read_prompt -p "$message: " value
     done
   fi
   printf -v "$var_name" '%s' "$value"
@@ -43,10 +52,10 @@ prompt_secret() {
   local var_name="$1"
   local message="$2"
   local value=""
-  read -r -s -p "$message: " value || true
+  _read_prompt -s -p "$message: " value
   echo ""
   while [[ -z "$value" ]]; do
-    read -r -s -p "$message: " value || true
+    _read_prompt -s -p "$message: " value
     echo ""
   done
   printf -v "$var_name" '%s' "$value"
@@ -57,7 +66,7 @@ prompt_yes_no() {
   local message="$2"
   local default="${3:-N}"
   local value=""
-  read -r -p "$message [y/N]: " value || true
+  _read_prompt -p "$message [y/N]: " value
   value="${value:-$default}"
   if [[ "${value,,}" == "y" || "${value,,}" == "yes" ]]; then
     printf -v "$var_name" '%s' "yes"
