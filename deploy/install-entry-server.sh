@@ -40,6 +40,9 @@ set -u
 require_root
 install_wg_tools
 
+log "Starting entry server installation..."
+log "You will be asked a series of questions — press Enter to accept [defaults]."
+
 REPO_DIR="${WG_REPO_DIR:-/opt/wg-src}"
 INSTALL_DIR="${WG_INSTALL_DIR:-/opt/wg}"
 ENV_FILE="/etc/wireguard/entry-server.env"
