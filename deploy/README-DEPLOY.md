@@ -41,6 +41,8 @@ Point your domain A record to the server that serves nginx (usually the **exit**
 
 ## 4. TLS (optional)
 
+Replace `your-domain.com` with your domain:
+
 ```bash
 sudo certbot --nginx -d your-domain.com
 ```
@@ -49,13 +51,25 @@ Or provide cert paths when the panel installer asks for HTTPS.
 
 ## 5. Connection tests
 
-```bash
-# Exit server
-wg show wg-ir
-bash deploy/test-connectivity.sh --role exit
+Exit server:
 
-# Panel server
+```bash
+wg show wg-ir
+```
+
+```bash
+bash deploy/test-connectivity.sh --role exit
+```
+
+Panel server:
+
+```bash
 bash deploy/test-connectivity.sh --role panel
+```
+
+Replace `YOUR_EXIT_IP` with your exit server IP:
+
+```bash
 ssh -i /root/.ssh/wg_exit root@YOUR_EXIT_IP 'wg show wg-ir'
 ```
 
@@ -63,7 +77,7 @@ ssh -i /root/.ssh/wg_exit root@YOUR_EXIT_IP 'wg show wg-ir'
 
 Official repo URL is defined once in **`deploy/repo.conf`**:
 
-```
+```bash
 GITHUB_REPO_URL=https://github.com/ahmadfarzad-amiri/wg.git
 ```
 

@@ -6,7 +6,13 @@ Deployed path: **`/opt/wg/admin-panel/`**
 
 ## Install
 
-Use the interactive installer (asks for domain, brand, credentials):
+From GitHub (recommended):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-panel-server.sh | sudo bash
+```
+
+From a cloned repo:
 
 ```bash
 sudo bash deploy/install-panel-server.sh
@@ -18,6 +24,9 @@ See **[../deploy/README-DEPLOY.md](../deploy/README-DEPLOY.md)**.
 
 ```bash
 sudo systemctl restart wg-admin-panel
+```
+
+```bash
 sudo systemctl status wg-admin-panel
 ```
 

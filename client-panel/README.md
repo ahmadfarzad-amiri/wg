@@ -6,6 +6,14 @@ Deployed path: **`/opt/wg/client-panel/`**
 
 ## Install
 
+From GitHub (recommended):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-panel-server.sh | sudo bash
+```
+
+From a cloned repo:
+
 ```bash
 sudo bash deploy/install-panel-server.sh
 ```

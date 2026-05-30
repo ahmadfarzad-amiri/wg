@@ -6,10 +6,17 @@ Client and admin web panels for managing WireGuard VPN users.
 
 ## Install (two servers)
 
-| Server | Command |
-|--------|---------|
-| Exit (public VPN) | `curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-exit-server.sh \| sudo bash` |
-| Panel (management) | `curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-panel-server.sh \| sudo bash` |
+Run on the **exit server** (public VPN, outside):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-exit-server.sh | sudo bash
+```
+
+Run on the **panel server** (management, inside):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-panel-server.sh | sudo bash
+```
 
 Each script clones from **ahmadfarzad-amiri/wg** (press Enter to accept the default repo URL) and asks for **your** IP, domain, brand, and passwords.
 
@@ -27,9 +34,16 @@ Client configs use the endpoint saved to `/etc/wireguard/wg-endpoint`.
 
 ## Test after install
 
+On the exit server:
+
 ```bash
-bash deploy/test-connectivity.sh --role exit   # exit server
-bash deploy/test-connectivity.sh --role panel  # panel server
+bash deploy/test-connectivity.sh --role exit
+```
+
+On the panel server:
+
+```bash
+bash deploy/test-connectivity.sh --role panel
 ```
 
 ## Repo layout
