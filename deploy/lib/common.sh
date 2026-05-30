@@ -22,16 +22,40 @@ require_root() {
   [[ "$(id -u)" -eq 0 ]] || die "Run as root: sudo bash $0"
 }
 
-# Read user input from the terminal even when stdin is a pipe (curl | bash).
-_read_prompt() {
-  if exec 3<>/dev/tty 2>/dev/null; then
-    read -r "$@" <&3
-    exec 3<&-
-  elif [[ -r /dev/tty ]]; then
-    read -r "$@" </dev/tty
-  else
-    read -r "$@" || true
+_have_tty() {
+  [[ -e /dev/tty && -r /dev/tty && -w /dev/tty ]]
+}
+
+_prompt_show() {
+  local text="$1"
+  if _have_tty; then
+    printf '%s' "$text" >/dev/tty
   fi
+  printf '[wg-deploy] %s\n' "$text"
+}
+
+_read_line() {
+  local __var="$1"
+  local __line=""
+  if _have_tty; then
+    IFS= read -r __line </dev/tty 2>/dev/null || true
+  else
+    IFS= read -r __line || true
+  fi
+  printf -v "$__var" '%s' "$__line"
+}
+
+_read_secret() {
+  local __var="$1"
+  local __line=""
+  if _have_tty; then
+    IFS= read -r -s __line </dev/tty 2>/dev/null || true
+    printf '\n' >/dev/tty
+  else
+    IFS= read -r -s __line || true
+    printf '\n'
+  fi
+  printf -v "$__var" '%s' "$__line"
 }
 
 prompt() {
@@ -40,12 +64,18 @@ prompt() {
   local default="${3:-}"
   local value=""
   if [[ -n "$default" ]]; then
-    _read_prompt -p "$message [$default]: " value
+    _prompt_show "$message [$default]: "
+    _read_line value
     value="${value:-$default}"
   else
-    _read_prompt -p "$message: " value
+    if ! _have_tty; then
+      die "No terminal for required input: $message"
+    fi
+    _prompt_show "$message: "
+    _read_line value
     while [[ -z "$value" ]]; do
-      _read_prompt -p "$message: " value
+      _prompt_show "$message: "
+      _read_line value
     done
   fi
   printf -v "$var_name" '%s' "$value"
@@ -55,11 +85,11 @@ prompt_secret() {
   local var_name="$1"
   local message="$2"
   local value=""
-  _read_prompt -s -p "$message: " value
-  echo ""
+  _prompt_show "$message: "
+  _read_secret value
   while [[ -z "$value" ]]; do
-    _read_prompt -s -p "$message: " value
-    echo ""
+    _prompt_show "$message: "
+    _read_secret value
   done
   printf -v "$var_name" '%s' "$value"
 }
@@ -69,7 +99,8 @@ prompt_yes_no() {
   local message="$2"
   local default="${3:-N}"
   local value=""
-  _read_prompt -p "$message [y/N]: " value
+  _prompt_show "$message [y/N]: "
+  _read_line value
   value="${value:-$default}"
   if [[ "${value,,}" == "y" || "${value,,}" == "yes" ]]; then
     printf -v "$var_name" '%s' "yes"

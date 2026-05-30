@@ -8,11 +8,14 @@
 #   curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-exit-server.sh | sudo bash
 set -eo pipefail
 
-# curl | bash: re-run from a script fd so prompts are not read from stdin.
+# curl | bash: save to a temp file and re-run so stdin is not the script body.
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
   GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
-  exec bash <(curl -fsSL "$GITHUB_RAW_BASE/deploy/install-exit-server.sh") "$@"
+  _WG_INSTALLER="$(mktemp /tmp/wg-install-XXXXXX.sh)"
+  curl -fsSL "$GITHUB_RAW_BASE/deploy/install-exit-server.sh" -o "$_WG_INSTALLER"
+  chmod 700 "$_WG_INSTALLER"
+  exec bash "$_WG_INSTALLER" "$@"
 fi
 
 _WG_SCRIPT=""
@@ -48,6 +51,7 @@ TUNNEL_PEER_IP="10.200.0.2"
 log "=== EXIT server — internet egress ==="
 log "Source: ${GITHUB_REPO_URL}"
 log "Clients connect to the entry server, not this host."
+log "Answer the prompts below (press Enter to accept the value in brackets)."
 echo ""
 
 PUBLIC_IP="$(detect_public_ip)"

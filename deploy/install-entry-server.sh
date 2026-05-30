@@ -7,11 +7,14 @@
 #   curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-entry-server.sh | sudo bash
 set -eo pipefail
 
-# curl | bash: re-run from a script fd so prompts are not read from stdin.
+# curl | bash: save to a temp file and re-run so stdin is not the script body.
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
   GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
-  exec bash <(curl -fsSL "$GITHUB_RAW_BASE/deploy/install-entry-server.sh") "$@"
+  _WG_INSTALLER="$(mktemp /tmp/wg-install-XXXXXX.sh)"
+  curl -fsSL "$GITHUB_RAW_BASE/deploy/install-entry-server.sh" -o "$_WG_INSTALLER"
+  chmod 700 "$_WG_INSTALLER"
+  exec bash "$_WG_INSTALLER" "$@"
 fi
 
 _WG_SCRIPT=""
