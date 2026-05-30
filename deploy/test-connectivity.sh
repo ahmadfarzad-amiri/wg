@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 # Test connectivity for entry/exit VPN infrastructure.
-# Usage:
-#   bash deploy/test-connectivity.sh --role exit
-#   bash deploy/test-connectivity.sh --role entry
-set -euo pipefail
+set -eo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
+set -u
 
 ROLE="${1:-}"
 if [[ "$ROLE" == "--role" ]]; then

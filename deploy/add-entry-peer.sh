@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Add entry server as peer on exit server (run on exit after entry install).
 # Usage: sudo bash deploy/add-entry-peer.sh [ENTRY_TUNNEL_PUBLIC_KEY]
-set -euo pipefail
+set -eo pipefail
 
-_WG_SCRIPT="${BASH_SOURCE[0]:-}"
+_WG_SCRIPT=""
+if [[ "${BASH_SOURCE[0]+set}" == "set" ]]; then
+  _WG_SCRIPT="${BASH_SOURCE[0]}"
+fi
 if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
   SCRIPT_DIR="$(cd "$(dirname "$_WG_SCRIPT")" && pwd)"
   # shellcheck source=lib/common.sh
@@ -18,6 +21,7 @@ else
   # shellcheck source=lib/common.sh
   source "$SCRIPT_DIR/lib/common.sh"
 fi
+set -u
 require_root
 install_wg_tools
 

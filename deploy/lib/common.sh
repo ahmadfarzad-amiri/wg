@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared helpers for WireGuard panel deployment scripts.
-set -euo pipefail
+# Callers enable strict mode (set -euo pipefail) after bootstrap.
 
 _DEPLOY_LIB="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 if [[ -f "$_DEPLOY_LIB/../repo.conf" ]]; then
@@ -198,9 +198,31 @@ install_packages() {
 }
 
 install_wg_tools() {
-  install_packages curl wireguard wireguard-tools iptables iproute2
-  command -v wg >/dev/null 2>&1 || die "WireGuard tools (wg) not found after install"
-  command -v wg-quick >/dev/null 2>&1 || die "WireGuard tools (wg-quick) not found after install"
+  if command -v wg >/dev/null 2>&1 && command -v wg-quick >/dev/null 2>&1; then
+    log "WireGuard tools already installed"
+    return 0
+  fi
+
+  log "Installing WireGuard and dependencies..."
+  if command -v apt-get >/dev/null 2>&1; then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq
+    apt-get install -y -qq curl ca-certificates iproute2 iptables wireguard wireguard-tools \
+      || apt-get install -y -qq curl ca-certificates iproute2 iptables wireguard-tools
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y curl wireguard-tools iptables iproute2 \
+      || dnf install -y curl wireguard-tools
+  elif command -v yum >/dev/null 2>&1; then
+    yum install -y curl wireguard-tools iptables iproute2 \
+      || yum install -y curl wireguard-tools
+  else
+    die "Unsupported package manager. Install wireguard-tools manually, then re-run."
+  fi
+
+  command -v wg >/dev/null 2>&1 \
+    || die "Could not install wg. Try: apt-get install -y wireguard wireguard-tools"
+  command -v wg-quick >/dev/null 2>&1 \
+    || die "Could not install wg-quick. Try: apt-get install -y wireguard-tools"
 }
 
 fetch_deploy_helper_scripts() {

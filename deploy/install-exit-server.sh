@@ -6,9 +6,12 @@
 #
 # One-liner:
 #   curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-exit-server.sh | sudo bash
-set -euo pipefail
+set -eo pipefail
 
-_WG_SCRIPT="${BASH_SOURCE[0]:-}"
+_WG_SCRIPT=""
+if [[ "${BASH_SOURCE[0]+set}" == "set" ]]; then
+  _WG_SCRIPT="${BASH_SOURCE[0]}"
+fi
 if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
   SCRIPT_DIR="$(cd "$(dirname "$_WG_SCRIPT")" && pwd)"
   # shellcheck source=lib/common.sh
@@ -24,6 +27,7 @@ else
   source "$SCRIPT_DIR/lib/common.sh"
   fetch_deploy_helper_scripts add-entry-peer.sh test-connectivity.sh
 fi
+set -u
 require_root
 install_wg_tools
 
