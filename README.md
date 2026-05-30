@@ -10,9 +10,20 @@ Client and admin web panels for a **two-hop VPN**:
 
 ### 1. Exit VPS (internet egress)
 
+Non-interactive by default (auto-detects public IP). Recommended:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-exit-server.sh -o /tmp/install-exit.sh
+sudo bash /tmp/install-exit.sh
+```
+
+Or one-liner:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/install-exit-server.sh | sudo bash
 ```
+
+Override defaults with env vars if needed: `WG_EXIT_PUBLIC_IP`, `WG_TUNNEL_PORT`, `WG_CLIENT_CIDR`.
 
 Save the **tunnel public key** and **exit IP:port** printed at the end.
 
