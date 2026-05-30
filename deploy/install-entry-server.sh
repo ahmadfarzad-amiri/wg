@@ -122,7 +122,13 @@ rsync -a --delete \
 DEF_IF="$(default_route_iface)"
 DEF_IF="${DEF_IF:-eth0}"
 
-# --- Client interface (users connect here) ---
+# Tear down stale interfaces from a previous interrupted install.
+systemctl enable "wg-quick@${CLIENT_IF}" "wg-quick@${TUNNEL_IF}" 2>/dev/null || true
+wg-quick down "$CLIENT_IF" 2>/dev/null || true
+wg-quick down "$TUNNEL_IF" 2>/dev/null || true
+rm -f /etc/wireguard/"${CLIENT_IF}.conf" /etc/wireguard/"${TUNNEL_IF}.conf"
+
+# --- Client interface (devices connect here) ---
 CLIENT_PRIV="$(wg genkey)"
 CLIENT_PUB="$(printf '%s' "$CLIENT_PRIV" | wg pubkey)"
 CLIENT_CONF="/etc/wireguard/${CLIENT_IF}.conf"
@@ -176,11 +182,6 @@ sysctl -w net.ipv4.ip_forward=1
 grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null \
   || echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
 
-systemctl enable "wg-quick@${CLIENT_IF}" "wg-quick@${TUNNEL_IF}" 2>/dev/null || true
-wg-quick down "$CLIENT_IF" 2>/dev/null || true
-wg-quick down "$TUNNEL_IF" 2>/dev/null || true
-# Clean partial state from a previous interrupted install.
-rm -f /etc/wireguard/"${CLIENT_IF}.conf" /etc/wireguard/"${TUNNEL_IF}.conf"
 wg-quick up "$CLIENT_CONF"
 wg-quick up "$TUNNEL_CONF"
 
