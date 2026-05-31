@@ -569,6 +569,7 @@ wg_apply_rp_filter_for_wg() {
   # Do NOT set this in wg-quick PostUp — some hosts block /proc writes from PostUp and
   # wg-quick rolls the interface back down on PostUp failure.
   local sysctl_file="/etc/sysctl.d/99-z-wg-entry-vpn.conf"
+  local fwd_conf="/etc/sysctl.d/99-wireguard-forward.conf"
   cat > "$sysctl_file" <<'EOF'
 # WireGuard entry server — allow asymmetric forward paths (client ↔ tunnel ↔ exit).
 # Filename 99-z-* loads after 99-wireguard-forward.conf on some hosts.
@@ -576,13 +577,35 @@ net.ipv4.conf.all.rp_filter = 0
 net.ipv4.conf.default.rp_filter = 0
 EOF
   rm -f /etc/sysctl.d/99-wg-entry-vpn.conf 2>/dev/null || true
+  if [[ -f "$fwd_conf" ]] && grep -q 'rp_filter' "$fwd_conf"; then
+    sed -i 's/^[[:space:]]*net\.ipv4\.conf\..*\.rp_filter[[:space:]]*=.*$/# & (disabled — breaks VPN return path)/' "$fwd_conf"
+    log "Neutralized rp_filter entries in $fwd_conf"
+  fi
   sysctl -p "$sysctl_file" 2>/dev/null || sysctl --system 2>/dev/null || true
+  wg_install_rp_filter_systemd_hooks
+  wg_set_wg_rp_filter_now
+}
+
+wg_set_wg_rp_filter_now() {
   local iface
   for iface in wg-clients wg-tunnel; do
     if [[ -d "/proc/sys/net/ipv4/conf/${iface}" ]]; then
       echo 0 > "/proc/sys/net/ipv4/conf/${iface}/rp_filter" 2>/dev/null || true
     fi
   done
+}
+
+wg_install_rp_filter_systemd_hooks() {
+  # ExecStartPost runs as root outside wg-quick PostUp (works when PostUp /proc writes fail).
+  local dropin dir
+  for dir in wg-clients wg-tunnel; do
+    mkdir -p "/etc/systemd/system/wg-quick@${dir}.service.d"
+    cat > "/etc/systemd/system/wg-quick@${dir}.service.d/rpfilter.conf" <<EOF
+[Service]
+ExecStartPost=/bin/sh -c 'for i in wg-clients wg-tunnel; do [ -e /proc/sys/net/ipv4/conf/\${i}/rp_filter ] && echo 0 > /proc/sys/net/ipv4/conf/\${i}/rp_filter; done'
+EOF
+  done
+  systemctl daemon-reload 2>/dev/null || true
 }
 
 strip_rp_filter_from_wg_postup() {

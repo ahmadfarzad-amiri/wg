@@ -82,7 +82,7 @@ test_entry() {
   check "policy route table 100" sh -c "ip rule show | grep -q 'lookup 100'"
   check "tunnel→client forward rule" sh -c "iptables -C FORWARD -i wg-tunnel -o wg-clients -j ACCEPT"
   check "client→tunnel forward rule" sh -c "iptables -C FORWARD -i wg-clients -o wg-tunnel -j ACCEPT"
-  check "wg tunnel rp_filter off" sh -c '[ "$(sysctl -n net.ipv4.conf.wg-tunnel.rp_filter 2>/dev/null)" = "0" ]'
+  check "wg tunnel rp_filter off" sh -c '[ "$(sysctl -n net.ipv4.conf.wg-tunnel.rp_filter 2>/dev/null)" = "0" ] && [ "$(sysctl -n net.ipv4.conf.wg-clients.rp_filter 2>/dev/null)" = "0" ]'
   check "wg-panel service" systemctl is-active wg-panel
   check "wg-admin-panel service" systemctl is-active wg-admin-panel
   if [[ -f /etc/nginx/sites-enabled/wg-panels.conf ]]; then
