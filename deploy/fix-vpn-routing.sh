@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 # Fix one-way client traffic (TX up, RX stuck) on entry/exit VPN stack.
+#
+# Applies:
+#   Exit — client subnet routes via wg-tunnel, NAT, forward rules
+#   Entry — policy routing, client subnet → wg-clients, rp_filter, Docker bypass
+#
 # Usage: sudo bash deploy/fix-vpn-routing.sh [--role entry|exit|auto]
 set -eo pipefail
 

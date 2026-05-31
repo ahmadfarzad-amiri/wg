@@ -34,7 +34,7 @@ else
   SCRIPT_DIR="$_BOOT/deploy"
   # shellcheck source=lib/common.sh
   source "$SCRIPT_DIR/lib/common.sh"
-  fetch_deploy_helper_scripts add-entry-peer.sh test-connectivity.sh
+  fetch_deploy_helper_scripts add-entry-peer.sh test-connectivity.sh diagnose-vpn.sh fix-vpn-routing.sh
 fi
 set -u
 require_root
@@ -124,12 +124,18 @@ grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null \
 systemctl enable "wg-quick@${TUNNEL_IF}" 2>/dev/null || true
 wg_quick_up "$TUNNEL_CONF" "$TUNNEL_IF"
 
+export WG_TUNNEL_IF="$TUNNEL_IF"
+export WG_CLIENT_CIDR="$CLIENT_CIDR"
+export WG_TUNNEL_PEER_IP="$TUNNEL_PEER_IP"
+apply_exit_vpn_routing_fix
+
 write_env_file /etc/wireguard/exit-server.env \
   WG_ROLE exit \
   WG_TUNNEL_IF "$TUNNEL_IF" \
   WG_TUNNEL_PORT "$TUNNEL_PORT" \
   WG_TUNNEL_PUBLIC_IP "$PUBLIC_IP" \
-  WG_CLIENT_CIDR "$CLIENT_CIDR"
+  WG_CLIENT_CIDR "$CLIENT_CIDR" \
+  WG_TUNNEL_PEER_IP "$TUNNEL_PEER_IP"
 
 cat <<EOF
 

@@ -33,6 +33,7 @@ else
 fi
 set -u
 require_root
+require_exit_server
 install_wg_tools
 
 TUNNEL_IF="${WG_TUNNEL_IF:-wg-tunnel}"
@@ -94,4 +95,9 @@ if command -v ufw >/dev/null 2>&1 && [[ -n "$ENTRY_IP" ]]; then
 fi
 
 log "Added entry server peer to $TUNNEL_IF (persisted in $TUNNEL_CONF)"
+if [[ -f /etc/wireguard/exit-server.env ]]; then
+  # shellcheck disable=SC1091
+  source /etc/wireguard/exit-server.env
+fi
+apply_exit_vpn_routing_fix
 wg show "$TUNNEL_IF"

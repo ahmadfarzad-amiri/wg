@@ -39,7 +39,7 @@ else
   SCRIPT_DIR="$_BOOT/deploy"
   # shellcheck source=lib/common.sh
   source "$SCRIPT_DIR/lib/common.sh"
-  fetch_deploy_helper_scripts test-connectivity.sh
+  fetch_deploy_helper_scripts test-connectivity.sh diagnose-vpn.sh fix-vpn-routing.sh
 fi
 set -u
 require_root
@@ -159,6 +159,7 @@ wg_stop_if "$TUNNEL_IF"
 
 if [[ "${WG_INSTALL_MODE:-fresh}" == "upgrade" && -f "$CLIENT_CONF" ]]; then
   log "Upgrade: preserving existing $CLIENT_CONF (including client peers)"
+  fix_entry_client_postup_in_conf "$CLIENT_CONF" "$CLIENT_IF" "$CLIENT_CIDR"
   CLIENT_PUB="$(< /etc/wireguard/clients-server.pub 2>/dev/null || true)"
   if [[ -z "$CLIENT_PUB" ]]; then
     CLIENT_PRIV="$(wg_conf_private_key "$CLIENT_CONF")"
@@ -222,7 +223,6 @@ grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null \
 
 wg_quick_up "$CLIENT_CONF" "$CLIENT_IF"
 wg_quick_up "$TUNNEL_CONF" "$TUNNEL_IF"
-wg_apply_rp_filter_for_wg
 systemctl enable "wg-quick@${CLIENT_IF}" "wg-quick@${TUNNEL_IF}" 2>/dev/null || true
 
 write_env_file "$ENV_FILE" \
@@ -230,6 +230,8 @@ write_env_file "$ENV_FILE" \
   WG_DATA_DIR /etc/wireguard \
   WG_BIN_DIR /usr/local/bin \
   WG_IF "$CLIENT_IF" \
+  WG_TUNNEL_IF "$TUNNEL_IF" \
+  WG_CLIENT_CIDR "$CLIENT_CIDR" \
   WG_ENDPOINT "$WG_ENDPOINT" \
   WG_DEFAULT_ENDPOINT "$WG_ENDPOINT" \
   WG_PANEL_HOST 0.0.0.0 \
@@ -242,6 +244,11 @@ write_env_file "$ENV_FILE" \
   WG_EXIT_IP "$EXIT_IP" \
   WG_EXIT_TUNNEL_PORT "$EXIT_TUNNEL_PORT" \
   WG_HTTPS "$([[ "$ENABLE_SSL" == "yes" ]] && echo 1 || echo 0)"
+
+export WG_CLIENT_CIDR="$CLIENT_CIDR"
+export WG_TUNNEL_IF="$TUNNEL_IF"
+export WG_IF="$CLIENT_IF"
+apply_entry_vpn_routing_fix
 
 cat > /etc/systemd/system/wg-panel.service <<EOF
 [Unit]

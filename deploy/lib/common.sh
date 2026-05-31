@@ -22,6 +22,28 @@ require_root() {
   [[ "$(id -u)" -eq 0 ]] || die "Run as root: sudo bash $0"
 }
 
+require_exit_server() {
+  if [[ -f /etc/wireguard/entry-server.env ]] && [[ ! -f /etc/wireguard/exit-server.env ]]; then
+    die "This command must run on the EXIT server (found entry-server.env only). add-entry-peer.sh links the entry tunnel peer on exit."
+  fi
+}
+
+require_entry_server() {
+  if [[ -f /etc/wireguard/exit-server.env ]] && [[ ! -f /etc/wireguard/entry-server.env ]]; then
+    die "This command must run on the ENTRY server (found exit-server.env only)."
+  fi
+}
+
+server_role() {
+  if [[ -f /etc/wireguard/entry-server.env ]]; then
+    printf 'entry'
+  elif [[ -f /etc/wireguard/exit-server.env ]]; then
+    printf 'exit'
+  else
+    printf 'unknown'
+  fi
+}
+
 _have_tty() {
   [[ -e /dev/tty && -r /dev/tty && -w /dev/tty ]]
 }
@@ -600,11 +622,41 @@ wg_entry_docker_forward_rules_up() {
   if ! iptables -L DOCKER-USER -n >/dev/null 2>&1; then
     return 0
   fi
-  iptables -C DOCKER-USER -i "$client_if" -o "$tunnel_if" -j ACCEPT 2>/dev/null \
-    || iptables -I DOCKER-USER 1 -i "$client_if" -o "$tunnel_if" -j ACCEPT
-  iptables -C DOCKER-USER -i "$tunnel_if" -o "$client_if" -j ACCEPT 2>/dev/null \
-    || iptables -I DOCKER-USER 1 -i "$tunnel_if" -o "$client_if" -j ACCEPT
+  # Remove duplicates from manual fixes, then insert one rule per direction at the top.
+  while iptables -D DOCKER-USER -i "$tunnel_if" -o "$client_if" -j ACCEPT 2>/dev/null; do :; done
+  while iptables -D DOCKER-USER -i "$client_if" -o "$tunnel_if" -j ACCEPT 2>/dev/null; do :; done
+  iptables -I DOCKER-USER 1 -i "$tunnel_if" -o "$client_if" -j ACCEPT
+  iptables -I DOCKER-USER 1 -i "$client_if" -o "$tunnel_if" -j ACCEPT
   log "Docker DOCKER-USER bypass for ${client_if} ↔ ${tunnel_if}"
+}
+
+wg_install_docker_forward_systemd() {
+  if ! iptables -L DOCKER-USER -n >/dev/null 2>&1; then
+    return 0
+  fi
+  cat > /etc/systemd/system/wg-docker-forward.service <<'EOF'
+[Unit]
+Description=Allow WireGuard forwarding through Docker DOCKER-USER chain
+After=docker.service wg-quick@wg-clients.service wg-quick@wg-tunnel.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c '\
+  C=0; while iptables -D DOCKER-USER -i wg-tunnel -o wg-clients -j ACCEPT 2>/dev/null; do C=1; done; \
+  while iptables -D DOCKER-USER -i wg-clients -o wg-tunnel -j ACCEPT 2>/dev/null; do C=1; done; \
+  iptables -C DOCKER-USER -i wg-clients -o wg-tunnel -j ACCEPT 2>/dev/null || \
+    iptables -I DOCKER-USER 1 -i wg-clients -o wg-tunnel -j ACCEPT; \
+  iptables -C DOCKER-USER -i wg-tunnel -o wg-clients -j ACCEPT 2>/dev/null || \
+    iptables -I DOCKER-USER 1 -i wg-tunnel -o wg-clients -j ACCEPT'
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload 2>/dev/null || true
+  systemctl enable wg-docker-forward.service 2>/dev/null || true
+  systemctl start wg-docker-forward.service 2>/dev/null || true
 }
 
 wg_apply_ip_forward() {
@@ -721,12 +773,13 @@ apply_entry_vpn_routing_fix() {
   fix_entry_tunnel_postup_in_conf "/etc/wireguard/${tunnel_if}.conf"
   fix_entry_client_postup_in_conf "/etc/wireguard/${client_if}.conf" "$client_if" "$client_cidr"
   wg_apply_rp_filter_for_wg
+  wg_install_docker_forward_systemd
   ensure_wg_conf_permissions
 
   if wg_entry_client_subnet_route_ok "10.10.10.2" "$client_if"; then
-    log "Entry routing fix applied (${client_cidr} → ${client_if}, tunnel egress via ${tunnel_if})"
+    log "Entry routing fix applied (${client_cidr} → ${client_if}, egress via ${tunnel_if})"
   else
-    warn "Entry: ip route get 10.10.10.2 still does not use ${client_if} — check for provider route conflicts"
+    warn "Entry: ip route get 10.10.10.2 still does not use ${client_if} — provider may inject a conflicting route; try: ip route replace ${client_cidr} dev ${client_if} scope link"
   fi
 }
 
