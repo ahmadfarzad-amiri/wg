@@ -565,15 +565,19 @@ wg_apply_ip_forward() {
 }
 
 wg_apply_rp_filter_for_wg() {
-  # Policy-routed egress via wg-tunnel needs loose rp_filter on wg interfaces.
-  sysctl -w net.ipv4.conf.all.rp_filter=2
-  sysctl -w net.ipv4.conf.default.rp_filter=2
+  # Policy-routed egress via wg-tunnel needs rp_filter=0 on wg interfaces.
+  sysctl -w net.ipv4.conf.all.rp_filter=2 2>/dev/null || true
+  sysctl -w net.ipv4.conf.default.rp_filter=2 2>/dev/null || true
   local iface
   for iface in wg-clients wg-tunnel; do
     if [[ -d "/proc/sys/net/ipv4/conf/${iface}" ]]; then
-      sysctl -w "net.ipv4.conf.${iface}.rp_filter=0"
+      echo 0 > "/proc/sys/net/ipv4/conf/${iface}/rp_filter"
     fi
   done
+}
+
+wg_rp_filter_postup_snippet() {
+  printf '%s' 'echo 0 > /proc/sys/net/ipv4/conf/wg-tunnel/rp_filter; echo 0 > /proc/sys/net/ipv4/conf/wg-clients/rp_filter'
 }
 
 fix_entry_tunnel_postup_in_conf() {
@@ -588,14 +592,14 @@ fix_entry_tunnel_postup_in_conf() {
       "$conf"
     log "Patched $conf (stateless tunnel→client forward)"
   fi
-  if ! grep -q 'conf\.wg-tunnel\.rp_filter=0' "$conf" 2>/dev/null; then
+  if ! grep -q 'conf/wg-tunnel/rp_filter' "$conf" 2>/dev/null; then
     sed -i \
-      's|ip route add default dev ${TUNNEL_IF} table 100|ip route add default dev ${TUNNEL_IF} table 100; sysctl -w net.ipv4.conf.${TUNNEL_IF}.rp_filter=0; sysctl -w net.ipv4.conf.${CLIENT_IF}.rp_filter=0|' \
+      's|ip route add default dev ${TUNNEL_IF} table 100|ip route add default dev ${TUNNEL_IF} table 100; echo 0 > /proc/sys/net/ipv4/conf/${TUNNEL_IF}/rp_filter; echo 0 > /proc/sys/net/ipv4/conf/${CLIENT_IF}/rp_filter|' \
       "$conf" 2>/dev/null || true
     sed -i \
-      's|ip route add default dev wg-tunnel table 100|ip route add default dev wg-tunnel table 100; sysctl -w net.ipv4.conf.wg-tunnel.rp_filter=0; sysctl -w net.ipv4.conf.wg-clients.rp_filter=0|' \
+      's|ip route add default dev wg-tunnel table 100|ip route add default dev wg-tunnel table 100; echo 0 > /proc/sys/net/ipv4/conf/wg-tunnel/rp_filter; echo 0 > /proc/sys/net/ipv4/conf/wg-clients/rp_filter|' \
       "$conf" 2>/dev/null || true
-    log "Patched $conf (rp_filter=0 on wg interfaces after tunnel up)"
+    log "Patched $conf (rp_filter=0 via /proc after tunnel up)"
   fi
 }
 
