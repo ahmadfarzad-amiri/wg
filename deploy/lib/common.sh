@@ -539,6 +539,42 @@ wg_entry_tunnel_routes_up() {
   ip route add default dev "$tunnel_if" table 100
 }
 
+wg_entry_client_subnet_route_up() {
+  local client_cidr="${1:-10.10.10.0/24}"
+  local client_if="${2:-wg-clients}"
+  if ! ip link show "$client_if" >/dev/null 2>&1; then
+    warn "Client subnet route skipped — $client_if is not up"
+    return 1
+  fi
+  ip route replace "$client_cidr" dev "$client_if" scope link
+}
+
+wg_entry_client_subnet_route_ok() {
+  local sample_ip="${1:-10.10.10.2}"
+  local client_if="${2:-wg-clients}"
+  ip route get "$sample_ip" 2>/dev/null | grep -q "dev ${client_if}"
+}
+
+fix_entry_client_postup_in_conf() {
+  local conf="${1:-/etc/wireguard/wg-clients.conf}"
+  local client_if="${2:-wg-clients}"
+  local client_cidr="${3:-10.10.10.0/24}"
+  [[ -f "$conf" ]] || return 0
+  if grep -q 'ip route replace' "$conf" 2>/dev/null; then
+    return 0
+  fi
+  sed -i \
+    "s|PostUp = iptables -A FORWARD -i ${client_if} -j ACCEPT; iptables -A FORWARD -o ${client_if} -j ACCEPT|PostUp = iptables -A FORWARD -i ${client_if} -j ACCEPT; iptables -A FORWARD -o ${client_if} -j ACCEPT; ip route replace ${client_cidr} dev ${client_if} scope link|" \
+    "$conf" 2>/dev/null || true
+  sed -i \
+    's|PostUp = iptables -A FORWARD -i wg-clients -j ACCEPT; iptables -A FORWARD -o wg-clients -j ACCEPT|PostUp = iptables -A FORWARD -i wg-clients -j ACCEPT; iptables -A FORWARD -o wg-clients -j ACCEPT; ip route replace 10.10.10.0/24 dev wg-clients scope link|' \
+    "$conf" 2>/dev/null || true
+  sed -i \
+    "s|PostDown = iptables -D FORWARD -i ${client_if} -j ACCEPT; iptables -D FORWARD -o ${client_if} -j ACCEPT|PostDown = iptables -D FORWARD -i ${client_if} -j ACCEPT; iptables -D FORWARD -o ${client_if} -j ACCEPT; ip route del ${client_cidr} dev ${client_if} scope link 2>/dev/null || true|" \
+    "$conf" 2>/dev/null || true
+  log "Patched $conf (client subnet → ${client_if})"
+}
+
 wg_entry_forward_rules_up() {
   local client_if="${1:-wg-clients}"
   local tunnel_if="${2:-wg-tunnel}"
@@ -675,17 +711,23 @@ apply_entry_vpn_routing_fix() {
   local tunnel_if="${WG_TUNNEL_IF:-wg-tunnel}"
   local client_cidr="${WG_CLIENT_CIDR:-10.10.10.0/24}"
   wg_apply_ip_forward
-  wg_apply_rp_filter_for_wg
   wg_entry_docker_forward_rules_up "$client_if" "$tunnel_if"
   wg_entry_forward_rules_up "$client_if" "$tunnel_if"
   wg_entry_tunnel_routes_up "$client_cidr" "$tunnel_if"
+  wg_entry_client_subnet_route_up "$client_cidr" "$client_if"
   strip_wrong_entry_tunnel_peer_block "/etc/wireguard/${tunnel_if}.conf"
   strip_rp_filter_from_wg_postup "/etc/wireguard/${tunnel_if}.conf"
   strip_rp_filter_from_wg_postup "/etc/wireguard/${client_if}.conf"
   fix_entry_tunnel_postup_in_conf "/etc/wireguard/${tunnel_if}.conf"
+  fix_entry_client_postup_in_conf "/etc/wireguard/${client_if}.conf" "$client_if" "$client_cidr"
   wg_apply_rp_filter_for_wg
   ensure_wg_conf_permissions
-  log "Entry routing fix applied (${client_if} ↔ ${tunnel_if})"
+
+  if wg_entry_client_subnet_route_ok "10.10.10.2" "$client_if"; then
+    log "Entry routing fix applied (${client_cidr} → ${client_if}, tunnel egress via ${tunnel_if})"
+  else
+    warn "Entry: ip route get 10.10.10.2 still does not use ${client_if} — check for provider route conflicts"
+  fi
 }
 
 apply_exit_vpn_routing_fix() {

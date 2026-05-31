@@ -80,6 +80,7 @@ test_entry() {
   check "wg-tunnel up (to exit)" wg show wg-tunnel
   check "client endpoint file" test -f /etc/wireguard/wg-endpoint
   check "policy route table 100" sh -c "ip rule show | grep -q 'lookup 100'"
+  check "client subnet via wg-clients" sh -c 'ip route get 10.10.10.2 2>/dev/null | grep -q "dev wg-clients"'
   check "tunnel→client forward rule" sh -c "iptables -C FORWARD -i wg-tunnel -o wg-clients -j ACCEPT"
   check "client→tunnel forward rule" sh -c "iptables -C FORWARD -i wg-clients -o wg-tunnel -j ACCEPT"
   if iptables -L DOCKER-USER -n >/dev/null 2>&1; then

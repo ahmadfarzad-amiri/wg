@@ -173,8 +173,8 @@ else
 Address = ${VPN_PREFIX}.1/24
 ListenPort = ${CLIENT_PORT_WG}
 PrivateKey = ${CLIENT_PRIV}
-PostUp = iptables -A FORWARD -i ${CLIENT_IF} -j ACCEPT; iptables -A FORWARD -o ${CLIENT_IF} -j ACCEPT
-PostDown = iptables -D FORWARD -i ${CLIENT_IF} -j ACCEPT; iptables -D FORWARD -o ${CLIENT_IF} -j ACCEPT
+PostUp = iptables -A FORWARD -i ${CLIENT_IF} -j ACCEPT; iptables -A FORWARD -o ${CLIENT_IF} -j ACCEPT; ip route replace ${CLIENT_CIDR} dev ${CLIENT_IF} scope link
+PostDown = iptables -D FORWARD -i ${CLIENT_IF} -j ACCEPT; iptables -D FORWARD -o ${CLIENT_IF} -j ACCEPT; ip route del ${CLIENT_CIDR} dev ${CLIENT_IF} scope link 2>/dev/null || true
 EOF
   printf '%s\n' "$CLIENT_PUB" > /etc/wireguard/clients-server.pub
   chmod 600 "$CLIENT_CONF" /etc/wireguard/clients-server.pub
