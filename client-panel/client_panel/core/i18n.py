@@ -14,6 +14,7 @@ _STRINGS = {
         "skip_link": "رفتن به محتوا",
         "version": "نسخه",
         "lang_toggle": "English",
+        "lang_toggle_label": "زبان",
         "nav.dashboard": "نمای کلی",
         "nav.support": "پشتیبانی",
         "nav.settings": "تنظیمات",
@@ -172,6 +173,7 @@ _STRINGS = {
         "skip_link": "Skip to content",
         "version": "Version",
         "lang_toggle": "فارسی",
+        "lang_toggle_label": "Language",
         "nav.dashboard": "Overview",
         "nav.support": "Support",
         "nav.settings": "Settings",
@@ -388,16 +390,32 @@ def secure_cookie_attrs():
     return ""
 
 
-def lang_toggle_href(next_path="/"):
-    other = "en" if _LANG == "fa" else "fa"
-    q = urllib.parse.urlencode({"lang": other, "next": next_path})
+def lang_set_href(lang, next_path="/"):
+    q = urllib.parse.urlencode({"lang": lang, "next": next_path})
     return f"/set-lang?{q}"
 
 
+def lang_toggle_href(next_path="/"):
+    other = "en" if _LANG == "fa" else "fa"
+    return lang_set_href(other, next_path)
+
+
 def lang_toggle_html(next_path="/"):
-    href = html.escape(lang_toggle_href(next_path))
-    label = html.escape(t("lang_toggle"))
-    return f'<a class="lang-toggle" href="{href}" hreflang="{"en" if _LANG == "fa" else "fa"}">{label}</a>'
+    label = html.escape(t("lang_toggle_label"))
+    parts = []
+    for code, text in (("fa", "FA"), ("en", "EN")):
+        if _LANG == code:
+            parts.append(
+                f'<span class="lang-toggle-option active" aria-current="true">{text}</span>'
+            )
+        else:
+            href = html.escape(lang_set_href(code, next_path))
+            parts.append(
+                f'<a class="lang-toggle-option" href="{href}" '
+                f'hreflang="{code}" lang="{code}">{text}</a>'
+            )
+    inner = "".join(parts)
+    return f'<div class="lang-toggle" role="group" aria-label="{label}">{inner}</div>'
 
 
 def set_lang_cookie(handler, lang):
