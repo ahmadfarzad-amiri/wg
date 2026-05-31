@@ -256,21 +256,35 @@ default_route_iface() {
   ip route show default 2>/dev/null | awk '{print $5; exit}'
 }
 
+_is_public_ipv4() {
+  local ip="$1"
+  [[ -n "$ip" && "$ip" != "127.0.0.1" ]] || return 1
+  # Skip RFC1918, link-local, and CGNAT — common on VPS where the primary iface is private.
+  [[ "$ip" =~ ^10\. ]] && return 1
+  [[ "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && return 1
+  [[ "$ip" =~ ^192\.168\. ]] && return 1
+  [[ "$ip" =~ ^169\.254\. ]] && return 1
+  [[ "$ip" =~ ^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\. ]] && return 1
+  return 0
+}
+
 detect_public_ip() {
   local ip=""
 
-  # Fast local methods first (no outbound network — avoids DNS hangs on restricted VPS).
-  ip="$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)"
-  if [[ -n "$ip" && "$ip" != "127.0.0.1" ]]; then
-    printf '%s' "$ip"
-    return 0
-  fi
+  # Prefer a routable address on a local iface; fall through if only private IPs exist.
+  while IFS= read -r ip; do
+    if _is_public_ipv4 "$ip"; then
+      printf '%s' "$ip"
+      return 0
+    fi
+  done < <(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1)
 
-  ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
-  if [[ -n "$ip" && "$ip" != "127.0.0.1" ]]; then
-    printf '%s' "$ip"
-    return 0
-  fi
+  while IFS= read -r ip; do
+    if _is_public_ipv4 "$ip"; then
+      printf '%s' "$ip"
+      return 0
+    fi
+  done < <(hostname -I 2>/dev/null | tr ' ' '\n')
 
   # External lookup with a hard cap (curl alone can hang on DNS).
   if command -v timeout >/dev/null 2>&1; then

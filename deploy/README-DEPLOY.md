@@ -34,14 +34,18 @@ Override with env vars: `WG_EXIT_PUBLIC_IP`, `WG_TUNNEL_PORT`, `WG_CLIENT_CIDR`.
 
 ## Step 2 — Entry server (run second)
 
-Non-interactive example:
+Non-interactive example (set env on `sudo bash`, not on `curl` — a pipe does not pass variables to the right-hand command):
 
 ```bash
-WG_EXIT_PUBLIC_IP=203.0.113.50 \
-WG_EXIT_TUNNEL_PUB='paste-exit-pubkey' \
-WG_ADMIN_PASS='your-password' \
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/install-entry-server.sh | sudo bash
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/install-entry-server.sh -o /tmp/install-entry-server.sh
+sudo WG_ENTRY_PUBLIC_IP=203.0.113.10 \
+  WG_EXIT_PUBLIC_IP=203.0.113.50 \
+  WG_EXIT_TUNNEL_PUB='paste-exit-pubkey' \
+  WG_ADMIN_PASS='your-password' \
+  bash /tmp/install-entry-server.sh
 ```
+
+Set `WG_ENTRY_PUBLIC_IP` when auto-detect picks a private address (e.g. `172.16.x.x` on some VPS hosts).
 
 Interactive: `WG_INSTALL_INTERACTIVE=1`. Full env list: [config.env.example](config.env.example).
 

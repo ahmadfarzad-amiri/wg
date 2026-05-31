@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Entry VPS — where client devices connect + web panels.
 #
-# Non-interactive example:
-#   WG_EXIT_PUBLIC_IP=203.0.113.50 \
-#   WG_EXIT_TUNNEL_PUB='base64key=' \
-#   WG_ADMIN_PASS='secretpass' \
-#   sudo bash install-entry-server.sh
+# Non-interactive example (download first — env vars before curl do NOT reach sudo bash in a pipe):
+#   curl -fsSL .../install-entry-server.sh -o /tmp/install-entry-server.sh
+#   sudo WG_ENTRY_PUBLIC_IP=203.0.113.10 \
+#     WG_EXIT_PUBLIC_IP=203.0.113.50 \
+#     WG_EXIT_TUNNEL_PUB='base64key=' \
+#     WG_ADMIN_PASS='secretpass' \
+#     bash /tmp/install-entry-server.sh
 #
 # Interactive:
 #   WG_INSTALL_INTERACTIVE=1 sudo bash install-entry-server.sh
