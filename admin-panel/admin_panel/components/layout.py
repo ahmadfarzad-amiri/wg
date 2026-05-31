@@ -3,7 +3,7 @@ import html
 from admin_panel.components.brand import brand_html
 from admin_panel.components.icons import nav_icon
 from admin_panel.components.locale_bar import locale_version_bar
-from admin_panel.config import admin_url
+from admin_panel.config import VERSION, admin_url
 from admin_panel.core.i18n import html_dir, html_lang, js_i18n_script, t
 
 
