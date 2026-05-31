@@ -231,6 +231,14 @@ install_panel_nginx() {
   fi
 }
 
+nginx_reload_or_start() {
+  if systemctl is-active --quiet nginx 2>/dev/null; then
+    systemctl reload nginx
+  else
+    systemctl start nginx
+  fi
+}
+
 install_certbot_https() {
   local domain="$1"
   local email="$2"
@@ -468,11 +476,24 @@ ensure_wg_dirs() {
   chmod 700 /etc/wireguard /etc/wireguard/clients /etc/wireguard/client-state
 }
 
+wg_entry_tunnel_routes_down() {
+  local client_cidr="${1:-10.10.10.0/24}"
+  local tunnel_if="${2:-wg-tunnel}"
+  ip rule del from "$client_cidr" lookup 100 priority 100 2>/dev/null || true
+  ip route del default dev "$tunnel_if" table 100 2>/dev/null || true
+}
+
 wg_stop_if() {
   local ifname="$1"
   local conf="/etc/wireguard/${ifname}.conf"
+  if [[ "$ifname" == "wg-tunnel" ]]; then
+    wg_entry_tunnel_routes_down
+  fi
   if [[ -f "$conf" ]]; then
     wg-quick down "$ifname" 2>/dev/null || true
+  fi
+  if [[ "$ifname" == "wg-tunnel" ]]; then
+    wg_entry_tunnel_routes_down
   fi
   ip link del "$ifname" 2>/dev/null || true
 }

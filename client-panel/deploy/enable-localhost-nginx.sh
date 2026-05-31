@@ -29,7 +29,7 @@ fi
 ln -sf "$OUT" /etc/nginx/sites-enabled/wg-panels.conf
 rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
 nginx -t
-systemctl reload nginx
+nginx_reload_or_start
 
 echo "Panels available via nginx:"
 echo "  http://${PANEL_DOMAIN}/login"

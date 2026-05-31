@@ -186,7 +186,7 @@ cat > "$TUNNEL_CONF" <<EOF
 Address = ${TUNNEL_LOCAL}
 PrivateKey = ${TUNNEL_PRIV}
 Table = off
-PostUp = iptables -A FORWARD -i ${CLIENT_IF} -o ${TUNNEL_IF} -j ACCEPT; iptables -A FORWARD -i ${TUNNEL_IF} -o ${CLIENT_IF} -m state --state RELATED,ESTABLISHED -j ACCEPT; ip rule add from ${CLIENT_CIDR} lookup 100 priority 100; ip route add default dev ${TUNNEL_IF} table 100
+PostUp = iptables -A FORWARD -i ${CLIENT_IF} -o ${TUNNEL_IF} -j ACCEPT; iptables -A FORWARD -i ${TUNNEL_IF} -o ${CLIENT_IF} -m state --state RELATED,ESTABLISHED -j ACCEPT; ip rule replace from ${CLIENT_CIDR} lookup 100 priority 100; ip route replace default dev ${TUNNEL_IF} table 100
 PostDown = iptables -D FORWARD -i ${CLIENT_IF} -o ${TUNNEL_IF} -j ACCEPT; iptables -D FORWARD -i ${TUNNEL_IF} -o ${CLIENT_IF} -m state --state RELATED,ESTABLISHED -j ACCEPT; ip rule del from ${CLIENT_CIDR} lookup 100 priority 100 2>/dev/null || true; ip route del default dev ${TUNNEL_IF} table 100 2>/dev/null || true
 
 [Peer]
@@ -311,13 +311,13 @@ if [[ "$USE_NGINX" == "yes" ]]; then
     nginx -t || die "nginx config invalid after cleanup — check /etc/nginx/sites-enabled/"
   fi
   systemctl enable nginx
-  systemctl reload nginx
+  nginx_reload_or_start
   if [[ "$ENABLE_SSL" == "yes" && -n "$CERTBOT_EMAIL" ]]; then
     if ! install_certbot_https "$PANEL_DOMAIN" "$CERTBOT_EMAIL"; then
       warn "HTTPS not enabled — point DNS A record for ${PANEL_DOMAIN} to ${ENTRY_IP}, then run:"
       warn "  certbot --nginx -d ${PANEL_DOMAIN}"
     fi
-    systemctl reload nginx 2>/dev/null || true
+    nginx_reload_or_start
   fi
   if [[ "$ENABLE_SSL" == "yes" ]] && [[ -f "/etc/letsencrypt/live/${PANEL_DOMAIN}/fullchain.pem" ]]; then
     PANEL_URL_CLIENT="https://${PANEL_DOMAIN}/login"
