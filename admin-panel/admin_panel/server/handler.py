@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler
 
 from admin_panel.actions import active_action, auth, client, password, request, tool, user
 from admin_panel.components.layout import page
-from admin_panel.config import CLIENT_DIR, admin_url
+from admin_panel.config import CLIENT_DIR, admin_url, strip_admin_base
 from admin_panel.core import i18n
 from admin_panel.core.i18n import t, tf
 from admin_panel.core.shell import safe_name
@@ -63,6 +63,7 @@ class Handler(BaseHTTPRequestHandler):
             nxt = "/"
         if lang not in ("fa", "en"):
             lang = "fa"
+        nxt = strip_admin_base(nxt)
         self.send_response(302)
         i18n.set_lang_cookie(self, lang)
         self.send_header("Location", admin_url(nxt))

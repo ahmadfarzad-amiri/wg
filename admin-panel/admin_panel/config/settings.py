@@ -43,3 +43,15 @@ def admin_url(path: str) -> str:
     if not path.startswith("/"):
         path = "/" + path
     return BASE + path
+
+
+def strip_admin_base(path: str) -> str:
+    """Return app-relative path (e.g. /clients) without the /admin prefix."""
+    if not path.startswith("/"):
+        path = "/" + path
+    base = BASE.rstrip("/")
+    if base and path.startswith(base + "/"):
+        return path[len(base) :] or "/"
+    if path == base:
+        return "/"
+    return path

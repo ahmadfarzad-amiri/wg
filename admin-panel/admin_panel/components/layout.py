@@ -15,6 +15,17 @@ def head_assets():
     )
 
 
+_TAB_PATHS = {
+    "dashboard": "/",
+    "clients": "/clients",
+    "users": "/users",
+    "requests": "/requests",
+    "active": "/active",
+    "tools": "/tools",
+    "settings": "/settings",
+}
+
+
 def page(title, body, active="dashboard", auth=False, extra_head="", next_path="/"):
     safe_title = html.escape(title)
     assets = head_assets() + extra_head
@@ -23,7 +34,7 @@ def page(title, body, active="dashboard", auth=False, extra_head="", next_path="
     shell_class = "app-shell admin-shell" if not auth else "auth-page"
     if direction == "ltr":
         shell_class += " ltr"
-    next_admin = admin_url(next_path)
+    lang_next = next_path if auth else _TAB_PATHS.get(active, next_path)
 
     if auth:
         return f"""<!doctype html>
@@ -37,7 +48,7 @@ def page(title, body, active="dashboard", auth=False, extra_head="", next_path="
 </head>
 <body class="{shell_class}">
 <a class="skip-link" href="#main">{html.escape(t("skip_link"))}</a>
-<div class="lang-bar">{lang_toggle_html(next_admin)}</div>
+<div class="lang-bar">{lang_toggle_html(lang_next)}</div>
 {body}
 <div id="toast-root" class="toast-root" aria-live="polite"></div>
 </body>
@@ -82,7 +93,7 @@ def page(title, body, active="dashboard", auth=False, extra_head="", next_path="
     <div class="brandmark" aria-hidden="true"></div>
     <div class="brandname">{brand_html()}</div>
     <div class="version">{html.escape(t("admin_label"))} · {html.escape(t("version"))} {html.escape(VERSION)}</div>
-    {lang_toggle_html(next_admin)}
+    {lang_toggle_html(lang_next)}
   </div>
   <nav class="nav nav-sidebar" id="sidebar-nav" aria-label="{html.escape(t("nav.sidebar"))}">
     {sidebar_nav()}
