@@ -41,10 +41,12 @@ tunnel_handshake_recent() {
 
 test_exit() {
   local tunnel_port="51821"
+  local client_cidr="10.10.10.0/24"
   if [[ -f /etc/wireguard/exit-server.env ]]; then
     # shellcheck disable=SC1090
     source /etc/wireguard/exit-server.env
     tunnel_port="${WG_TUNNEL_PORT:-51821}"
+    client_cidr="${WG_CLIENT_CIDR:-10.10.10.0/24}"
   fi
 
   log "Exit server checks"
@@ -52,6 +54,7 @@ test_exit() {
   check "wg-tunnel interface up" wg show wg-tunnel
   check "tunnel UDP listening" sh -c "ss -ulnp 2>/dev/null | grep -q ':${tunnel_port} '"
   check "IP forwarding enabled" sh -c '[ "$(sysctl -n net.ipv4.ip_forward 2>/dev/null)" = "1" ]'
+  check "NAT masquerade for clients" sh -c "iptables -t nat -C POSTROUTING -s ${client_cidr} -j MASQUERADE 2>/dev/null || iptables -t nat -L POSTROUTING -n -v | grep -q MASQUERADE"
   check "tunnel server pubkey saved" test -f /etc/wireguard/tunnel-server.pub
   check "outbound internet" curl -4fsS --max-time 5 https://api.ipify.org
   if [[ -f /etc/wireguard/tunnel-entry.pub ]]; then
@@ -74,6 +77,9 @@ test_entry() {
   check "wg-tunnel up (to exit)" wg show wg-tunnel
   check "client endpoint file" test -f /etc/wireguard/wg-endpoint
   check "policy route table 100" sh -c "ip rule show | grep -q 'lookup 100'"
+  check "tunnel→client forward rule" sh -c "iptables -C FORWARD -i wg-tunnel -o wg-clients -j ACCEPT"
+  check "client→tunnel forward rule" sh -c "iptables -C FORWARD -i wg-clients -o wg-tunnel -j ACCEPT"
+  check "wg tunnel rp_filter off" sh -c '[ "$(sysctl -n net.ipv4.conf.wg-tunnel.rp_filter 2>/dev/null)" = "0" ]'
   check "wg-panel service" systemctl is-active wg-panel
   check "wg-admin-panel service" systemctl is-active wg-admin-panel
   if [[ -f /etc/nginx/sites-enabled/wg-panels.conf ]]; then

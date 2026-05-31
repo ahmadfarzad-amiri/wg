@@ -483,6 +483,78 @@ wg_entry_tunnel_routes_down() {
   ip route del default dev "$tunnel_if" table 100 2>/dev/null || true
 }
 
+wg_entry_tunnel_routes_up() {
+  local client_cidr="${1:-10.10.10.0/24}"
+  local tunnel_if="${2:-wg-tunnel}"
+  ip rule del from "$client_cidr" lookup 100 priority 100 2>/dev/null || true
+  ip rule add from "$client_cidr" lookup 100 priority 100
+  ip route del default dev "$tunnel_if" table 100 2>/dev/null || true
+  ip route add default dev "$tunnel_if" table 100
+}
+
+wg_entry_forward_rules_up() {
+  local client_if="${1:-wg-clients}"
+  local tunnel_if="${2:-wg-tunnel}"
+  iptables -C FORWARD -i "$client_if" -o "$tunnel_if" -j ACCEPT 2>/dev/null \
+    || iptables -A FORWARD -i "$client_if" -o "$tunnel_if" -j ACCEPT
+  # Legacy stateful rule breaks UDP/DNS return traffic with policy routing.
+  iptables -D FORWARD -i "$tunnel_if" -o "$client_if" -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+  iptables -C FORWARD -i "$tunnel_if" -o "$client_if" -j ACCEPT 2>/dev/null \
+    || iptables -A FORWARD -i "$tunnel_if" -o "$client_if" -j ACCEPT
+}
+
+wg_entry_forward_rules_down() {
+  local client_if="${1:-wg-clients}"
+  local tunnel_if="${2:-wg-tunnel}"
+  iptables -D FORWARD -i "$client_if" -o "$tunnel_if" -j ACCEPT 2>/dev/null || true
+  iptables -D FORWARD -i "$tunnel_if" -o "$client_if" -j ACCEPT 2>/dev/null || true
+  iptables -D FORWARD -i "$tunnel_if" -o "$client_if" -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+}
+
+wg_apply_ip_forward() {
+  sysctl -w net.ipv4.ip_forward=1
+  grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null \
+    || echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
+}
+
+wg_apply_rp_filter_for_wg() {
+  # Policy-routed egress via wg-tunnel needs loose rp_filter on wg interfaces.
+  sysctl -w net.ipv4.conf.all.rp_filter=2
+  sysctl -w net.ipv4.conf.default.rp_filter=2
+  local iface
+  for iface in wg-clients wg-tunnel; do
+    if [[ -d "/proc/sys/net/ipv4/conf/${iface}" ]]; then
+      sysctl -w "net.ipv4.conf.${iface}.rp_filter=0"
+    fi
+  done
+}
+
+fix_entry_tunnel_postup_in_conf() {
+  local conf="${1:-/etc/wireguard/wg-tunnel.conf}"
+  [[ -f "$conf" ]] || return 0
+  if grep -q 'RELATED,ESTABLISHED' "$conf"; then
+    sed -i \
+      's/-i ${TUNNEL_IF} -o ${CLIENT_IF} -m state --state RELATED,ESTABLISHED -j ACCEPT/-i ${TUNNEL_IF} -o ${CLIENT_IF} -j ACCEPT/g' \
+      "$conf"
+    sed -i \
+      's/-i wg-tunnel -o wg-clients -m state --state RELATED,ESTABLISHED -j ACCEPT/-i wg-tunnel -o wg-clients -j ACCEPT/g' \
+      "$conf"
+    log "Patched $conf (stateless tunnel→client forward)"
+  fi
+}
+
+apply_entry_vpn_routing_fix() {
+  local client_if="${WG_IF:-wg-clients}"
+  local tunnel_if="${WG_TUNNEL_IF:-wg-tunnel}"
+  local client_cidr="${WG_CLIENT_CIDR:-10.10.10.0/24}"
+  wg_apply_ip_forward
+  wg_apply_rp_filter_for_wg
+  wg_entry_forward_rules_up "$client_if" "$tunnel_if"
+  wg_entry_tunnel_routes_up "$client_cidr" "$tunnel_if"
+  fix_entry_tunnel_postup_in_conf "/etc/wireguard/${tunnel_if}.conf"
+  log "Entry routing fix applied (${client_if} ↔ ${tunnel_if})"
+}
+
 wg_stop_if() {
   local ifname="$1"
   local conf="/etc/wireguard/${ifname}.conf"

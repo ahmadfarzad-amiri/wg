@@ -192,8 +192,8 @@ cat > "$TUNNEL_CONF" <<EOF
 Address = ${TUNNEL_LOCAL}
 PrivateKey = ${TUNNEL_PRIV}
 Table = off
-PostUp = iptables -A FORWARD -i ${CLIENT_IF} -o ${TUNNEL_IF} -j ACCEPT; iptables -A FORWARD -i ${TUNNEL_IF} -o ${CLIENT_IF} -m state --state RELATED,ESTABLISHED -j ACCEPT; ip rule del from ${CLIENT_CIDR} lookup 100 priority 100 2>/dev/null || true; ip rule add from ${CLIENT_CIDR} lookup 100 priority 100; ip route del default dev ${TUNNEL_IF} table 100 2>/dev/null || true; ip route add default dev ${TUNNEL_IF} table 100
-PostDown = iptables -D FORWARD -i ${CLIENT_IF} -o ${TUNNEL_IF} -j ACCEPT; iptables -D FORWARD -i ${TUNNEL_IF} -o ${CLIENT_IF} -m state --state RELATED,ESTABLISHED -j ACCEPT; ip rule del from ${CLIENT_CIDR} lookup 100 priority 100 2>/dev/null || true; ip route del default dev ${TUNNEL_IF} table 100 2>/dev/null || true
+PostUp = iptables -A FORWARD -i ${CLIENT_IF} -o ${TUNNEL_IF} -j ACCEPT; iptables -A FORWARD -i ${TUNNEL_IF} -o ${CLIENT_IF} -j ACCEPT; ip rule del from ${CLIENT_CIDR} lookup 100 priority 100 2>/dev/null || true; ip rule add from ${CLIENT_CIDR} lookup 100 priority 100; ip route del default dev ${TUNNEL_IF} table 100 2>/dev/null || true; ip route add default dev ${TUNNEL_IF} table 100
+PostDown = iptables -D FORWARD -i ${CLIENT_IF} -o ${TUNNEL_IF} -j ACCEPT; iptables -D FORWARD -i ${TUNNEL_IF} -o ${CLIENT_IF} -j ACCEPT; ip rule del from ${CLIENT_CIDR} lookup 100 priority 100 2>/dev/null || true; ip route del default dev ${TUNNEL_IF} table 100 2>/dev/null || true
 
 [Peer]
 PublicKey = ${EXIT_TUNNEL_PUB}
@@ -219,6 +219,7 @@ maybe_enable_ufw
 sysctl -w net.ipv4.ip_forward=1
 grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null \
   || echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
+wg_apply_rp_filter_for_wg
 
 wg_quick_up "$CLIENT_CONF" "$CLIENT_IF"
 wg_quick_up "$TUNNEL_CONF" "$TUNNEL_IF"
