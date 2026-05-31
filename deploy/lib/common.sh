@@ -943,3 +943,217 @@ preserve_tunnel_keys() {
   log "Reusing existing tunnel keys from $conf"
   return 0
 }
+
+wg_exit_forward_nat_down() {
+  local client_cidr="${1:-10.10.10.0/24}"
+  local tunnel_if="${2:-wg-tunnel}"
+  local tunnel_peer_ip="${3:-10.200.0.2/32}"
+  local def_if
+  def_if="$(default_route_iface)"
+  def_if="${def_if:-eth0}"
+  iptables -t nat -D POSTROUTING -s "$client_cidr" -o "$def_if" -j MASQUERADE 2>/dev/null || true
+  iptables -D FORWARD -i "$tunnel_if" -j ACCEPT 2>/dev/null || true
+  iptables -D FORWARD -o "$tunnel_if" -j ACCEPT 2>/dev/null || true
+  wg_exit_tunnel_routes_down "$client_cidr" "$tunnel_peer_ip" "$tunnel_if"
+}
+
+wg_entry_docker_forward_rules_down() {
+  local client_if="${1:-wg-clients}"
+  local tunnel_if="${2:-wg-tunnel}"
+  if ! iptables -L DOCKER-USER -n >/dev/null 2>&1; then
+    return 0
+  fi
+  while iptables -D DOCKER-USER -i "$tunnel_if" -o "$client_if" -j ACCEPT 2>/dev/null; do :; done
+  while iptables -D DOCKER-USER -i "$client_if" -o "$tunnel_if" -j ACCEPT 2>/dev/null; do :; done
+}
+
+parse_panel_domain_from_nginx() {
+  local conf="${1:-/etc/nginx/sites-available/wg-panels.conf}"
+  [[ -f "$conf" ]] || return 1
+  grep -m1 'server_name' "$conf" 2>/dev/null \
+    | sed 's/.*server_name[[:space:]]*//;s/[;].*//' \
+    | awk '{ for (i = 1; i <= NF; i++) if ($i != "localhost" && $i != "127.0.0.1") { print $i; exit } }'
+}
+
+detect_uninstall_role() {
+  local role
+  role="$(server_role)"
+  if [[ "$role" != "unknown" ]]; then
+    printf '%s' "$role"
+    return 0
+  fi
+  if [[ -f /etc/systemd/system/wg-panel.service || -d /opt/wg/admin-panel ]]; then
+    printf 'entry'
+    return 0
+  fi
+  if [[ -f /etc/wireguard/wg-tunnel.conf || -f /etc/wireguard/wg-clients.conf ]]; then
+    if [[ -f /etc/wireguard/wg-clients.conf ]]; then
+      printf 'entry'
+    else
+      printf 'exit'
+    fi
+    return 0
+  fi
+  printf 'unknown'
+}
+
+require_uninstall_confirm() {
+  if [[ "${WG_UNINSTALL_CONFIRM:-}" == "yes" ]]; then
+    return 0
+  fi
+  local answer=""
+  warn "This permanently removes WireGuard VPN, web panels, database, keys, nginx site, and all /etc/wireguard data."
+  _prompt_show "Type 'uninstall' to confirm: "
+  _read_line answer
+  [[ "$answer" == "uninstall" ]] || die "Uninstall cancelled."
+}
+
+stop_systemd_unit() {
+  local unit="$1"
+  systemctl stop "$unit" 2>/dev/null || true
+  systemctl disable "$unit" 2>/dev/null || true
+}
+
+remove_systemd_unit_file() {
+  local path="$1"
+  [[ -f "$path" ]] || return 0
+  rm -f "$path"
+  log "Removed $path"
+}
+
+uninstall_wg_systemd_units() {
+  local role="$1"
+  stop_systemd_unit wg-panel.service
+  stop_systemd_unit wg-admin-panel.service
+  stop_systemd_unit wg-docker-forward.service
+  stop_systemd_unit wg-client-enforce.timer
+  stop_systemd_unit wg-client-enforce.service
+  stop_systemd_unit "wg-quick@wg-clients.service"
+  stop_systemd_unit "wg-quick@wg-tunnel.service"
+
+  remove_systemd_unit_file /etc/systemd/system/wg-panel.service
+  remove_systemd_unit_file /etc/systemd/system/wg-admin-panel.service
+  remove_systemd_unit_file /etc/systemd/system/wg-docker-forward.service
+  remove_systemd_unit_file /etc/systemd/system/wg-client-enforce.service
+  remove_systemd_unit_file /etc/systemd/system/wg-client-enforce.timer
+
+  local dir
+  for dir in wg-clients wg-tunnel; do
+    rm -rf "/etc/systemd/system/wg-quick@${dir}.service.d"
+  done
+
+  systemctl daemon-reload 2>/dev/null || true
+  systemctl reset-failed 2>/dev/null || true
+}
+
+uninstall_wg_stop_interfaces() {
+  local role="$1"
+  if [[ "$role" == "entry" ]]; then
+    wg_stop_if wg-clients
+    wg_stop_if wg-tunnel
+    wg_entry_forward_rules_down wg-clients wg-tunnel
+    wg_entry_tunnel_routes_down "${WG_CLIENT_CIDR:-10.10.10.0/24}" wg-tunnel
+    wg_entry_docker_forward_rules_down wg-clients wg-tunnel
+    ip route del "${WG_CLIENT_CIDR:-10.10.10.0/24}" dev wg-clients scope link 2>/dev/null || true
+  else
+    wg_stop_if wg-tunnel
+    wg_exit_forward_nat_down \
+      "${WG_CLIENT_CIDR:-10.10.10.0/24}" \
+      "${WG_TUNNEL_IF:-wg-tunnel}" \
+      "${WG_TUNNEL_PEER_IP:-10.200.0.2/32}"
+  fi
+}
+
+uninstall_wg_nginx() {
+  local domain="${1:-}"
+  clean_stale_panel_nginx "$domain"
+  rm -f /etc/nginx/sites-available/wg-panels.conf \
+    /etc/nginx/sites-enabled/wg-panels.conf \
+    /etc/nginx/sites-enabled/wg-panels-le-ssl.conf \
+    /etc/nginx/sites-available/wg-panels-le-ssl.conf
+
+  if [[ -f /etc/nginx/sites-available/default && ! -e /etc/nginx/sites-enabled/default ]]; then
+    ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
+    log "Restored nginx default site"
+  fi
+
+  if command -v nginx >/dev/null 2>&1; then
+    if nginx -t 2>/dev/null; then
+      nginx_reload_or_start
+    else
+      warn "nginx config test failed after panel site removal — fix /etc/nginx manually"
+    fi
+  fi
+}
+
+uninstall_wg_certbot() {
+  local domain="$1"
+  [[ -n "$domain" ]] || return 0
+  command -v certbot >/dev/null 2>&1 || return 0
+  if certbot delete --cert-name "$domain" --non-interactive 2>/dev/null; then
+    log "Removed Let's Encrypt certificate for ${domain}"
+  else
+    warn "Could not delete certbot certificate for ${domain} — run: certbot delete --cert-name ${domain}"
+  fi
+}
+
+uninstall_wg_ufw_rules() {
+  command -v ufw >/dev/null 2>&1 || return 0
+  local rule
+  for rule in \
+    "${WG_CLIENT_PORT:-51820}/udp" \
+    "${WG_PANEL_PORT:-8088}/tcp" \
+    "${WG_ADMIN_PORT:-8090}/tcp" \
+    "${WG_TUNNEL_PORT:-51821}/udp" \
+    "80/tcp" "443/tcp"; do
+    ufw delete allow "$rule" 2>/dev/null || true
+  done
+  if [[ -n "${WG_EXIT_IP:-}" && -n "${WG_TUNNEL_PORT:-}" ]]; then
+    ufw delete allow from "${WG_EXIT_IP}" to any port "${WG_TUNNEL_PORT}" proto udp 2>/dev/null || true
+  fi
+  if [[ -n "${WG_ENTRY_PUBLIC_IP:-${WG_EXIT_IP:-}}" && -n "${WG_TUNNEL_PORT:-}" ]]; then
+    ufw delete allow from "${WG_ENTRY_PUBLIC_IP:-}" to any port "${WG_TUNNEL_PORT}" proto udp 2>/dev/null || true
+  fi
+}
+
+uninstall_wg_bin_tools() {
+  local tool
+  for tool in wg-client wg-client-single wg-panel-admin wg-client-rotate-keys wg-client-import-existing; do
+    if [[ -f "/usr/local/bin/$tool" ]]; then
+      rm -f "/usr/local/bin/$tool"
+      log "Removed /usr/local/bin/$tool"
+    fi
+  done
+}
+
+uninstall_wg_data_dirs() {
+  local install_dir="${WG_INSTALL_DIR:-/opt/wg}"
+  local repo_dir="${WG_REPO_DIR:-/opt/wg-src}"
+  rm -rf "$install_dir" "$repo_dir"
+  log "Removed $install_dir and $repo_dir"
+  if [[ -d /etc/wireguard ]]; then
+    rm -rf /etc/wireguard
+    log "Removed /etc/wireguard"
+  fi
+  rm -f /etc/sysctl.d/99-z-wg-entry-vpn.conf /etc/sysctl.d/99-wg-entry-vpn.conf
+  rm -f /tmp/wg-install-*.sh /tmp/wg-fix-routing-*.sh /tmp/wg-uninstall-*.sh 2>/dev/null || true
+}
+
+load_uninstall_env() {
+  local role="$1"
+  if [[ "$role" == "entry" && -f /etc/wireguard/entry-server.env ]]; then
+    # shellcheck disable=SC1091
+    source /etc/wireguard/entry-server.env
+  elif [[ "$role" == "exit" && -f /etc/wireguard/exit-server.env ]]; then
+    # shellcheck disable=SC1091
+    source /etc/wireguard/exit-server.env
+  fi
+  if [[ -f /etc/wireguard/wg-endpoint ]]; then
+    local ep port
+    ep="$(< /etc/wireguard/wg-endpoint)"
+    port="${ep##*:}"
+    if [[ -n "$port" && "$port" != "$ep" ]]; then
+      WG_CLIENT_PORT="${WG_CLIENT_PORT:-$port}"
+    fi
+  fi
+}

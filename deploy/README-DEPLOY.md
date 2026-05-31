@@ -101,6 +101,19 @@ sudo bash deploy/restore.sh /etc/wireguard/backups/TIMESTAMP-label
 
 Install and upgrade scripts automatically apply routing fixes. Use `fix-vpn-routing.sh` after manual iptables changes or if client traffic is one-way.
 
+## Uninstall (remove everything)
+
+Removes WireGuard interfaces, web panels, `panel.db`, admin config, all keys and client configs under `/etc/wireguard`, nginx panel site, systemd units, CLI tools in `/usr/local/bin`, and `/opt/wg` + `/opt/wg-src`. Auto-detects entry vs exit server.
+
+```bash
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/uninstall-server.sh -o /tmp/uninstall-server.sh
+sudo WG_UNINSTALL_CONFIRM=yes bash /tmp/uninstall-server.sh
+```
+
+Optional backup before removal: `WG_UNINSTALL_BACKUP=1` (saved under `/root/wg-backup-*`). Interactive confirm: run without `WG_UNINSTALL_CONFIRM` and type `uninstall` when prompted.
+
+System packages (wireguard-tools, nginx, python3, certbot) are **not** removed. Run on **both** entry and exit servers to fully tear down the stack.
+
 ## Connection tests
 
 Quick checks:
