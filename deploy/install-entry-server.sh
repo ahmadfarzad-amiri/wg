@@ -270,7 +270,6 @@ EOF
 
 systemctl daemon-reload
 systemctl enable wg-panel wg-admin-panel
-systemctl restart wg-panel wg-admin-panel
 
 if [[ -n "${ADMIN_PASS:-}" ]]; then
   export WG_DATA_DIR=/etc/wireguard
@@ -283,6 +282,8 @@ set_admin_password(os.environ["ADMIN_USER"], os.environ["ADMIN_PASS"])
 print("Admin user configured:", os.environ["ADMIN_USER"])
 PY
 fi
+
+systemctl restart wg-panel wg-admin-panel
 
 if command -v wg-client >/dev/null 2>&1; then
   wg-client install-timer 2>/dev/null || warn "wg-client install-timer failed (optional)"

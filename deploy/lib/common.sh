@@ -459,9 +459,11 @@ wg_quick_up() {
   local conf="$1"
   local ifname="$2"
   [[ -f "$conf" ]] || die "WireGuard config missing: $conf"
+  chmod 600 "$conf" 2>/dev/null || true
   wg_stop_if "$ifname"
   log "Starting ${ifname}..."
   wg-quick up "$conf" || die "wg-quick up failed for ${ifname}"
+  chmod 600 "$conf" 2>/dev/null || true
 }
 
 write_env_file() {
