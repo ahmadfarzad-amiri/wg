@@ -558,6 +558,19 @@ wg_entry_forward_rules_down() {
   iptables -D FORWARD -i "$tunnel_if" -o "$client_if" -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
 }
 
+wg_entry_docker_forward_rules_up() {
+  local client_if="${1:-wg-clients}"
+  local tunnel_if="${2:-wg-tunnel}"
+  if ! iptables -L DOCKER-USER -n >/dev/null 2>&1; then
+    return 0
+  fi
+  iptables -C DOCKER-USER -i "$client_if" -o "$tunnel_if" -j ACCEPT 2>/dev/null \
+    || iptables -I DOCKER-USER 1 -i "$client_if" -o "$tunnel_if" -j ACCEPT
+  iptables -C DOCKER-USER -i "$tunnel_if" -o "$client_if" -j ACCEPT 2>/dev/null \
+    || iptables -I DOCKER-USER 1 -i "$tunnel_if" -o "$client_if" -j ACCEPT
+  log "Docker DOCKER-USER bypass for ${client_if} ↔ ${tunnel_if}"
+}
+
 wg_apply_ip_forward() {
   sysctl -w net.ipv4.ip_forward=1
   grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null \
@@ -663,6 +676,7 @@ apply_entry_vpn_routing_fix() {
   local client_cidr="${WG_CLIENT_CIDR:-10.10.10.0/24}"
   wg_apply_ip_forward
   wg_apply_rp_filter_for_wg
+  wg_entry_docker_forward_rules_up "$client_if" "$tunnel_if"
   wg_entry_forward_rules_up "$client_if" "$tunnel_if"
   wg_entry_tunnel_routes_up "$client_cidr" "$tunnel_if"
   strip_wrong_entry_tunnel_peer_block "/etc/wireguard/${tunnel_if}.conf"
