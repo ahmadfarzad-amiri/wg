@@ -194,18 +194,40 @@ server {
 EOF
 }
 
+clean_stale_panel_nginx() {
+  local domain="${1:-}"
+  local f base
+  shopt -s nullglob
+  for f in /etc/nginx/sites-enabled/wg-panels-le-ssl.conf \
+    /etc/nginx/sites-available/wg-panels-le-ssl.conf; do
+    rm -f "$f"
+  done
+  if [[ -n "$domain" ]]; then
+    for base in \
+      "/etc/nginx/sites-enabled/${domain}" \
+      "/etc/nginx/sites-enabled/${domain}.conf" \
+      "/etc/nginx/sites-available/${domain}" \
+      "/etc/nginx/sites-available/${domain}.conf"; do
+      rm -f "$base"
+    done
+  fi
+}
+
 install_panel_nginx() {
   local template="$1"
   local out="$2"
   local domain="$3"
   local client_port="$4"
   local admin_port="$5"
+  clean_stale_panel_nginx "$domain"
   render_template "$template" "$out" \
     __PANEL_DOMAIN__ "$domain" \
     __CLIENT_PORT__ "$client_port" \
     __ADMIN_PORT__ "$admin_port"
-  if [[ -n "${6:-}" && -n "${7:-}" ]]; then
+  if [[ -n "${6:-}" && -n "${7:-}" && -f "${6}" && -f "${7}" ]]; then
     nginx_ssl_server_block "$domain" "$6" "$7" "$client_port" "$admin_port" >> "$out"
+  elif [[ -n "${6:-}" || -n "${7:-}" ]]; then
+    warn "Skipping nginx HTTPS block — certificate files not found yet"
   fi
 }
 

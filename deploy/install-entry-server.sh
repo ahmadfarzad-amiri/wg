@@ -295,15 +295,28 @@ PANEL_URL_CLIENT=""
 PANEL_URL_ADMIN=""
 
 if [[ "$USE_NGINX" == "yes" ]]; then
+  SSL_CERT="/etc/letsencrypt/live/${PANEL_DOMAIN}/fullchain.pem"
+  SSL_KEY="/etc/letsencrypt/live/${PANEL_DOMAIN}/privkey.pem"
   install_panel_nginx "$NGINX_TEMPLATE" "$NGINX_CONF" \
-    "$PANEL_DOMAIN" "$CLIENT_PORT" "$ADMIN_PORT"
+    "$PANEL_DOMAIN" "$CLIENT_PORT" "$ADMIN_PORT" "$SSL_CERT" "$SSL_KEY"
   ln -sf "$NGINX_CONF" /etc/nginx/sites-enabled/wg-panels.conf
   rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
-  nginx -t
+  if ! nginx -t 2>/tmp/wg-nginx-test.err; then
+    warn "nginx config test failed — removing stale site configs and retrying HTTP-only"
+    cat /tmp/wg-nginx-test.err >&2 || true
+    clean_stale_panel_nginx "$PANEL_DOMAIN"
+    install_panel_nginx "$NGINX_TEMPLATE" "$NGINX_CONF" \
+      "$PANEL_DOMAIN" "$CLIENT_PORT" "$ADMIN_PORT"
+    ln -sf "$NGINX_CONF" /etc/nginx/sites-enabled/wg-panels.conf
+    nginx -t || die "nginx config invalid after cleanup — check /etc/nginx/sites-enabled/"
+  fi
   systemctl enable nginx
   systemctl reload nginx
   if [[ "$ENABLE_SSL" == "yes" && -n "$CERTBOT_EMAIL" ]]; then
-    install_certbot_https "$PANEL_DOMAIN" "$CERTBOT_EMAIL" || true
+    if ! install_certbot_https "$PANEL_DOMAIN" "$CERTBOT_EMAIL"; then
+      warn "HTTPS not enabled — point DNS A record for ${PANEL_DOMAIN} to ${ENTRY_IP}, then run:"
+      warn "  certbot --nginx -d ${PANEL_DOMAIN}"
+    fi
     systemctl reload nginx 2>/dev/null || true
   fi
   if [[ "$ENABLE_SSL" == "yes" ]] && [[ -f "/etc/letsencrypt/live/${PANEL_DOMAIN}/fullchain.pem" ]]; then
