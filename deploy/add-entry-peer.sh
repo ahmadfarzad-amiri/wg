@@ -85,6 +85,7 @@ EOF
 
 persist_entry_tunnel_peer "$ENTRY_PUB"
 wg set "$TUNNEL_IF" peer "$ENTRY_PUB" allowed-ips "${CLIENT_CIDR},${TUNNEL_PEER_IP}"
+wg_exit_tunnel_routes_up "$CLIENT_CIDR" "$TUNNEL_PEER_IP" "$TUNNEL_IF"
 printf '%s\n' "$ENTRY_PUB" > /etc/wireguard/tunnel-entry.pub
 chmod 600 /etc/wireguard/tunnel-entry.pub
 

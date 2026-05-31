@@ -49,25 +49,15 @@ if [[ "$ROLE" == "auto" ]]; then
 fi
 
 fix_exit() {
-  local tunnel_if="${WG_TUNNEL_IF:-wg-tunnel}"
-  local client_cidr="${WG_CLIENT_CIDR:-10.10.10.0/24}"
-  local def_if
-  def_if="$(default_route_iface)"
-  def_if="${def_if:-eth0}"
-
-  wg_apply_ip_forward
-  iptables -t nat -C POSTROUTING -s "$client_cidr" -o "$def_if" -j MASQUERADE 2>/dev/null \
-    || iptables -t nat -A POSTROUTING -s "$client_cidr" -o "$def_if" -j MASQUERADE
-  iptables -C FORWARD -i "$tunnel_if" -j ACCEPT 2>/dev/null \
-    || iptables -A FORWARD -i "$tunnel_if" -j ACCEPT
-  iptables -C FORWARD -o "$tunnel_if" -j ACCEPT 2>/dev/null \
-    || iptables -A FORWARD -o "$tunnel_if" -j ACCEPT
-
+  if [[ -f /etc/wireguard/exit-server.env ]]; then
+    # shellcheck disable=SC1091
+    source /etc/wireguard/exit-server.env
+  fi
+  apply_exit_vpn_routing_fix
   if [[ ! -f /etc/wireguard/tunnel-entry.pub ]]; then
     warn "Exit: entry tunnel peer not configured — run add-entry-peer.sh on this host"
   fi
-  log "Exit NAT/forward rules applied"
-  wg show "$tunnel_if" 2>/dev/null || warn "wg-tunnel is not up"
+  wg show "${WG_TUNNEL_IF:-wg-tunnel}" 2>/dev/null || warn "wg-tunnel is not up"
 }
 
 fix_entry() {

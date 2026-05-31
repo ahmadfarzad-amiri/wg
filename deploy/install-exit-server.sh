@@ -43,6 +43,7 @@ install_wg_tools
 TUNNEL_IF="wg-tunnel"
 CLIENT_CIDR="10.10.10.0/24"
 TUNNEL_LOCAL="10.200.0.1/30"
+TUNNEL_PEER_IP="10.200.0.2/32"
 TUNNEL_CONF="/etc/wireguard/${TUNNEL_IF}.conf"
 
 log "=== EXIT server — internet egress ==="
@@ -86,8 +87,8 @@ cat > "$TUNNEL_CONF" <<EOF
 Address = ${TUNNEL_LOCAL}
 ListenPort = ${TUNNEL_PORT}
 PrivateKey = ${TUNNEL_PRIV}
-PostUp = iptables -t nat -A POSTROUTING -s ${CLIENT_CIDR} -o ${DEF_IF} -j MASQUERADE; iptables -A FORWARD -i ${TUNNEL_IF} -j ACCEPT; iptables -A FORWARD -o ${TUNNEL_IF} -j ACCEPT
-PostDown = iptables -t nat -D POSTROUTING -s ${CLIENT_CIDR} -o ${DEF_IF} -j MASQUERADE; iptables -D FORWARD -i ${TUNNEL_IF} -j ACCEPT; iptables -D FORWARD -o ${TUNNEL_IF} -j ACCEPT
+PostUp = iptables -t nat -A POSTROUTING -s ${CLIENT_CIDR} -o ${DEF_IF} -j MASQUERADE; iptables -A FORWARD -i ${TUNNEL_IF} -j ACCEPT; iptables -A FORWARD -o ${TUNNEL_IF} -j ACCEPT; ip route replace ${CLIENT_CIDR} dev ${TUNNEL_IF}; ip route replace ${TUNNEL_PEER_IP} dev ${TUNNEL_IF}
+PostDown = iptables -t nat -D POSTROUTING -s ${CLIENT_CIDR} -o ${DEF_IF} -j MASQUERADE; iptables -D FORWARD -i ${TUNNEL_IF} -j ACCEPT; iptables -D FORWARD -o ${TUNNEL_IF} -j ACCEPT; ip route del ${CLIENT_CIDR} dev ${TUNNEL_IF} 2>/dev/null || true; ip route del ${TUNNEL_PEER_IP} dev ${TUNNEL_IF} 2>/dev/null || true
 EOF
 
 if [[ -f /etc/wireguard/tunnel-entry.pub ]]; then
@@ -98,7 +99,7 @@ if [[ -f /etc/wireguard/tunnel-entry.pub ]]; then
 # BEGIN ENTRY TUNNEL PEER
 [Peer]
 PublicKey = ${ENTRY_PEER_PUB}
-AllowedIPs = ${CLIENT_CIDR},10.200.0.2/32
+AllowedIPs = ${CLIENT_CIDR},${TUNNEL_PEER_IP}
 # END ENTRY TUNNEL PEER
 EOF
   fi

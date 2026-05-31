@@ -476,6 +476,32 @@ ensure_wg_dirs() {
   chmod 700 /etc/wireguard /etc/wireguard/clients /etc/wireguard/client-state
 }
 
+wg_exit_tunnel_routes_down() {
+  local client_cidr="${1:-10.10.10.0/24}"
+  local tunnel_peer_ip="${2:-10.200.0.2/32}"
+  local tunnel_if="${3:-wg-tunnel}"
+  ip route del "$client_cidr" dev "$tunnel_if" 2>/dev/null || true
+  ip route del "$tunnel_peer_ip" dev "$tunnel_if" 2>/dev/null || true
+}
+
+wg_exit_tunnel_routes_up() {
+  local client_cidr="${1:-10.10.10.0/24}"
+  local tunnel_peer_ip="${2:-10.200.0.2/32}"
+  local tunnel_if="${3:-wg-tunnel}"
+  if ! ip link show "$tunnel_if" >/dev/null 2>&1; then
+    warn "Exit routes skipped — $tunnel_if is not up"
+    return 1
+  fi
+  ip route replace "$client_cidr" dev "$tunnel_if"
+  ip route replace "$tunnel_peer_ip" dev "$tunnel_if"
+}
+
+wg_exit_route_to_client_ok() {
+  local sample_ip="${1:-10.10.10.2}"
+  local tunnel_if="${2:-wg-tunnel}"
+  ip route get "$sample_ip" 2>/dev/null | grep -q "dev ${tunnel_if}"
+}
+
 wg_entry_tunnel_routes_down() {
   local client_cidr="${1:-10.10.10.0/24}"
   local tunnel_if="${2:-wg-tunnel}"
@@ -555,16 +581,48 @@ apply_entry_vpn_routing_fix() {
   log "Entry routing fix applied (${client_if} ↔ ${tunnel_if})"
 }
 
+apply_exit_vpn_routing_fix() {
+  local tunnel_if="${WG_TUNNEL_IF:-wg-tunnel}"
+  local client_cidr="${WG_CLIENT_CIDR:-10.10.10.0/24}"
+  local tunnel_peer_ip="${WG_TUNNEL_PEER_IP:-10.200.0.2/32}"
+  local def_if
+  def_if="$(default_route_iface)"
+  def_if="${def_if:-eth0}"
+
+  wg_apply_ip_forward
+  iptables -t nat -C POSTROUTING -s "$client_cidr" -o "$def_if" -j MASQUERADE 2>/dev/null \
+    || iptables -t nat -A POSTROUTING -s "$client_cidr" -o "$def_if" -j MASQUERADE
+  iptables -C FORWARD -i "$tunnel_if" -j ACCEPT 2>/dev/null \
+    || iptables -A FORWARD -i "$tunnel_if" -j ACCEPT
+  iptables -C FORWARD -o "$tunnel_if" -j ACCEPT 2>/dev/null \
+    || iptables -A FORWARD -o "$tunnel_if" -j ACCEPT
+  wg_exit_tunnel_routes_up "$client_cidr" "$tunnel_peer_ip" "$tunnel_if"
+
+  if wg_exit_route_to_client_ok "10.10.10.2" "$tunnel_if"; then
+    log "Exit routing fix applied (${client_cidr} → ${tunnel_if})"
+  else
+    warn "Exit: ip route get 10.10.10.2 still does not use ${tunnel_if} — check wg-tunnel peer AllowedIPs"
+  fi
+}
+
 wg_stop_if() {
   local ifname="$1"
   local conf="/etc/wireguard/${ifname}.conf"
-  if [[ "$ifname" == "wg-tunnel" ]]; then
+  if [[ -f /etc/wireguard/exit-server.env ]]; then
+    if [[ "$ifname" == "wg-tunnel" ]]; then
+      wg_exit_tunnel_routes_down
+    fi
+  elif [[ "$ifname" == "wg-tunnel" ]]; then
     wg_entry_tunnel_routes_down
   fi
   if [[ -f "$conf" ]]; then
     wg-quick down "$ifname" 2>/dev/null || true
   fi
-  if [[ "$ifname" == "wg-tunnel" ]]; then
+  if [[ -f /etc/wireguard/exit-server.env ]]; then
+    if [[ "$ifname" == "wg-tunnel" ]]; then
+      wg_exit_tunnel_routes_down
+    fi
+  elif [[ "$ifname" == "wg-tunnel" ]]; then
     wg_entry_tunnel_routes_down
   fi
   ip link del "$ifname" 2>/dev/null || true

@@ -60,6 +60,7 @@ test_exit() {
   if [[ -f /etc/wireguard/tunnel-entry.pub ]]; then
     check "entry peer in config" grep -q 'BEGIN ENTRY TUNNEL PEER' /etc/wireguard/wg-tunnel.conf
     check "entry server peer configured" wg show wg-tunnel peers
+    check "client subnet routed via wg-tunnel" sh -c 'ip route get 10.10.10.2 2>/dev/null | grep -q "dev wg-tunnel"'
   else
     warn "Entry server peer not added yet — run add-entry-peer.sh on this host"
   fi
