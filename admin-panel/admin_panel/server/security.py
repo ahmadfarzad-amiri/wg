@@ -107,11 +107,16 @@ def clear_login_attempts(handler, username):
 
 
 def get_csrf_token(handler):
+    cached = getattr(handler, "_csrf_token", None)
+    if cached:
+        return cached
     cookie = SimpleCookie(handler.headers.get("Cookie", ""))
     token = cookie.get("wg_csrf")
     if token and token.value:
+        handler._csrf_token = token.value
         return token.value
-    return secrets.token_urlsafe(24)
+    handler._csrf_token = secrets.token_urlsafe(24)
+    return handler._csrf_token
 
 
 def csrf_field(handler):
