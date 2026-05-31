@@ -258,11 +258,23 @@
 
   var i18n = window.__I18N || {};
 
-  function showToast(message, variant) {
+  function ensureToastRoot() {
     var root = document.getElementById("toast-root");
-    if (!root || !message) {
+    if (!root) {
+      root = document.createElement("div");
+      root.id = "toast-root";
+      root.className = "toast-root";
+      root.setAttribute("aria-live", "polite");
+    }
+    document.body.appendChild(root);
+    return root;
+  }
+
+  function showToast(message, variant) {
+    if (!message) {
       return;
     }
+    var root = ensureToastRoot();
     var toast = document.createElement("div");
     toast.className = "toast toast--" + (variant || "info");
     toast.setAttribute("role", "alert");
