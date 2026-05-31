@@ -1,5 +1,6 @@
 import html
 
+from client_panel.components.locale_bar import locale_version_bar
 from client_panel.components.notice import notice
 from client_panel.core.i18n import t
 
@@ -21,6 +22,8 @@ def body(msg="", show_config_actions=False):
     return f"""
 <h1>{html.escape(t("settings.title"))}</h1>
 <p class="subtitle">{html.escape(t("settings.subtitle"))}</p>
+
+{locale_version_bar("/settings")}
 
 <section class="card">
   <h3>{html.escape(t("settings.change_password"))}</h3>

@@ -2,8 +2,9 @@ import html
 
 from admin_panel.components.brand import brand_html
 from admin_panel.components.icons import nav_icon
-from admin_panel.config import VERSION, admin_url
-from admin_panel.core.i18n import html_dir, html_lang, js_i18n_script, lang_toggle_html, t
+from admin_panel.components.locale_bar import locale_version_bar
+from admin_panel.config import admin_url
+from admin_panel.core.i18n import html_dir, html_lang, js_i18n_script, t
 
 
 def head_assets():
@@ -48,7 +49,7 @@ def page(title, body, active="dashboard", auth=False, extra_head="", next_path="
 </head>
 <body class="{shell_class}">
 <a class="skip-link" href="#main">{html.escape(t("skip_link"))}</a>
-<div class="lang-bar">{lang_toggle_html(lang_next)}</div>
+{locale_version_bar(lang_next)}
 {body}
 <div id="toast-root" class="toast-root" aria-live="polite"></div>
 </body>
@@ -92,8 +93,6 @@ def page(title, body, active="dashboard", auth=False, extra_head="", next_path="
   <div class="sidebar-top">
     <div class="brandmark" aria-hidden="true"></div>
     <div class="brandname">{brand_html()}</div>
-    <div class="version">{html.escape(t("admin_label"))} · {html.escape(t("version"))} {html.escape(VERSION)}</div>
-    {lang_toggle_html(lang_next)}
   </div>
   <nav class="nav nav-sidebar" id="sidebar-nav" aria-label="{html.escape(t("nav.sidebar"))}">
     {sidebar_nav()}

@@ -2,9 +2,10 @@ import html
 
 from client_panel.components.brand import brand_html
 from client_panel.components.icons import nav_icon
+from client_panel.components.locale_bar import locale_version_bar
 from client_panel.components.modal import qr_modal_html
 from client_panel.config import BRAND, VERSION
-from client_panel.core.i18n import html_dir, html_lang, js_i18n_script, lang_toggle_html, t
+from client_panel.core.i18n import html_dir, html_lang, js_i18n_script, t
 
 
 def head_assets():
@@ -45,7 +46,7 @@ def page(title, body, user=None, active="dashboard", auth=False, extra_head="", 
 </head>
 <body class="{shell_class}">
 <a class="skip-link" href="#main">{html.escape(t("skip_link"))}</a>
-<div class="lang-bar">{lang_toggle_html(lang_next)}</div>
+{locale_version_bar(lang_next)}
 {body}
 <div id="toast-root" class="toast-root" aria-live="polite"></div>
 </body>
@@ -85,8 +86,6 @@ def page(title, body, user=None, active="dashboard", auth=False, extra_head="", 
   <div class="sidebar-top">
     <div class="brandmark" aria-hidden="true"></div>
     <div class="brandname">{brand_html()}</div>
-    <div class="version">{html.escape(t("version"))} {html.escape(VERSION)}</div>
-    {lang_toggle_html(lang_next)}
   </div>
   <nav class="nav nav-sidebar" id="sidebar-nav" aria-label="{html.escape(t("nav.sidebar"))}">
     {sidebar_nav()}

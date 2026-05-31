@@ -1,5 +1,6 @@
 import html
 
+from admin_panel.components.locale_bar import locale_version_bar
 from admin_panel.components.notice import notice
 from admin_panel.config import admin_url
 from admin_panel.core.auth import admin_username
@@ -11,6 +12,8 @@ def body(msg=""):
     return f"""
 <h1>{html.escape(t("settings.title"))}</h1>
 <p class="subtitle">{html.escape(t("settings.subtitle"))}</p>
+
+{locale_version_bar("/settings")}
 
 <div class="settings-grid">
   <section class="card">
