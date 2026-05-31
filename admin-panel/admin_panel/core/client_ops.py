@@ -9,20 +9,23 @@ from admin_panel.config import (
     WG_CLIENT,
 )
 from admin_panel.core.i18n import tf
-from admin_panel.core.shell import run
+from admin_panel.core.shell import CLIENT_CMD_TIMEOUT, run
 from admin_panel.core.wireguard import find_client_meta_by_name
 
 
 def run_client_action(action, name, extra=None):
     extra = list(extra or [])
-    return run([WG_CLIENT, action, name, *extra])
+    return run([WG_CLIENT, action, name, *extra], timeout=CLIENT_CMD_TIMEOUT)
 
 
 def run_client_renew(name, *, days=None, limit=None, single=None):
     days = str(days or DEFAULT_DAYS)
     limit = str(limit or DEFAULT_LIMIT)
     single = single or DEFAULT_SINGLE
-    return run([WG_CLIENT, "renew", name, "--days", days, "--limit", limit, single])
+    return run(
+        [WG_CLIENT, "renew", name, "--days", days, "--limit", limit, single],
+        timeout=CLIENT_CMD_TIMEOUT,
+    )
 
 
 def client_was_removed(name):
@@ -30,7 +33,7 @@ def client_was_removed(name):
 
 
 def run_client_remove(name):
-    output = run([WG_CLIENT, "remove", name])
+    output = run([WG_CLIENT, "remove", name], timeout=CLIENT_CMD_TIMEOUT)
     if "Removed client" in (output or ""):
         return output
     if find_client_meta_by_name(name) is None:
@@ -74,7 +77,8 @@ def ensure_client(name, *, days=None, limit=None, single=None):
             "--limit",
             limit,
             single,
-        ]
+        ],
+        timeout=CLIENT_CMD_TIMEOUT,
     )
     if find_client_meta_by_name(name):
         return True, True, output

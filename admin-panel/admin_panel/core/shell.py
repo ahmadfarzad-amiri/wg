@@ -2,8 +2,11 @@
 import re
 import subprocess
 
+DEFAULT_TIMEOUT = 8
+CLIENT_CMD_TIMEOUT = 60
 
-def run(cmd, timeout=8):
+
+def run(cmd, timeout=DEFAULT_TIMEOUT):
     try:
         return subprocess.check_output(
             cmd, text=True, stderr=subprocess.STDOUT, timeout=timeout

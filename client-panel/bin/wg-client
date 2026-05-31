@@ -195,27 +195,37 @@ EOF2
   chmod 600 "$WG_CONF"
 }
 
+_USED_IPS_CACHE=""
+
 used_ips() {
-  {
-    grep -hoE "${VPN_PREFIX//./\\.}\.[0-9]+/32" "$WG_CONF" 2>/dev/null || true
-    grep -RhoE "${VPN_PREFIX//./\\.}\.[0-9]+/32" "$CLIENT_DIR" 2>/dev/null || true
-    for f in "$STATE_DIR"/*.meta; do
-      [ -f "$f" ] || continue
-      grep '^IP=' "$f" | cut -d= -f2- | tr -d "'" 2>/dev/null || true
-    done
-  } | sed 's#/32##' | sort -u
+  if [ -n "$_USED_IPS_CACHE" ]; then
+    printf '%s\n' "$_USED_IPS_CACHE"
+    return 0
+  fi
+
+  _USED_IPS_CACHE="$(
+    {
+      grep -hoE "${VPN_PREFIX//./\\.}\.[0-9]+/32" "$WG_CONF" 2>/dev/null || true
+      for f in "$STATE_DIR"/*.meta; do
+        [ -f "$f" ] || continue
+        grep '^IP=' "$f" | cut -d= -f2- | tr -d "'" 2>/dev/null || true
+      done
+    } | sed 's#/32##' | sort -u
+  )"
+  printf '%s\n' "$_USED_IPS_CACHE"
 }
 
 ip_is_used() {
   local ip="$1"
-  used_ips | grep -qx "$ip"
+  echo "$(used_ips)" | grep -qx "$ip"
 }
 
 next_free_ip() {
-  local i ip
+  local used ip i
+  used="$(used_ips)"
   for i in $(seq 2 254); do
     ip="$VPN_PREFIX.$i"
-    if ! ip_is_used "$ip"; then
+    if ! echo "$used" | grep -qx "$ip"; then
       echo "$ip"
       return 0
     fi

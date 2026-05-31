@@ -28,6 +28,8 @@ def _friendly_error(output, client=""):
         return tf("msg.client_not_found_hint", client=client)
     if "Run as root" in text:
         return tf("msg.client_needs_root", client=client)
+    if "timed out" in text.lower():
+        return tf("msg.client_cmd_timeout", client=client)
     if "not found" in text.lower() and "wg" in text.lower():
         return t("msg.wg_files_not_found")
     return tail_message(text)
