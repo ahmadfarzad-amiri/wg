@@ -3,10 +3,10 @@ import re
 import subprocess
 
 
-def run(cmd):
+def run(cmd, timeout=8):
     try:
         return subprocess.check_output(
-            cmd, text=True, stderr=subprocess.STDOUT
+            cmd, text=True, stderr=subprocess.STDOUT, timeout=timeout
         ).strip()
     except subprocess.CalledProcessError as e:
         return e.output.strip()

@@ -8,9 +8,11 @@ from client_panel.config import STATE_DIR, WG_IF
 from client_panel.core.i18n import t, tf
 
 
-def run(cmd):
+def run(cmd, timeout=8):
     try:
-        return subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
+        return subprocess.check_output(
+            cmd, text=True, stderr=subprocess.DEVNULL, timeout=timeout
+        ).strip()
     except Exception:
         return ""
 

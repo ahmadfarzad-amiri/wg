@@ -1,7 +1,7 @@
 """Application entry point."""
 import os
 
-from http.server import HTTPServer
+from http.server import ThreadingHTTPServer
 
 from admin_panel.config import ADMIN_CONFIG, HOST, PORT, SESSION_FILE
 from admin_panel.db import session_db
@@ -15,4 +15,4 @@ def run():
     os.makedirs(os.path.dirname(SESSION_FILE), exist_ok=True)
     session_db().close()
     print(f"Starting admin panel on {HOST}:{PORT}")
-    HTTPServer((HOST, PORT), Handler).serve_forever()
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

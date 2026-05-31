@@ -221,13 +221,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def _health(self):
         import shutil
+        import subprocess
 
         from client_panel.config import DB_PATH, WG_IF
 
         wg_ok = bool(shutil.which("wg"))
         if wg_ok:
             try:
-                wg_ok = os.popen(f"wg show {WG_IF} 2>/dev/null").read().strip() != ""
+                out = subprocess.check_output(
+                    ["wg", "show", WG_IF],
+                    text=True,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                ).strip()
+                wg_ok = bool(out)
             except Exception:
                 wg_ok = False
         db_ok = os.path.isfile(DB_PATH)
