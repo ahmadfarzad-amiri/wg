@@ -31,9 +31,11 @@ check() {
 
 tunnel_handshake_recent() {
   local max_age="${1:-180}"
+  local tunnel_if="${2:-wg-tunnel}"
   local now hs age
   now="$(date +%s)"
-  hs="$(wg show wg-tunnel latest-handshakes 2>/dev/null | awk 'NF >= 2 {print $2; exit}')"
+  hs="$(wg show "$tunnel_if" latest-handshakes 2>/dev/null \
+    | awk 'NF >= 2 { t = $NF + 0; if (t > max) max = t } END { print max + 0 }')"
   hs="${hs:-0}"
   age=$((now - hs))
   [[ "$hs" -gt 0 && "$age" -le "$max_age" ]]
@@ -96,7 +98,14 @@ test_entry() {
   fi
   check "admin config" test -f /etc/wireguard/admin-panel.json
   check "wg-client installed" command -v wg-client
-  check "tunnel handshake to exit (<=180s)" tunnel_handshake_recent 180
+  printf '  %-42s ' "tunnel handshake to exit (<=180s)"
+  if tunnel_handshake_recent 180; then
+    echo "OK"
+    pass=$((pass + 1))
+  else
+    echo "FAIL"
+    fail=$((fail + 1))
+  fi
   check "client panel health" curl -fsS "http://127.0.0.1:${WG_PANEL_PORT:-8088}/health"
   check "admin panel health" curl -fsS "http://127.0.0.1:${WG_ADMIN_PORT:-8090}/admin/health"
 }

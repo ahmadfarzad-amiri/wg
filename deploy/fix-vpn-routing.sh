@@ -72,16 +72,6 @@ fix_entry() {
   log "Re-test from a connected client after this fix (ping 1.1.1.1, open a website)"
 }
 
-tunnel_handshake_recent() {
-  local max_age="${1:-180}"
-  local now hs age
-  now="$(date +%s)"
-  hs="$(wg show wg-tunnel latest-handshakes 2>/dev/null | awk 'NF >= 2 {print $2; exit}')"
-  hs="${hs:-0}"
-  age=$((now - hs))
-  [[ "$hs" -gt 0 && "$age" -le "$max_age" ]]
-}
-
 case "$ROLE" in
   entry) fix_entry ;;
   exit) fix_exit ;;

@@ -502,6 +502,27 @@ wg_exit_route_to_client_ok() {
   ip route get "$sample_ip" 2>/dev/null | grep -q "dev ${tunnel_if}"
 }
 
+tunnel_handshake_recent() {
+  local max_age="${1:-180}"
+  local tunnel_if="${2:-wg-tunnel}"
+  local now hs age
+  now="$(date +%s)"
+  # Use newest handshake across all peers (ignore stale/zero peers listed first).
+  hs="$(wg show "$tunnel_if" latest-handshakes 2>/dev/null \
+    | awk 'NF >= 2 { t = $NF + 0; if (t > max) max = t } END { print max + 0 }')"
+  hs="${hs:-0}"
+  age=$((now - hs))
+  [[ "$hs" -gt 0 && "$age" -le "$max_age" ]]
+}
+
+ensure_wg_conf_permissions() {
+  local f
+  for f in /etc/wireguard/*.conf; do
+    [[ -f "$f" ]] || continue
+    chmod 600 "$f"
+  done
+}
+
 wg_entry_tunnel_routes_down() {
   local client_cidr="${1:-10.10.10.0/24}"
   local tunnel_if="${2:-wg-tunnel}"
@@ -578,6 +599,7 @@ apply_entry_vpn_routing_fix() {
   wg_entry_forward_rules_up "$client_if" "$tunnel_if"
   wg_entry_tunnel_routes_up "$client_cidr" "$tunnel_if"
   fix_entry_tunnel_postup_in_conf "/etc/wireguard/${tunnel_if}.conf"
+  ensure_wg_conf_permissions
   log "Entry routing fix applied (${client_if} ↔ ${tunnel_if})"
 }
 
@@ -597,6 +619,7 @@ apply_exit_vpn_routing_fix() {
   iptables -C FORWARD -o "$tunnel_if" -j ACCEPT 2>/dev/null \
     || iptables -A FORWARD -o "$tunnel_if" -j ACCEPT
   wg_exit_tunnel_routes_up "$client_cidr" "$tunnel_peer_ip" "$tunnel_if"
+  ensure_wg_conf_permissions
 
   if wg_exit_route_to_client_ok "10.10.10.2" "$tunnel_if"; then
     log "Exit routing fix applied (${client_cidr} → ${tunnel_if})"
