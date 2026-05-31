@@ -588,6 +588,32 @@ fix_entry_tunnel_postup_in_conf() {
       "$conf"
     log "Patched $conf (stateless tunnel→client forward)"
   fi
+  if ! grep -q 'conf\.wg-tunnel\.rp_filter=0' "$conf" 2>/dev/null; then
+    sed -i \
+      's|ip route add default dev ${TUNNEL_IF} table 100|ip route add default dev ${TUNNEL_IF} table 100; sysctl -w net.ipv4.conf.${TUNNEL_IF}.rp_filter=0; sysctl -w net.ipv4.conf.${CLIENT_IF}.rp_filter=0|' \
+      "$conf" 2>/dev/null || true
+    sed -i \
+      's|ip route add default dev wg-tunnel table 100|ip route add default dev wg-tunnel table 100; sysctl -w net.ipv4.conf.wg-tunnel.rp_filter=0; sysctl -w net.ipv4.conf.wg-clients.rp_filter=0|' \
+      "$conf" 2>/dev/null || true
+    log "Patched $conf (rp_filter=0 on wg interfaces after tunnel up)"
+  fi
+}
+
+strip_wrong_entry_tunnel_peer_block() {
+  # add-entry-peer.sh belongs on exit only; if run on entry it adds a useless self-peer block.
+  local conf="${1:-/etc/wireguard/wg-tunnel.conf}"
+  [[ -f "$conf" ]] || return 0
+  if ! grep -q 'BEGIN ENTRY TUNNEL PEER' "$conf"; then
+    return 0
+  fi
+  awk '
+    /# BEGIN ENTRY TUNNEL PEER/ { skip=1; next }
+    /# END ENTRY TUNNEL PEER/ { skip=0; next }
+    !skip { print }
+  ' "$conf" > "${conf}.tmp"
+  chmod 600 "${conf}.tmp"
+  mv "${conf}.tmp" "$conf"
+  log "Removed exit-only ENTRY TUNNEL PEER block from $conf"
 }
 
 apply_entry_vpn_routing_fix() {
@@ -598,7 +624,9 @@ apply_entry_vpn_routing_fix() {
   wg_apply_rp_filter_for_wg
   wg_entry_forward_rules_up "$client_if" "$tunnel_if"
   wg_entry_tunnel_routes_up "$client_cidr" "$tunnel_if"
+  strip_wrong_entry_tunnel_peer_block "/etc/wireguard/${tunnel_if}.conf"
   fix_entry_tunnel_postup_in_conf "/etc/wireguard/${tunnel_if}.conf"
+  wg_apply_rp_filter_for_wg
   ensure_wg_conf_permissions
   log "Entry routing fix applied (${client_if} ↔ ${tunnel_if})"
 }
