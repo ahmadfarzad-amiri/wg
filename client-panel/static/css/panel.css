@@ -295,13 +295,15 @@ h1{color:#3aa6ff;margin:0 0 8px}
 .toast-root{
   position:fixed;
   top:max(12px, env(safe-area-inset-top));
-  inset-inline-end:max(12px, env(safe-area-inset-right));
+  left:50%;
+  transform:translateX(-50%);
   z-index:10000;
   display:flex;
   flex-direction:column;
+  align-items:stretch;
   gap:10px;
   pointer-events:none;
-  max-width:min(420px, calc(100vw - 24px));
+  width:min(420px, calc(100vw - 24px));
 }
 .toast{
   pointer-events:auto;
