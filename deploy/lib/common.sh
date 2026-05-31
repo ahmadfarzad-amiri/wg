@@ -568,12 +568,14 @@ wg_apply_rp_filter_for_wg() {
   # Entry VPN router: asymmetric paths (policy routing + tunnel return) need rp_filter off.
   # Do NOT set this in wg-quick PostUp — some hosts block /proc writes from PostUp and
   # wg-quick rolls the interface back down on PostUp failure.
-  local sysctl_file="/etc/sysctl.d/99-wg-entry-vpn.conf"
+  local sysctl_file="/etc/sysctl.d/99-z-wg-entry-vpn.conf"
   cat > "$sysctl_file" <<'EOF'
 # WireGuard entry server — allow asymmetric forward paths (client ↔ tunnel ↔ exit).
+# Filename 99-z-* loads after 99-wireguard-forward.conf on some hosts.
 net.ipv4.conf.all.rp_filter = 0
 net.ipv4.conf.default.rp_filter = 0
 EOF
+  rm -f /etc/sysctl.d/99-wg-entry-vpn.conf 2>/dev/null || true
   sysctl -p "$sysctl_file" 2>/dev/null || sysctl --system 2>/dev/null || true
   local iface
   for iface in wg-clients wg-tunnel; do
@@ -586,15 +588,19 @@ EOF
 strip_rp_filter_from_wg_postup() {
   local conf="$1"
   [[ -f "$conf" ]] || return 0
-  if grep -q 'rp_filter' "$conf"; then
-    sed -i \
-      's|; echo 0 > /proc/sys/net/ipv4/conf/wg-tunnel/rp_filter; echo 0 > /proc/sys/net/ipv4/conf/wg-clients/rp_filter||g; \
-       s|; echo 0 > /proc/sys/net/ipv4/conf/${TUNNEL_IF}/rp_filter; echo 0 > /proc/sys/net/ipv4/conf/${CLIENT_IF}/rp_filter||g; \
-       s|; sysctl -w net.ipv4.conf.wg-tunnel.rp_filter=0; sysctl -w net.ipv4.conf.wg-clients.rp_filter=0||g; \
-       s|; sysctl -w net.ipv4.conf.${TUNNEL_IF}.rp_filter=0; sysctl -w net.ipv4.conf.${CLIENT_IF}.rp_filter=0||g' \
-      "$conf"
-    log "Removed rp_filter PostUp hooks from $conf (use /etc/sysctl.d/99-wg-entry-vpn.conf)"
+  if ! grep -q 'rp_filter' "$conf"; then
+    return 0
   fi
+  awk '
+    /^PostUp = / {
+      sub(/; echo 0 > \/proc\/sys\/net\/ipv4\/conf\/[^;]*rp_filter[^;]*; echo 0 > \/proc\/sys\/net\/ipv4\/conf\/[^;]*rp_filter[^;]*/, "")
+      sub(/; sysctl -w net\.ipv4\.conf\.[^;]*rp_filter[^;]*; sysctl -w net\.ipv4\.conf\.[^;]*rp_filter[^;]*/, "")
+    }
+    { print }
+  ' "$conf" > "${conf}.tmp"
+  chmod 600 "${conf}.tmp"
+  mv "${conf}.tmp" "$conf"
+  log "Removed rp_filter PostUp hooks from $conf (use /etc/sysctl.d/99-z-wg-entry-vpn.conf)"
 }
 
 fix_entry_tunnel_postup_in_conf() {
