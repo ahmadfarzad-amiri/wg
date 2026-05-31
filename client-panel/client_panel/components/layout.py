@@ -37,6 +37,7 @@ def page(title, body, user=None, active="dashboard", auth=False, extra_head="", 
 </head>
 <body class="{shell_class}">
 <a class="skip-link" href="#main">{html.escape(t("skip_link"))}</a>
+<div id="toast-root" class="toast-root" aria-live="polite"></div>
 <div class="lang-bar">{lang_toggle_html(next_path)}</div>
 {body}
 </body>
@@ -96,6 +97,7 @@ def page(title, body, user=None, active="dashboard", auth=False, extra_head="", 
 </head>
 <body class="{shell_class}">
 <a class="skip-link" href="#main">{html.escape(t("skip_link"))}</a>
+<div id="toast-root" class="toast-root" aria-live="polite"></div>
 <div class="layout">
 {sidebar}
 <main class="main" id="main">{body}</main>

@@ -166,6 +166,7 @@ _STRINGS = {
         "js.copy_fail_manual": "کپی انجام نشد — متن را دستی انتخاب کنید.",
         "js.qr_error": "خطا در ساخت QR",
         "js.qr_error_full": "خطا در ساخت QR کد",
+        "js.toast_dismiss": "بستن",
     },
     "en": {
         "skip_link": "Skip to content",
@@ -323,6 +324,7 @@ _STRINGS = {
         "js.copy_fail_manual": "Copy failed — select the text manually.",
         "js.qr_error": "Failed to generate QR",
         "js.qr_error_full": "Failed to generate QR code",
+        "js.toast_dismiss": "Dismiss",
     },
 }
 
@@ -374,6 +376,8 @@ def js_i18n_script():
         "qrError": t("js.qr_error"),
         "qrErrorFull": t("js.qr_error_full"),
         "qrLoading": t("modal.qr_loading"),
+        "toastDismiss": t("js.toast_dismiss"),
+        "locale": _LANG,
     }
     return f"<script>window.__I18N={json.dumps(data, ensure_ascii=False)};</script>"
 

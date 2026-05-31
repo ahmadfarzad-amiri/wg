@@ -298,6 +298,7 @@ _STRINGS = {
         "msg.admin_password_min_length": "رمز عبور باید حداقل ۸ کاراکتر باشد",
         "js.confirm_default": "ادامه می‌دهید؟",
         "js.list_meta": "{visible} از {total}",
+        "js.toast_dismiss": "بستن",
     },
     "en": {
         "skip_link": "Skip to content",
@@ -585,6 +586,7 @@ _STRINGS = {
         "msg.admin_password_min_length": "Password must be at least 8 characters",
         "js.confirm_default": "Continue?",
         "js.list_meta": "{visible} of {total}",
+        "js.toast_dismiss": "Dismiss",
     },
 }
 
@@ -658,6 +660,7 @@ def js_i18n_script():
         "confirmDefault": t("js.confirm_default"),
         "listMeta": t("js.list_meta"),
         "locale": _LANG,
+        "toastDismiss": t("js.toast_dismiss"),
     }
     return f"<script>window.__I18N={json.dumps(data, ensure_ascii=False)};</script>"
 

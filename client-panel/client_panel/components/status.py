@@ -43,7 +43,6 @@ def client_status_section(s):
     <button type="button" class="btn dark" data-qr-open>{html.escape(t("settings.show_qr"))}</button>
     <button type="button" class="btn dark" data-copy-config>{html.escape(t("status.copy"))}</button>
   </div>
-  <span id="copy-config-msg" class="copymsg" role="status"></span>
   <span class="downloadhint">{html.escape(t("status.download_hint"))}</span>
 </div>
 """

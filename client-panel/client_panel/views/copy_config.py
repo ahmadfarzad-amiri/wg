@@ -14,6 +14,5 @@ def body(config_text):
   <a class="btn dark" href="/config">{html.escape(t("btn.download"))}</a>
   <a class="btn dark" href="/">{html.escape(t("btn.back"))}</a>
 </div>
-<div id="copy-msg" class="copymsg" role="status"></div>
 </section>
 """

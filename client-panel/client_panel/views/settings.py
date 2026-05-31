@@ -1,10 +1,11 @@
 import html
 
+from client_panel.components.notice import notice
 from client_panel.core.i18n import t
 
 
 def body(msg="", show_config_actions=False):
-    notice = f'<div class="notice" role="alert">{html.escape(msg)}</div>' if msg else ""
+    toast_variant = "success" if msg and show_config_actions else "info"
     config_actions = ""
     if show_config_actions:
         config_actions = f"""
@@ -24,7 +25,7 @@ def body(msg="", show_config_actions=False):
 <section class="card">
   <h3>{html.escape(t("settings.change_password"))}</h3>
   <p class="hint">{html.escape(t("settings.change_hint"))}</p>
-  {notice}
+  {notice(msg, variant=toast_variant)}
   <form method="post" action="/settings/password" class="form-stack">
     <label for="old_password">{html.escape(t("settings.old_password"))}</label>
     <input id="old_password" name="old_password" type="password" autocomplete="current-password" required>

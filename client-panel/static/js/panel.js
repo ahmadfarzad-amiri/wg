@@ -3,11 +3,73 @@
 
   var i18n = window.__I18N || {};
 
-  function showCopyMsg(text) {
-    var el = document.getElementById("copy-config-msg");
-    if (el) {
-      el.textContent = text;
+  function showToast(message, variant) {
+    var root = document.getElementById("toast-root");
+    if (!root || !message) {
+      return;
     }
+    var toast = document.createElement("div");
+    toast.className = "toast toast--" + (variant || "info");
+    toast.setAttribute("role", "alert");
+
+    var text = document.createElement("span");
+    text.className = "toast-text";
+    text.textContent = message;
+
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "toast-close";
+    close.setAttribute("aria-label", i18n.toastDismiss || "Dismiss");
+    close.innerHTML = "&times;";
+
+    var dismiss = function () {
+      toast.classList.remove("toast--show");
+      toast.classList.add("toast--hide");
+      setTimeout(function () {
+        toast.remove();
+      }, 280);
+    };
+
+    close.addEventListener("click", dismiss);
+    toast.appendChild(text);
+    toast.appendChild(close);
+    root.appendChild(toast);
+
+    requestAnimationFrame(function () {
+      toast.classList.add("toast--show");
+    });
+
+    setTimeout(dismiss, 5000);
+  }
+
+  window.showToast = showToast;
+
+  function initToasts() {
+    document.querySelectorAll("template.toast-payload").forEach(function (el) {
+      showToast(el.content.textContent.trim(), el.getAttribute("data-variant") || "info");
+      el.remove();
+    });
+
+    try {
+      var params = new URLSearchParams(window.location.search);
+      if (params.has("notice")) {
+        params.delete("notice");
+        var qs = params.toString();
+        history.replaceState(
+          {},
+          "",
+          window.location.pathname + (qs ? "?" + qs : "") + window.location.hash
+        );
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initToasts);
+  } else {
+    initToasts();
   }
 
   function setButtonLoading(btn, loading) {
@@ -41,10 +103,10 @@
     btn.addEventListener("click", function () {
       copyFromFetch(btn)
         .then(function () {
-          showCopyMsg(i18n.copyOk || "");
+          showToast(i18n.copyOk || "", "success");
         })
         .catch(function () {
-          showCopyMsg(i18n.copyFailRedirect || "");
+          showToast(i18n.copyFailRedirect || "", "error");
           window.location.href = "/copy-config";
         });
     });
@@ -57,12 +119,10 @@
       navigator.clipboard
         .writeText(cfg.value)
         .then(function () {
-          var msg = document.getElementById("copy-msg");
-          if (msg) msg.textContent = i18n.copyOk || "";
+          showToast(i18n.copyOk || "", "success");
         })
         .catch(function () {
-          var msg = document.getElementById("copy-msg");
-          if (msg) msg.textContent = i18n.copyFailManual || "";
+          showToast(i18n.copyFailManual || "", "error");
         });
     });
   }

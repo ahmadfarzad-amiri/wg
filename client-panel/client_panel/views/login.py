@@ -1,13 +1,13 @@
 import html
 
 from client_panel.components.auth_card import auth_card
+from client_panel.components.notice import notice
 from client_panel.core.i18n import t
 
 
 def body(msg=""):
-    notice = f'<div class="notice" role="alert">{html.escape(msg)}</div>' if msg else ""
     form = f"""
-{notice}
+{notice(msg)}
 <form method="post" action="/login" class="form-stack">
   <label for="username">{html.escape(t("auth.username"))}</label>
   <input id="username" name="username" autocomplete="username" required>
