@@ -103,6 +103,11 @@ sudo bash /tmp/fix-vpn-routing.sh --role entry   # or exit | auto
 curl -fsSL .../diagnose-vpn.sh -o /tmp/diagnose-vpn.sh
 sudo bash /tmp/diagnose-vpn.sh --role entry
 
+# Wrong Endpoint IP in client configs (e.g. old 216.x → current 31.x)
+curl -fsSL .../fix-client-endpoint.sh -o /tmp/fix-ep.sh
+sudo bash /tmp/fix-ep.sh 31.25.93.168:51820
+# or: sudo bash /tmp/fix-ep.sh --old 216.147.121.53 --new 31.25.93.168:51820
+
 sudo bash deploy/backup.sh
 sudo bash deploy/update-panels.sh
 sudo bash deploy/restore.sh /etc/wireguard/backups/TIMESTAMP-label
