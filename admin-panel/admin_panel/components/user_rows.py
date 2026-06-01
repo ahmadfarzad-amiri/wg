@@ -1,6 +1,7 @@
 import html
 import time
 
+from admin_panel.components.action_menu import action_menu
 from admin_panel.config import admin_url
 from admin_panel.core.i18n import t, tf
 from admin_panel.core.labels import badge_user_status, label_user_status
@@ -38,37 +39,17 @@ def _config_chips(username, configs):
 
 
 def _user_action_menu(u, *, can_reject, can_disable, can_enable, show_enable_in_menu):
-    username_esc = html.escape(u["username"])
-    reject_cls = "" if can_reject else " is-disabled"
-    disable_cls = "" if can_disable else " is-disabled"
-    enable_cls = "" if can_enable and show_enable_in_menu else " is-disabled"
-    reject_attr = "" if can_reject else " disabled"
-    disable_attr = "" if can_disable else " disabled"
-    enable_attr = "" if can_enable and show_enable_in_menu else " disabled"
-    more_label = html.escape(t("user.more_actions"))
-
-    return f"""
-<details class="action-menu">
-  <summary class="action-menu-trigger" aria-label="{more_label}">⋯</summary>
-  <div class="action-menu-panel">
-    <form class="action-menu-form" method="post" action="{admin_url("/user-action")}">
-      <input type="hidden" name="username" value="{username_esc}">
-      <input type="hidden" name="action" value="reject">
-      <button type="submit" class="action-menu-item action-menu-item--danger{reject_cls}" {reject_attr}>{html.escape(t("user.reject"))}</button>
-    </form>
-    <form class="action-menu-form" method="post" action="{admin_url("/user-action")}">
-      <input type="hidden" name="username" value="{username_esc}">
-      <input type="hidden" name="action" value="disable">
-      <button type="submit" class="action-menu-item{disable_cls}" {disable_attr}>{html.escape(t("user.disable"))}</button>
-    </form>
-    <form class="action-menu-form" method="post" action="{admin_url("/user-action")}">
-      <input type="hidden" name="username" value="{username_esc}">
-      <input type="hidden" name="action" value="enable">
-      <button type="submit" class="action-menu-item{enable_cls}" {enable_attr}>{html.escape(t("user.enable"))}</button>
-    </form>
-  </div>
-</details>
-"""
+    prefix = {"username": u["username"]}
+    return action_menu(
+        admin_url("/user-action"),
+        prefix,
+        [
+            ({}, "reject", t("user.reject"), can_reject, True),
+            ({}, "disable", t("user.disable"), can_disable),
+            ({}, "enable", t("user.enable"), can_enable and show_enable_in_menu),
+        ],
+        aria_label=t("user.more_actions"),
+    )
 
 
 def _user_toolbar(u, *, can_approve, can_enable, needs_client, approve_attr, approve_client_field, form_id):
@@ -106,8 +87,9 @@ def _user_toolbar(u, *, can_approve, can_enable, needs_client, approve_attr, app
         can_enable=can_enable,
         show_enable_in_menu=show_enable_in_menu,
     )
+    solo = " user-toolbar--solo" if not menu else ""
 
-    return f'<div class="user-toolbar">{primary}{menu}</div>'
+    return f'<div class="user-toolbar{solo}">{primary}{menu}</div>'
 
 
 def _user_manage_panel(

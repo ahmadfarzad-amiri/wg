@@ -71,6 +71,7 @@ def handle(handler, data):
         days = (data.get("days") or "").strip()
         limit = (data.get("limit") or "").strip()
         vpn_mode = (data.get("vpn_mode") or "").strip().lower()
+        single_mode = (data.get("single_mode") or "").strip()
         if days:
             if not days.isdigit():
                 _render(handler, t("msg.invalid_days"))
@@ -85,12 +86,22 @@ def handle(handler, data):
             cmd.extend(["--vpn-mode", vpn_mode])
         if data.get("reset_usage"):
             cmd.append("--reset-usage")
-        if len(cmd) == 3:
+        messages = []
+        if len(cmd) > 3:
+            messages.append(run(cmd, timeout=CLIENT_CMD_TIMEOUT))
+        if single_mode:
+            if single_mode not in ("off", "ip", "endpoint"):
+                _render(handler, t("msg.invalid_single_mode"))
+                return
+            current_single = (status.get("single") or "off") if status else None
+            if single_mode != current_single:
+                messages.append(run([WG_CLIENT_SINGLE, client, single_mode]))
+        if not messages:
             _render(handler, t("msg.update_nothing"))
             return
-        out = run(cmd, timeout=CLIENT_CMD_TIMEOUT)
         log_admin_action("update", client)
-        _render(handler, tail_message(out))
+        combined = "\n".join(m for m in messages if m)
+        _render(handler, tail_message(combined))
         return
 
     if not meta_exists or not status:

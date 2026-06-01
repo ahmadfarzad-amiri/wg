@@ -1018,9 +1018,9 @@ body.modal-open{overflow:hidden}
 }
 
 .list-controls{
-  display:flex;
-  align-items:flex-end;
-  flex-wrap:wrap;
+  display:grid;
+  grid-template-columns:minmax(180px,1fr) auto auto;
+  align-items:end;
   gap:10px 12px;
   flex:1 1 100%;
   width:100%;
@@ -1030,9 +1030,7 @@ body.modal-open{overflow:hidden}
   display:flex;
   align-items:center;
   gap:10px;
-  flex:1 1 220px;
-  min-width:180px;
-  max-width:none;
+  min-width:0;
   margin-inline-start:0;
 }
 
@@ -1040,8 +1038,8 @@ body.modal-open{overflow:hidden}
   display:flex;
   flex-direction:column;
   gap:4px;
-  flex:0 1 160px;
   min-width:140px;
+  width:100%;
 }
 
 .list-control-label{
@@ -1066,7 +1064,8 @@ body.modal-open{overflow:hidden}
 
 .list-search-field{
   position:relative;
-  flex:1 1 260px;
+  min-width:0;
+  grid-column:1;
 }
 
 .list-search-input{
@@ -1568,6 +1567,14 @@ tr.client-row.is-list-hidden{
 
 .client-update-field--vpn{
   grid-column:span 2;
+}
+
+.client-update-field--full{
+  grid-column:1 / -1;
+}
+
+.client-update-actions--full{
+  grid-column:1 / -1;
 }
 
 .client-update-label{
@@ -2098,12 +2105,27 @@ tr.client-row.is-list-hidden{
     min-height:44px;
   }
 
+  .client-toolbar .action-menu-panel,
+  .user-toolbar .action-menu-panel{
+    top:auto;
+    bottom:calc(100% + 4px);
+  }
+
+  .user-toolbar--solo{
+    grid-template-columns:1fr;
+  }
+
   .client-subscription-grid{
     grid-template-columns:1fr;
   }
 
   .client-update-field--vpn{
     grid-column:auto;
+  }
+
+  .client-update-field--full .option-tab span{
+    font-size:10px;
+    padding:8px 6px;
   }
 
   .client-update-actions,
@@ -2136,15 +2158,15 @@ tr.client-row.is-list-hidden{
   }
 
   .list-controls{
-    flex-direction:column;
-    align-items:stretch;
+    grid-template-columns:1fr 1fr;
   }
 
-  .list-control,
-  .list-search{
-    flex:1 1 auto;
+  .list-search-field{
+    grid-column:1 / -1;
+  }
+
+  .list-control{
     min-width:0;
-    max-width:none;
   }
 }
 
@@ -3290,7 +3312,8 @@ input[readonly]:not(.config-textarea){
 
 .card-requests .list-section-head,
 .card-active .list-section-head,
-.card-users .list-section-head{
+.card-users .list-section-head,
+.card-clients .list-section-head{
   margin-bottom:4px;
 }
 
@@ -3320,15 +3343,15 @@ input[readonly]:not(.config-textarea){
 
   .list-filterable .list-controls{
     width:100%;
+    grid-template-columns:1fr 1fr;
   }
 
   .list-filterable .list-search-field{
-    flex:1 1 100%;
+    grid-column:1 / -1;
     min-width:0;
   }
 
   .list-filterable .list-control{
-    flex:1 1 calc(50% - 6px);
     min-width:0;
   }
 

@@ -1,5 +1,6 @@
 import html
 
+from admin_panel.components.action_menu import action_menu
 from admin_panel.config import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_SINGLE, admin_url
 from admin_panel.core.i18n import t, tf
 from admin_panel.core.labels import label_client_status, label_single_mode, label_vpn_mode
@@ -76,6 +77,7 @@ def _option_tabs(name, options, selected_value, group_label):
 def _client_update_form(c):
     name = html.escape(c["name"])
     vpn_mode = c.get("vpn_mode", "twohop")
+    single = c.get("single", "off")
     days_val = html.escape(c.get("update_days") or "", quote=True)
     limit_val = html.escape(c.get("update_limit") or "", quote=True)
     vpn_tabs = _option_tabs(
@@ -83,6 +85,16 @@ def _client_update_form(c):
         [("twohop", label_vpn_mode("twohop")), ("direct", label_vpn_mode("direct"))],
         vpn_mode,
         t("client.vpn_mode"),
+    )
+    single_tabs = _option_tabs(
+        "single_mode",
+        [
+            ("off", label_single_mode("off")),
+            ("ip", label_single_mode("ip")),
+            ("endpoint", label_single_mode("endpoint")),
+        ],
+        single,
+        t("client.device_limit"),
     )
 
     return f"""
@@ -102,11 +114,15 @@ def _client_update_form(c):
       <span class="client-update-label">{html.escape(t("client.vpn_mode"))}</span>
       {vpn_tabs}
     </div>
+    <div class="client-update-field client-update-field--full">
+      <span class="client-update-label">{html.escape(t("client.device_limit"))}</span>
+      {single_tabs}
+    </div>
     <label class="client-reset-usage">
       <input type="checkbox" name="reset_usage" value="1">
       <span>{html.escape(t("client.reset_usage"))}</span>
     </label>
-    <div class="client-update-actions">
+    <div class="client-update-actions client-update-actions--full">
       <button type="submit" class="btn btn-sm">{html.escape(t("client.update"))}</button>
     </div>
   </div>
@@ -114,76 +130,26 @@ def _client_update_form(c):
 """
 
 
-def _client_single_form(c):
-    name = html.escape(c["name"])
-    single = c.get("single", "off")
-    tabs = _option_tabs(
-        "single_mode",
-        [
-            ("off", label_single_mode("off")),
-            ("ip", label_single_mode("ip")),
-            ("endpoint", label_single_mode("endpoint")),
-        ],
-        single,
-        t("client.device_limit"),
-    )
-    return f"""
-<form class="inline-form client-limit-form" method="post" action="{admin_url("/client-action")}">
-  <input type="hidden" name="client" value="{name}">
-  <input type="hidden" name="action" value="set-single">
-  <div class="client-limit-row">
-    <span class="client-update-label">{html.escape(t("client.device_limit"))}</span>
-    {tabs}
-    <button type="submit" class="btn btn-sm dark">{html.escape(t("client.save"))}</button>
-  </div>
-</form>
-"""
-
-
 def _client_action_menu(c, assigned_users=None):
-    name = html.escape(c["name"])
     assigned_users = assigned_users or []
     can_enable = c["disabled"]
     can_disable = not c["disabled"]
     can_renew = c.get("expired") or c.get("over_limit")
+    remove_confirm = _remove_confirm_message(c["name"], assigned_users)
+    url = admin_url("/client-action")
+    prefix = {"client": c["name"]}
 
-    enable_cls = "" if can_enable else " is-disabled"
-    disable_cls = "" if can_disable else " is-disabled"
-    renew_cls = "" if can_renew else " is-disabled"
-    enable_attr = "" if can_enable else " disabled"
-    disable_attr = "" if can_disable else " disabled"
-    renew_attr = "" if can_renew else " disabled"
-
-    remove_confirm = html.escape(_remove_confirm_message(c["name"], assigned_users), quote=True)
-    more_label = html.escape(t("user.more_actions"))
-
-    return f"""
-<details class="action-menu">
-  <summary class="action-menu-trigger" aria-label="{more_label}">⋯</summary>
-  <div class="action-menu-panel">
-    <form class="action-menu-form" method="post" action="{admin_url("/client-action")}">
-      <input type="hidden" name="client" value="{name}">
-      <input type="hidden" name="action" value="renew">
-      <button type="submit" class="action-menu-item{renew_cls}" {renew_attr}>{html.escape(t("client.renew"))}</button>
-    </form>
-    <form class="action-menu-form" method="post" action="{admin_url("/client-action")}">
-      <input type="hidden" name="client" value="{name}">
-      <input type="hidden" name="action" value="enable">
-      <button type="submit" class="action-menu-item{enable_cls}" {enable_attr}>{html.escape(t("client.enable"))}</button>
-    </form>
-    <form class="action-menu-form" method="post" action="{admin_url("/client-action")}">
-      <input type="hidden" name="client" value="{name}">
-      <input type="hidden" name="action" value="disable">
-      <button type="submit" class="action-menu-item{disable_cls}" {disable_attr}>{html.escape(t("client.disable"))}</button>
-    </form>
-    <form class="action-menu-form" method="post" action="{admin_url("/client-action")}">
-      <input type="hidden" name="client" value="{name}">
-      <input type="hidden" name="action" value="remove">
-      <button type="submit" class="action-menu-item action-menu-item--danger" data-confirm="{remove_confirm}">{html.escape(t("client.remove"))}</button>
-    </form>
-  </div>
-</details>
-"""
+    return action_menu(
+        url,
+        prefix,
+        [
+            ({}, "renew", t("client.renew"), can_renew),
+            ({}, "enable", t("client.enable"), can_enable),
+            ({}, "disable", t("client.disable"), can_disable),
+            ({}, "remove", t("client.remove"), True, True, remove_confirm),
+        ],
+        aria_label=t("user.more_actions"),
+    )
 
 
 def _client_toolbar(c, assigned_users=None):
@@ -211,7 +177,6 @@ def _client_item(c, assigned_names, users_by_client_map):
     status = label_client_status(c["state_key"])
     assigned_users = users_by_client_map.get(c["name"], [])
     update_form = _client_update_form(c)
-    single_form = _client_single_form(c)
     toolbar = _client_toolbar(c, assigned_users)
     usage_bar = _usage_bar(c)
     vpn_label = html.escape(label_vpn_mode(c.get("vpn_mode", "twohop")))
@@ -278,7 +243,6 @@ def _client_item(c, assigned_names, users_by_client_map):
     <summary>{html.escape(t("client.edit_subscription"))}</summary>
     <div class="panel-expand-body client-subscription-body">
       {update_form}
-      {single_form}
     </div>
   </details>
 </div>
