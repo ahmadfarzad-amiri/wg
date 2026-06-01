@@ -53,15 +53,22 @@ def _client_actions(c, assigned_users=None):
         for m in ("twohop", "direct")
     }
 
-    vpn_form = f"""
-<form class="inline-form table-vpn-form" method="post" action="{admin_url("/client-action")}">
+    update_form = f"""
+<form class="inline-form client-update-form" method="post" action="{admin_url("/client-action")}">
   <input type="hidden" name="client" value="{name}">
-  <input type="hidden" name="action" value="set-vpn-mode">
+  <input type="hidden" name="action" value="update">
+  <input name="days" class="input-inline input-compact" placeholder="{html.escape(t("client.days"))}" inputmode="numeric" autocomplete="off">
+  <input name="limit" class="input-inline input-compact" placeholder="{html.escape(t("client.limit"))}" autocomplete="off">
   <select name="vpn_mode" class="table-select">
+    <option value="">{html.escape(t("client.vpn_unchanged"))}</option>
     <option value="twohop" {vpn_selected["twohop"]}>{html.escape(label_vpn_mode("twohop"))}</option>
     <option value="direct" {vpn_selected["direct"]}>{html.escape(label_vpn_mode("direct"))}</option>
   </select>
-  <button type="submit" class="dark btn-sm">{html.escape(t("client.save"))}</button>
+  <label class="client-reset-usage">
+    <input type="checkbox" name="reset_usage" value="1">
+    <span>{html.escape(t("client.reset_usage"))}</span>
+  </label>
+  <button type="submit" class="btn-sm">{html.escape(t("client.update"))}</button>
 </form>
 """
 
@@ -81,6 +88,7 @@ def _client_actions(c, assigned_users=None):
     remove_confirm = html.escape(_remove_confirm_message(c["name"], assigned_users), quote=True)
 
     buttons = f"""
+<div class="client-update-wrap">{update_form}</div>
 <div class="actions actions-compact">
   {config_btn}
   <form class="inline-form" method="post" action="{admin_url("/client-action")}">
@@ -105,7 +113,7 @@ def _client_actions(c, assigned_users=None):
   </form>
 </div>
 """
-    return vpn_form, single_form, buttons
+    return single_form, buttons
 
 
 def client_rows(clients, assigned_names=None, users_by_client_map=None):
@@ -116,7 +124,7 @@ def client_rows(clients, assigned_names=None, users_by_client_map=None):
     for c in clients:
         badge = _badge_class(c["state_key"])
         status = label_client_status(c["state_key"])
-        vpn_form, single_form, buttons = _client_actions(
+        single_form, buttons = _client_actions(
             c, users_by_client_map.get(c["name"], [])
         )
         vpn_badge = html.escape(label_vpn_mode(c.get("vpn_mode", "twohop")))
@@ -155,7 +163,7 @@ def client_rows(clients, assigned_names=None, users_by_client_map=None):
 <div class="rowcard" {item_attrs}>
   <div class="rowcard-title">{html.escape(c['name'])} <span class="badge {badge}">{html.escape(status)}</span></div>
   <div class="rowline"><div class="rowlabel">{html.escape(t("col.ip"))}</div><div class="rowvalue">{html.escape(c['ip'])}</div></div>
-  <div class="rowline"><div class="rowlabel">{html.escape(t("col.vpn_mode"))}</div><div class="rowvalue">{vpn_form}</div></div>
+  <div class="rowline"><div class="rowlabel">{html.escape(t("col.vpn_mode"))}</div><div class="rowvalue"><span class="badge vpn-badge">{vpn_badge}</span></div></div>
   <div class="rowline"><div class="rowlabel">{html.escape(t("col.usage"))}</div><div class="rowvalue">{html.escape(c['used'])} / {html.escape(c['limit'])}</div></div>
   <div class="rowline"><div class="rowlabel">{html.escape(t("col.last_connection"))}</div><div class="rowvalue">{html.escape(c['last'])}</div></div>
   <div class="rowline"><div class="rowlabel">{html.escape(t("col.endpoint"))}</div><div class="rowvalue">{html.escape(c['endpoint'])}</div></div>

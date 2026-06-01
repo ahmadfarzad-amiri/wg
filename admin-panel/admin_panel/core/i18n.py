@@ -227,6 +227,9 @@ _STRINGS = {
         "client.days": "مدت (روز)",
         "client.limit": "سقف حجم",
         "client.add": "افزودن",
+        "client.update": "به‌روزرسانی",
+        "client.reset_usage": "صفر کردن مصرف",
+        "client.vpn_unchanged": "مسیر — بدون تغییر",
         "client.vpn_mode": "مسیر VPN",
         "user.assign": "اختصاص",
         "user.add_config": "افزودن کانفیگ",
@@ -265,6 +268,8 @@ _STRINGS = {
         "msg.config_unassigned": "کانفیگ «{client}» از «{user}» جدا شد.",
         "msg.entry_endpoint_required": "Endpoint جدید را وارد کنید",
         "msg.exit_fields_required": "IP و کلید تونل خروجی الزامی است",
+        "msg.update_nothing": "حداقل یکی از مدت، سقف حجم، مسیر VPN یا صفر مصرف را وارد کنید.",
+        "msg.invalid_days": "مدت (روز) باید عدد باشد",
         "msg.client_not_found": "کلاینت پیدا نشد",
         "msg.client_already_active": "این کلاینت از قبل فعال است",
         "msg.client_already_disabled": "این کلاینت از قبل غیرفعال است",
@@ -545,6 +550,9 @@ _STRINGS = {
         "client.days": "Duration (days)",
         "client.limit": "Data cap",
         "client.add": "Add",
+        "client.update": "Update",
+        "client.reset_usage": "Reset usage",
+        "client.vpn_unchanged": "Path — no change",
         "client.vpn_mode": "VPN path",
         "user.assign": "Assign",
         "user.add_config": "Add config",
@@ -583,6 +591,8 @@ _STRINGS = {
         "msg.config_unassigned": "Config «{client}» removed from «{user}».",
         "msg.entry_endpoint_required": "Enter the new endpoint",
         "msg.exit_fields_required": "Exit IP and tunnel public key are required",
+        "msg.update_nothing": "Enter at least one of: days, limit, VPN path, or reset usage.",
+        "msg.invalid_days": "Days must be a number",
         "msg.client_not_found": "Client not found",
         "msg.client_already_active": "This client is already active",
         "msg.client_already_disabled": "This client is already disabled",
@@ -742,7 +752,5 @@ def js_i18n_script():
 
 
 def set_lang_cookie(handler, lang):
-    from admin_panel.config import BASE
-
-    attrs = f"Path={BASE}; Max-Age=31536000; SameSite=Lax{secure_cookie_attrs()}"
+    attrs = f"Path=/; Max-Age=31536000; SameSite=Lax{secure_cookie_attrs()}"
     handler.send_header("Set-Cookie", f"wg_lang={lang}; {attrs}")

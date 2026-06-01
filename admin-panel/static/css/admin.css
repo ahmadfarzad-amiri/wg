@@ -2313,7 +2313,10 @@ body.ltr .layout{direction:ltr}
 .infra-form h4{margin:0 0 10px;font-size:15px}
 .infra-form label{display:block;margin:8px 0 4px;font-size:13px;color:var(--muted)}
 .infra-form .field-input{width:100%;max-width:480px}
-.table-vpn-form{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.client-update-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.client-update-form .input-compact{min-width:72px;max-width:120px}
+.client-reset-usage{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);white-space:normal}
+.client-update-wrap{width:100%}
 @media(max-width:1100px){
   .user-field-configs{grid-area:client}
 }

@@ -73,7 +73,16 @@ def primary_client_name(user_id, fallback=""):
 
 
 def sync_primary_client_name(con, user_id):
-    primary = primary_client_name(user_id, "")
+    row = con.execute(
+        """
+        SELECT client_name FROM user_configs
+        WHERE user_id=?
+        ORDER BY sort_order ASC, id ASC
+        LIMIT 1
+        """,
+        (user_id,),
+    ).fetchone()
+    primary = row["client_name"] if row else ""
     con.execute(
         "UPDATE users SET client_name=? WHERE id=?",
         (primary, user_id),

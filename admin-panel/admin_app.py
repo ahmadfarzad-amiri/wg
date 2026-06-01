@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Legacy entry point — delegates to app.py / admin_panel package."""
-import sys
-from pathlib import Path
+from admin_panel.bootstrap import install_paths
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+install_paths()
 
 from admin_panel.main import run
 

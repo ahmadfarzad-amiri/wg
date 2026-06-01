@@ -8,7 +8,7 @@ from admin_panel.core.client_ops import (
     run_client_renew,
 )
 from admin_panel.core.i18n import t, tf
-from admin_panel.core.shell import run, safe_name, tail_message
+from admin_panel.core.shell import CLIENT_CMD_TIMEOUT, run, safe_name, tail_message
 from admin_panel.core.wireguard import all_client_meta, find_client_status
 from admin_panel.db.panel_queries import detach_users_from_client
 
@@ -60,6 +60,36 @@ def handle(handler, data):
             _render(handler, t("msg.invalid_vpn_mode"))
             return
         out = run([WG_CLIENT, "set-mode", client, mode])
+        _render(handler, tail_message(out))
+        return
+
+    if action == "update":
+        if not meta_exists:
+            _render(handler, t("msg.client_not_found"))
+            return
+        cmd = [WG_CLIENT, "update", client]
+        days = (data.get("days") or "").strip()
+        limit = (data.get("limit") or "").strip()
+        vpn_mode = (data.get("vpn_mode") or "").strip().lower()
+        if days:
+            if not days.isdigit():
+                _render(handler, t("msg.invalid_days"))
+                return
+            cmd.extend(["--days", days])
+        if limit:
+            cmd.extend(["--limit", limit])
+        if vpn_mode:
+            if vpn_mode not in ("direct", "twohop"):
+                _render(handler, t("msg.invalid_vpn_mode"))
+                return
+            cmd.extend(["--vpn-mode", vpn_mode])
+        if data.get("reset_usage"):
+            cmd.append("--reset-usage")
+        if len(cmd) == 3:
+            _render(handler, t("msg.update_nothing"))
+            return
+        out = run(cmd, timeout=CLIENT_CMD_TIMEOUT)
+        log_admin_action("update", client)
         _render(handler, tail_message(out))
         return
 

@@ -39,10 +39,11 @@ Usage:
   wg-client enforce
   wg-client sync-vpn-modes
   wg-client set-mode CLIENT_NAME direct|twohop
+  wg-client update CLIENT_NAME [options]
   wg-client qr CLIENT_NAME
   wg-client install-timer
 
-Options for add/renew:
+Options for add/renew/update:
   --ip IP                  Example: 10.10.10.20
   --days DAYS              Expire after X days. Example: --days 30
   --limit SIZE             Total data limit. Examples: 5G, 500M, 20GB
@@ -56,6 +57,7 @@ Examples:
   wg-client add farzad --days 30 --limit 20G --single-ip
   wg-client add ali --ip 10.10.10.20 --days 7 --limit 5G
   wg-client renew farzad --days 30 --limit 20G --single-ip
+  wg-client update farzad --days 30 --limit 50G --vpn-mode direct
   wg-client remove farzad
   wg-client list
   wg-client enforce
@@ -470,6 +472,7 @@ parse_opts() {
   OP_ENDPOINT="$DEFAULT_ENDPOINT"
   OP_SINGLE_MODE=""
   OP_VPN_MODE=""
+  OP_RESET_USAGE=""
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -505,11 +508,98 @@ parse_opts() {
         OP_SINGLE_MODE="off"
         shift
         ;;
+      --reset-usage)
+        OP_RESET_USAGE="1"
+        shift
+        ;;
       *)
         die "Unknown option: $1"
         ;;
     esac
   done
+}
+
+maybe_reenable_after_quota_update() {
+  if [ "$DISABLED" != "1" ]; then
+    return 0
+  fi
+
+  local now reason
+  now="$(now_epoch)"
+  reason="$(echo "${DISABLED_REASON:-}" | tr '[:upper:]' '[:lower:]')"
+
+  if [ "$EXPIRES_AT" != "0" ] && [ "$now" -ge "$EXPIRES_AT" ]; then
+    return 0
+  fi
+  if [ "$LIMIT_BYTES" != "0" ] && [ "$USED_BYTES" -ge "$LIMIT_BYTES" ]; then
+    return 0
+  fi
+
+  case "$reason" in
+    *expired*|*limit*|*quota*|*data\ limit*)
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+
+  backup_conf
+  add_client_block "$NAME" "$PUBLIC_KEY" "$IP"
+  add_live_peer "$PUBLIC_KEY" "$IP"
+  DISABLED="0"
+  DISABLED_REASON=""
+}
+
+update_client() {
+  local raw_name="${1:-}"
+  [ -n "$raw_name" ] || die "Client name required"
+  shift || true
+
+  parse_opts "$@"
+  check_base_files
+
+  local name changed=0
+  name="$(sanitize_name "$raw_name")"
+  load_meta "$name"
+
+  if [ -n "$OP_DAYS" ]; then
+    [[ "$OP_DAYS" =~ ^[0-9]+$ ]] || die "--days must be a number"
+    EXPIRES_AT=$(( $(now_epoch) + OP_DAYS * 86400 ))
+    changed=1
+  fi
+
+  if [ -n "$OP_LIMIT" ]; then
+    LIMIT_BYTES="$(parse_bytes "$OP_LIMIT")"
+    changed=1
+  fi
+
+  if [ "$OP_RESET_USAGE" = "1" ]; then
+    USED_BYTES="0"
+    LAST_TOTAL="0"
+    changed=1
+  fi
+
+  if [ -n "$OP_VPN_MODE" ]; then
+    VPN_MODE="$(normalize_vpn_mode "$OP_VPN_MODE")"
+    changed=1
+  fi
+
+  [ "$changed" = "1" ] || die "Nothing to update. Use --days, --limit, --vpn-mode, and/or --reset-usage"
+
+  maybe_reenable_after_quota_update
+  save_meta
+  apply_vpn_mode_for_loaded_client
+
+  echo "Updated client: $NAME"
+  echo "Client IP: $IP"
+  echo "Limit: $( [ "$LIMIT_BYTES" = "0" ] && echo unlimited || human_bytes "$LIMIT_BYTES" )"
+  echo "Expires: $(human_time "$EXPIRES_AT")"
+  echo "VPN mode: $VPN_MODE"
+  echo "Used: $(human_bytes "$USED_BYTES")"
+  echo "Disabled: $DISABLED"
+  if [ "$DISABLED" = "1" ]; then
+    echo "Reason: $DISABLED_REASON"
+  fi
 }
 
 add_client() {
@@ -1019,6 +1109,9 @@ main() {
       ;;
     set-mode)
       set_mode_client "$@"
+      ;;
+    update)
+      update_client "$@"
       ;;
     qr)
       qr_client "$@"
