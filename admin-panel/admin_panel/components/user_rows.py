@@ -160,7 +160,7 @@ def _user_manage_panel(
         config_hint = f"""
 <div class="user-manage-section user-manage-section--configs">
   <span class="user-manage-label">{html.escape(t("col.config"))}</span>
-  {_config_chips(username, configs)}
+  {_config_chips(u["username"], configs)}
 </div>
 """
 

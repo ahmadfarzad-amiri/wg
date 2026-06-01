@@ -2,7 +2,6 @@ from admin_panel.components.list_search import list_controls, request_filters, r
 from admin_panel.components.notice import notice
 from admin_panel.components.request_rows import request_list
 from admin_panel.core.i18n import t
-from admin_panel.core.statuses import RequestStatus
 
 
 def body(items, msg=""):
@@ -21,7 +20,6 @@ def body(items, msg=""):
         search_placeholder=t("list.search_requests"),
         filters=request_filters(),
         sorts=request_sorts(),
-        default_filter=RequestStatus.PENDING,
     )}
   </div>
   {listing}
