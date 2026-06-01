@@ -1,10 +1,13 @@
 """Application entry point."""
+import logging
 import os
 from http.server import ThreadingHTTPServer
 
 from client_panel.config import DB_PATH, HOST, PORT, REQ_DIR
 from client_panel.db import db
 from client_panel.server import Handler
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 
 def run():

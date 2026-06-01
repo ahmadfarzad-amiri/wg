@@ -4,6 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
+EnvironmentFile=-/etc/wireguard/entry-server.env
+Environment=PYTHONPATH=/opt/wg:/opt/wg/client-panel:/opt/wg/admin-panel
 Environment=WG_PANEL_HOST=0.0.0.0
 Environment=WG_PANEL_PORT=8088
 ExecStart=/usr/bin/python3 /opt/wg/client-panel/app.py

@@ -131,8 +131,23 @@ journalctl -u wg-panel -u wg-admin-panel -f
 Manual run (debug):
 
 ```bash
-sudo -E PYTHONPATH=/opt/wg/client-panel:/opt/wg/admin-panel \
+sudo -E PYTHONPATH=/opt/wg:/opt/wg/client-panel:/opt/wg/admin-panel \
   python3 /opt/wg/client-panel/app.py
+```
+
+**502 Bad Gateway on client panel:** nginx cannot reach the Python app. On the entry server:
+
+```bash
+# 1) Check service (look for ModuleNotFoundError: wg_common)
+sudo journalctl -u wg-panel -n 50 --no-pager
+
+# 2) Repair units + sync wg_common, then restart
+sudo bash deploy/update-panels.sh
+# or: sudo bash deploy/fix-panel-services.sh
+
+# 3) Direct health check (bypass nginx)
+curl -fsS http://127.0.0.1:8088/health
+ls -la /opt/wg/wg_common/__init__.py
 ```
 
 Admin panel entry point: `/opt/wg/admin-panel/app.py` (not `admin_app.py` — legacy alias only).

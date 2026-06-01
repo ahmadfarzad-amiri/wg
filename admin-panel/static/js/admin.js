@@ -295,6 +295,22 @@
     }
     refresh();
   });
+
+  document.addEventListener("click", function (e) {
+    var openBtn = e.target.closest(".user-open-manage");
+    if (!openBtn) {
+      return;
+    }
+    var panelId = openBtn.getAttribute("data-manage-for");
+    if (!panelId) {
+      return;
+    }
+    var panel = document.getElementById(panelId);
+    if (panel && panel.tagName === "DETAILS") {
+      panel.open = true;
+      panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  });
 })();
 
 (function () {

@@ -1,12 +1,15 @@
 """HTTP request routing."""
 import html
 import json
+import logging
 import os
 import re
 import time
 import urllib.parse
 
 from http.server import BaseHTTPRequestHandler
+
+log = logging.getLogger(__name__)
 
 from client_panel.actions import auth as auth_actions
 from client_panel.actions import password as password_actions
@@ -28,6 +31,20 @@ from client_panel.views import copy_config, dashboard, login, register, settings
 
 
 class Handler(BaseHTTPRequestHandler):
+    def log_message(self, fmt, *args):
+        log.info("%s - %s", self.address_string(), fmt % args)
+
+    def handle(self):
+        try:
+            super().handle()
+        except Exception:
+            log.exception("Unhandled client panel error on %s", self.path)
+            try:
+                if not self.wfile.closed:
+                    self.send_error(500, "Internal Server Error")
+            except Exception:
+                pass
+
     def send_html(self, content, code=200):
         content = re.sub(
             r'(<form[^>]*method="post"[^>]*>)',

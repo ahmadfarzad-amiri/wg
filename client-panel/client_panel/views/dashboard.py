@@ -4,6 +4,10 @@ from client_panel.components.status import client_status_section
 from client_panel.core.i18n import t
 
 
+def _text(val):
+    return html.escape("" if val is None else str(val))
+
+
 def _config_item_row(s):
     return f"""
 <article class="config-item card-inset">
@@ -12,9 +16,9 @@ def _config_item_row(s):
     <span class="badge {s['badge']}">{html.escape(s['state'])}</span>
   </div>
   <div class="config-item__grid grid">
-    <div class="item"><div class="label">{html.escape(t("dashboard.days_left"))}</div><div class="value">{html.escape(s['days_left'])}</div></div>
-    <div class="item"><div class="label">{html.escape(t("dashboard.usage_pct"))}</div><div class="value">{html.escape(s['percent'])}%</div></div>
-    <div class="item"><div class="label">{html.escape(t("dashboard.remaining"))}</div><div class="value">{html.escape(s['remaining'])}</div></div>
+    <div class="item"><div class="label">{html.escape(t("dashboard.days_left"))}</div><div class="value">{_text(s['days_left'])}</div></div>
+    <div class="item"><div class="label">{html.escape(t("dashboard.usage_pct"))}</div><div class="value">{_text(s['percent'])}%</div></div>
+    <div class="item"><div class="label">{html.escape(t("dashboard.remaining"))}</div><div class="value">{_text(s['remaining'])}</div></div>
   </div>
   <div class="config-item__actions">
     <a class="btn btn-sm" href="/config?client={html.escape(s['client_name'], quote=True)}">{html.escape(t("dashboard.download_one"))}</a>
@@ -94,7 +98,7 @@ def body(user, primary, all_statuses):
     </div>
     <div class="statrow">
       <div class="item"><div class="label">{html.escape(t("dashboard.expiry_date"))}</div><div class="value">{html.escape(s['expires'])}</div></div>
-      <div class="item"><div class="label">{html.escape(t("dashboard.days_left"))}</div><div class="value">{html.escape(s['days_left'])}</div></div>
+      <div class="item"><div class="label">{html.escape(t("dashboard.days_left"))}</div><div class="value">{_text(s['days_left'])}</div></div>
       <div class="item"><div class="label">{html.escape(t("dashboard.status"))}</div><div class="value"><span class="badge {s['badge']}">{html.escape(s['state'])}</span></div></div>
     </div>
   </section>

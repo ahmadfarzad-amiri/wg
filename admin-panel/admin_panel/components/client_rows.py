@@ -274,9 +274,9 @@ def _client_item(c, assigned_names, users_by_client_map):
   <div class="client-field client-field-actions" data-label="{html.escape(t("col.actions"))}">
     {toolbar}
   </div>
-  <details class="client-subscription">
+  <details class="client-subscription panel-expand">
     <summary>{html.escape(t("client.edit_subscription"))}</summary>
-    <div class="client-subscription-body">
+    <div class="panel-expand-body client-subscription-body">
       {update_form}
       {single_form}
     </div>

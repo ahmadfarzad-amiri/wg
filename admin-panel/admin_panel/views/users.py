@@ -1,11 +1,11 @@
 from admin_panel.components.list_search import list_controls, user_filters, user_sorts
 from admin_panel.components.notice import notice
-from admin_panel.components.user_rows import user_rows
+from admin_panel.components.user_rows import user_list
 from admin_panel.core.i18n import t
 
 
 def body(users, msg=""):
-    listing = user_rows(users)
+    listing = user_list(users)
     return f"""
 <h1>{t("users.title")}</h1>
 <p class="subtitle">{t("users.subtitle")}</p>

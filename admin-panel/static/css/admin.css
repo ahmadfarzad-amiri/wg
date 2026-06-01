@@ -1137,8 +1137,20 @@ tr.client-row.is-list-hidden{
   }
 }
 
-.card-users.list-filterable > .list-section-head{
-  margin-bottom:14px;
+.card-users.list-filterable,
+.card-users .user-list-wrap,
+.card-users .user-list{
+  width:100%;
+  min-width:0;
+  max-width:100%;
+}
+
+.user-list-wrap{
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+  margin-top:4px;
+  scrollbar-width:thin;
+  scrollbar-color:var(--line) transparent;
 }
 
 .user-list{
@@ -1146,107 +1158,218 @@ tr.client-row.is-list-hidden{
   flex-direction:column;
   gap:0;
   width:100%;
+  min-width:min(100%,640px);
 }
 
 .user-list-head,
 .user-item{
   display:grid;
-  grid-template-columns:48px minmax(80px,1fr) minmax(88px,108px) minmax(88px,100px) minmax(140px,1.4fr) minmax(180px,2fr);
-  gap:10px;
+  width:100%;
+  min-width:0;
+  box-sizing:border-box;
+  grid-template-columns:
+    minmax(160px,1.8fr)
+    minmax(96px,112px)
+    minmax(140px,1.5fr)
+    minmax(130px,1.3fr);
+  gap:12px;
   align-items:center;
-  padding:10px 8px;
+  padding:14px 12px;
 }
 
 .user-list-head{
   font-weight:700;
   color:#dbe4f2;
   border-bottom:1px solid var(--line);
-  font-size:clamp(10px,2.6vw,13px);
+  font-size:clamp(11px,2.4vw,13px);
+}
+
+.user-list-head > div{
+  min-width:0;
+}
+
+.user-list-body{
+  display:flex;
+  flex-direction:column;
+  width:100%;
+  min-width:0;
 }
 
 .user-item{
   border-bottom:1px solid var(--line);
+  transition:background .15s ease;
 }
 
 .user-item:last-child{
   border-bottom:0;
 }
 
-.user-field{
-  min-width:0;
-  font-size:clamp(10px,1.8vw,12px);
-  line-height:1.3;
+.user-item:hover{
+  background:rgba(255,255,255,.02);
 }
 
-.user-field-name{
+.user-item.is-list-hidden{
+  display:none;
+}
+
+.user-field{
+  min-width:0;
+  font-size:clamp(11px,1.8vw,13px);
+  line-height:1.35;
+}
+
+.user-field-actions{
+  justify-self:stretch;
+}
+
+.user-item-name{
+  display:block;
   font-weight:700;
+  font-size:14px;
+  color:#dbeafe;
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
 }
 
-.user-field-status{
+.user-item-meta{
+  display:block;
+  margin-top:2px;
+  font-size:11px;
+  color:var(--muted);
+}
+
+.user-field-configs{
   overflow:visible;
 }
 
-.user-field-client .user-client-input{
-  width:100%;
-  max-width:100%;
-  min-width:0;
-  box-sizing:border-box;
-  margin:0;
+.user-config-chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
 }
 
-.user-field-actions{
-  overflow:visible;
+.user-chip--empty{
+  font-size:11px;
+  color:var(--muted);
 }
 
-.user-action-buttons{
+.user-toolbar{
   display:flex;
   flex-wrap:wrap;
   align-items:center;
   gap:6px;
+  justify-content:flex-start;
+  width:100%;
 }
 
-.user-action-buttons form{
+.user-primary-action{
+  min-width:88px;
+}
+
+.user-manage.panel-expand,
+.client-subscription.panel-expand,
+.client-subscription{
+  grid-column:1 / -1;
+  margin-top:2px;
+  padding:0 0 4px;
+  width:100%;
+}
+
+.panel-expand summary,
+.client-subscription summary{
+  cursor:pointer;
   display:inline-flex;
-  margin:0;
-}
-
-.user-action-buttons .btn-sm,
-.user-action-buttons button{
-  white-space:nowrap;
-  padding:clamp(4px,0.8vw,8px) clamp(6px,1vw,10px);
-  font-size:clamp(10px,1.7vw,12px);
-  line-height:1.2;
-}
-
-.user-password-form{
-  display:flex;
   align-items:center;
-  flex-wrap:wrap;
   gap:6px;
-  width:100%;
-  margin-top:8px;
-  padding-top:8px;
+  padding:6px 12px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:rgba(255,255,255,.03);
+  color:var(--cyan);
+  font-size:12px;
+  font-weight:600;
+  list-style:none;
+  user-select:none;
+  transition:border-color .15s ease,background .15s ease;
+}
+
+.panel-expand summary::-webkit-details-marker,
+.client-subscription summary::-webkit-details-marker{display:none}
+
+.panel-expand summary:hover,
+.client-subscription summary:hover{
+  border-color:rgba(56,189,248,.35);
+  background:rgba(56,189,248,.06);
+}
+
+.panel-expand[open] summary,
+.client-subscription[open] summary{
+  border-color:rgba(56,189,248,.4);
+  background:rgba(56,189,248,.1);
+  margin-bottom:12px;
+}
+
+.panel-expand-body,
+.client-subscription-body{
+  padding:14px 16px;
+  border:1px solid var(--line);
+  border-radius:var(--radius-md);
+  background:rgba(17,28,46,.65);
+}
+
+.user-manage-section{
+  padding-top:12px;
+  margin-top:12px;
   border-top:1px solid rgba(255,255,255,.08);
 }
 
-.user-password-form .user-password-input{
-  flex:1 1 140px;
+.user-manage-section:first-child{
+  padding-top:0;
+  margin-top:0;
+  border-top:0;
+}
+
+.user-manage-label{
+  display:block;
+  margin-bottom:8px;
+  font-size:11px;
+  font-weight:600;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+
+.user-manage-row{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px 10px;
+}
+
+.user-manage-row .field-input,
+.user-manage-row .user-client-input,
+.user-manage-row .user-password-input{
+  flex:1 1 180px;
   min-width:0;
   max-width:none;
   margin:0;
+  box-sizing:border-box;
 }
 
-.user-password-form .btn-sm{
-  flex:0 0 auto;
+.user-manage-hint{
+  margin:0 0 10px;
+  font-size:12px;
 }
 
 .user-list-empty{
   padding:24px 12px;
   text-align:center;
   color:var(--muted);
+}
+
+.card-users.list-filterable > .list-section-head{
+  margin-bottom:14px;
 }
 
 /* Client list */
@@ -1427,50 +1550,6 @@ tr.client-row.is-list-hidden{
 
 .client-download{
   min-width:88px;
-}
-
-.client-subscription{
-  grid-column:1 / -1;
-  margin-top:2px;
-  padding:0 0 4px;
-  width:100%;
-}
-
-.client-subscription summary{
-  cursor:pointer;
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  padding:6px 12px;
-  border:1px solid var(--line);
-  border-radius:999px;
-  background:rgba(255,255,255,.03);
-  color:var(--cyan);
-  font-size:12px;
-  font-weight:600;
-  list-style:none;
-  user-select:none;
-  transition:border-color .15s ease,background .15s ease;
-}
-
-.client-subscription summary::-webkit-details-marker{display:none}
-
-.client-subscription summary:hover{
-  border-color:rgba(56,189,248,.35);
-  background:rgba(56,189,248,.06);
-}
-
-.client-subscription[open] summary{
-  border-color:rgba(56,189,248,.4);
-  background:rgba(56,189,248,.1);
-  margin-bottom:12px;
-}
-
-.client-subscription-body{
-  padding:14px 16px;
-  border:1px solid var(--line);
-  border-radius:var(--radius-md);
-  background:rgba(17,28,46,.65);
 }
 
 .client-subscription-grid{
@@ -1901,22 +1980,22 @@ tr.client-row.is-list-hidden{
 }
 
 @media(max-width:1100px){
-  .user-list-head{
-    display:none;
-  }
-
+  .user-list-head,
   .client-list-head{
     display:none;
   }
 
+  .user-list,
   .client-list{
     min-width:0;
   }
 
+  .user-list-wrap,
   .client-list-wrap{
     overflow:visible;
   }
 
+  .user-list-body,
   .client-list-body{
     display:flex;
     flex-direction:column;
@@ -1924,14 +2003,9 @@ tr.client-row.is-list-hidden{
     padding-top:4px;
   }
 
+  .user-item,
   .client-item{
     grid-template-columns:minmax(0,1fr) auto;
-    grid-template-areas:
-      "name status"
-      "usage usage"
-      "duration duration"
-      "actions actions"
-      "subscription subscription";
     gap:10px 12px;
     padding:16px;
     border:1px solid var(--line);
@@ -1940,25 +2014,50 @@ tr.client-row.is-list-hidden{
     border-bottom:0;
   }
 
+  .user-item:last-child,
   .client-item:last-child{
     border-bottom:0;
   }
 
-  .client-field-name{grid-area:name}
-  .client-field-status{grid-area:status;justify-self:end;align-self:start}
+  .client-item{
+    grid-template-areas:
+      "name status"
+      "usage usage"
+      "duration duration"
+      "actions actions"
+      "subscription subscription";
+  }
+
+  .user-item{
+    grid-template-areas:
+      "name status"
+      "configs configs"
+      "actions actions"
+      "manage manage";
+  }
+
+  .client-field-name,
+  .user-field-name{grid-area:name}
+  .client-field-status,
+  .user-field-status{grid-area:status;justify-self:end;align-self:start}
   .client-field-usage{grid-area:usage}
   .client-field-duration{grid-area:duration}
-  .client-field-actions{grid-area:actions}
+  .client-field-actions,
+  .user-field-actions{grid-area:actions}
+  .user-field-configs{grid-area:configs}
   .client-subscription{grid-area:subscription;margin-top:0}
+  .user-manage{grid-area:manage;margin-top:0}
 
-  .client-item-name{
+  .client-item-name,
+  .user-item-name{
     font-size:16px;
     white-space:normal;
     overflow:visible;
     text-overflow:clip;
   }
 
-  .client-field::before{
+  .client-field::before,
+  .user-field::before{
     content:attr(data-label);
     display:block;
     font-size:11px;
@@ -1970,18 +2069,22 @@ tr.client-row.is-list-hidden{
   }
 
   .client-field-name::before,
-  .client-field-status::before{
+  .client-field-status::before,
+  .user-field-name::before,
+  .user-field-status::before{
     display:none;
   }
 
-  .client-toolbar{
+  .client-toolbar,
+  .user-toolbar{
     justify-content:stretch;
     display:grid;
     grid-template-columns:1fr auto;
     gap:8px;
   }
 
-  .client-download{
+  .client-download,
+  .user-primary-action{
     min-width:0;
     min-height:44px;
     display:flex;
@@ -1989,7 +2092,8 @@ tr.client-row.is-list-hidden{
     justify-content:center;
   }
 
-  .client-toolbar .action-menu-trigger{
+  .client-toolbar .action-menu-trigger,
+  .user-toolbar .action-menu-trigger{
     min-width:44px;
     min-height:44px;
   }
@@ -2002,7 +2106,8 @@ tr.client-row.is-list-hidden{
     grid-column:auto;
   }
 
-  .client-update-actions{
+  .client-update-actions,
+  .user-manage-row .btn{
     justify-content:stretch;
   }
 
@@ -2011,37 +2116,17 @@ tr.client-row.is-list-hidden{
     min-height:44px;
   }
 
-  .client-limit-row{
+  .client-limit-row,
+  .user-manage-row{
     flex-direction:column;
     align-items:stretch;
   }
 
-  .client-limit-row .btn{
+  .client-limit-row .btn,
+  .user-manage-row .btn,
+  .user-manage-row .field-input{
     width:100%;
     min-height:44px;
-  }
-
-  .user-item{
-    grid-template-columns:48px minmax(0,1fr) auto;
-    grid-template-areas:
-      "id name status"
-      "registered registered registered"
-      "client client client"
-      "actions actions actions";
-    gap:8px 10px;
-    padding:12px 10px;
-  }
-
-  .user-field-id{grid-area:id;color:var(--muted)}
-  .user-field-name{grid-area:name}
-  .user-field-status{grid-area:status;justify-self:end}
-  .user-field-registered{grid-area:registered;color:var(--muted);font-size:12px}
-  .user-field-client{grid-area:client}
-  .user-field-actions{grid-area:actions}
-
-  .user-action-buttons{
-    width:100%;
-    justify-content:flex-start;
   }
 }
 
@@ -2064,123 +2149,9 @@ tr.client-row.is-list-hidden{
 }
 
 @media(max-width:720px){
-  .card-users{
+  .card-users,
+  .card-clients{
     padding:12px;
-  }
-
-  .user-item{
-    grid-template-columns:minmax(0,1fr) auto;
-    grid-template-areas:
-      "name status"
-      "id id"
-      "registered registered"
-      "client client"
-      "actions actions";
-    gap:10px;
-    padding:14px;
-    border:1px solid var(--line);
-    border-radius:16px;
-    background:#142033;
-  }
-
-  .user-item:last-child{
-    border-bottom:1px solid var(--line);
-  }
-
-  .user-field-id{
-    grid-area:id;
-    color:var(--muted);
-    font-size:12px;
-  }
-
-  .user-field-name{
-    grid-area:name;
-    white-space:normal;
-    overflow:visible;
-    text-overflow:clip;
-    font-size:16px;
-  }
-
-  .user-field-status{
-    grid-area:status;
-    justify-self:end;
-    align-self:start;
-  }
-
-  .user-field-client{
-    grid-area:client;
-  }
-
-  .user-field-actions{
-    grid-area:actions;
-  }
-
-  .user-field-client .user-client-input{
-    min-width:0;
-  }
-
-  .user-action-buttons{
-    display:grid;
-    grid-template-columns:repeat(4,minmax(0,1fr));
-    gap:8px;
-    width:100%;
-  }
-
-  .user-action-buttons form{
-    display:block;
-    min-width:0;
-  }
-
-  .user-action-buttons .inline-form{
-    display:block;
-    width:100%;
-  }
-
-  .user-action-buttons .btn-sm,
-  .user-action-buttons button{
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    width:100%;
-    box-sizing:border-box;
-    padding:8px 4px;
-    font-size:11px;
-  }
-
-  .user-action-buttons .user-password-form{
-    grid-column:1/-1;
-    display:flex;
-    width:100%;
-  }
-
-  .user-action-buttons .user-password-form .btn-sm{
-    width:auto;
-  }
-}
-
-@media(max-width:520px){
-  .user-action-buttons{
-    grid-template-columns:repeat(2,minmax(0,1fr));
-  }
-
-  .user-action-buttons .btn-sm,
-  .user-action-buttons button{
-    padding:10px 8px;
-    font-size:12px;
-  }
-}
-
-@media(max-width:380px){
-  .user-item{
-    padding:12px;
-  }
-
-  .user-field-name{
-    font-size:15px;
-  }
-
-  .user-action-buttons{
-    grid-template-columns:1fr;
   }
 }
 
@@ -3385,108 +3356,8 @@ input[readonly]:not(.config-textarea){
 }
 
 @media(max-width:900px){
-  .user-list-head{display:none}
-
   .user-list-body{
-    display:flex;
-    flex-direction:column;
     gap:10px;
-  }
-
-  .user-item{
-    grid-template-columns:minmax(0,1fr) auto;
-    grid-template-areas:
-      "name status"
-      "id id"
-      "registered registered"
-      "client client"
-      "actions actions";
-    gap:10px;
-    padding:14px;
-    border:1px solid var(--line);
-    border-radius:16px;
-    background:#142033;
-    border-bottom:0;
-  }
-
-  .user-item:last-child{
-    border-bottom:0;
-  }
-
-  .user-field-name{
-    font-size:16px;
-    white-space:normal;
-    overflow:visible;
-    text-overflow:clip;
-  }
-
-  .user-action-buttons{
-    display:grid;
-    grid-template-columns:repeat(2,minmax(0,1fr));
-    gap:8px;
-    width:100%;
-  }
-
-  .user-action-buttons form,
-  .user-action-buttons .inline-form{
-    display:block;
-    width:100%;
-    min-width:0;
-  }
-
-  .user-action-buttons .btn-sm,
-  .user-action-buttons button{
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    width:100%;
-    min-height:44px;
-    padding:10px 8px;
-    font-size:13px;
-    box-sizing:border-box;
-  }
-
-  .user-action-buttons .user-approve-form{
-    grid-column:1/-1;
-    display:flex;
-    flex-direction:column;
-    gap:8px;
-  }
-
-  .user-action-buttons .user-client-input{
-    width:100%;
-    max-width:none;
-    min-height:44px;
-  }
-
-  .user-action-buttons .user-approve-form .btn-sm{
-    width:100%;
-  }
-
-  .user-more-actions{
-    grid-column:1/-1;
-  }
-
-  .user-more-actions .user-password-form{
-    flex-direction:column;
-    align-items:stretch;
-  }
-
-  .user-more-actions .user-password-input,
-  .user-more-actions .btn-sm{
-    width:100%;
-    min-height:44px;
-  }
-
-  .user-assign-config-form{
-    flex-direction:column;
-    align-items:stretch;
-  }
-
-  .user-assign-config-form .user-client-input,
-  .user-assign-config-form .btn-sm{
-    width:100%;
-    min-height:44px;
   }
 
   .rowcard{
@@ -3593,10 +3464,6 @@ input[readonly]:not(.config-textarea){
   body.admin-shell .bottom-nav-icon .bottom-svg{
     width:22px;
     height:22px;
-  }
-
-  .user-action-buttons{
-    grid-template-columns:1fr;
   }
 
   .rowactions .client-action-buttons,

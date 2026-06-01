@@ -7,9 +7,19 @@ from admin_panel.core.labels import badge_user_status, label_user_status
 from admin_panel.core.statuses import UserStatus
 
 
+def _format_registered(created_at):
+    try:
+        ts = int(created_at or 0)
+    except (TypeError, ValueError):
+        return "—"
+    if ts <= 0:
+        return "—"
+    return time.strftime("%Y-%m-%d", time.localtime(ts))
+
+
 def _config_chips(username, configs):
     if not configs:
-        return f'<span class="muted">{html.escape(t("user.no_configs"))}</span>'
+        return f'<span class="user-chip user-chip--empty">{html.escape(t("user.no_configs"))}</span>'
     chips = []
     for cfg in configs:
         name = html.escape(cfg["client_name"])
@@ -27,178 +37,283 @@ def _config_chips(username, configs):
     return f'<div class="user-config-chips">{"".join(chips)}</div>'
 
 
-def _format_registered(created_at):
-    try:
-        ts = int(created_at or 0)
-    except (TypeError, ValueError):
-        return "—"
-    if ts <= 0:
-        return "—"
-    return time.strftime("%Y-%m-%d", time.localtime(ts))
+def _user_action_menu(u, *, can_reject, can_disable, can_enable, show_enable_in_menu):
+    username_esc = html.escape(u["username"])
+    reject_cls = "" if can_reject else " is-disabled"
+    disable_cls = "" if can_disable else " is-disabled"
+    enable_cls = "" if can_enable and show_enable_in_menu else " is-disabled"
+    reject_attr = "" if can_reject else " disabled"
+    disable_attr = "" if can_disable else " disabled"
+    enable_attr = "" if can_enable and show_enable_in_menu else " disabled"
+    more_label = html.escape(t("user.more_actions"))
+
+    return f"""
+<details class="action-menu">
+  <summary class="action-menu-trigger" aria-label="{more_label}">⋯</summary>
+  <div class="action-menu-panel">
+    <form class="action-menu-form" method="post" action="{admin_url("/user-action")}">
+      <input type="hidden" name="username" value="{username_esc}">
+      <input type="hidden" name="action" value="reject">
+      <button type="submit" class="action-menu-item action-menu-item--danger{reject_cls}" {reject_attr}>{html.escape(t("user.reject"))}</button>
+    </form>
+    <form class="action-menu-form" method="post" action="{admin_url("/user-action")}">
+      <input type="hidden" name="username" value="{username_esc}">
+      <input type="hidden" name="action" value="disable">
+      <button type="submit" class="action-menu-item{disable_cls}" {disable_attr}>{html.escape(t("user.disable"))}</button>
+    </form>
+    <form class="action-menu-form" method="post" action="{admin_url("/user-action")}">
+      <input type="hidden" name="username" value="{username_esc}">
+      <input type="hidden" name="action" value="enable">
+      <button type="submit" class="action-menu-item{enable_cls}" {enable_attr}>{html.escape(t("user.enable"))}</button>
+    </form>
+  </div>
+</details>
+"""
 
 
-def user_rows(users):
-    items = ""
-    for u in users:
-        status = u["status"]
-        username = u["username"]
-        username_esc = html.escape(username)
-        configs = u.get("configs") or []
+def _user_toolbar(u, *, can_approve, can_enable, needs_client, approve_attr, approve_client_field, form_id):
+    username_esc = html.escape(u["username"])
+    primary = ""
 
-        needs_client = not configs and not u.get("client_name")
-        can_approve = status in (UserStatus.PENDING, UserStatus.REJECTED) or (
-            status == UserStatus.DISABLED and needs_client
-        )
-        can_reject = status == UserStatus.PENDING
-        can_disable = status == UserStatus.APPROVED
-        can_enable = status == UserStatus.DISABLED and not needs_client
-        can_assign_more = status == UserStatus.APPROVED
-        approve_label = (
-            t("user.approve_with_config")
-            if needs_client
-            and status in (UserStatus.PENDING, UserStatus.REJECTED, UserStatus.DISABLED)
-            else t("user.approve")
-        )
-
-        if can_approve:
-            approve_attr = ""
-            approve_input = ""
-        elif status == UserStatus.DISABLED:
-            approve_attr = f'disabled title="{html.escape(t("user.title_client_assigned"), quote=True)}"'
-            approve_input = "disabled"
-        else:
-            approve_attr = f'disabled title="{html.escape(t("user.title_already_approved"), quote=True)}"'
-            approve_input = "disabled"
-        reject_attr = "" if can_reject else f'disabled title="{html.escape(t("user.title_pending_only"), quote=True)}"'
-        disable_attr = "" if can_disable else f'disabled title="{html.escape(t("user.title_approved_only"), quote=True)}"'
-        enable_attr = (
-            ""
-            if can_enable
-            else (
-                f'disabled title="{html.escape(t("user.title_assign_client_first"), quote=True)}"'
-                if status == UserStatus.DISABLED
-                else f'disabled title="{html.escape(t("user.title_disabled_only"), quote=True)}"'
-            )
-        )
-
-        badge = badge_user_status(status)
-        form_id = f"user-approve-{u['id']}"
-
-        chips_html = _config_chips(username, configs)
-
-        assign_form = ""
-        if can_assign_more:
-            assign_form = f"""
-<form class="inline-form user-assign-config-form" method="post" action="{admin_url("/user-action")}">
+    if can_approve and not needs_client:
+        primary = f"""
+<form class="inline-form user-quick-form" method="post" action="{admin_url("/user-action")}">
+  <input type="hidden" name="action" value="approve">
   <input type="hidden" name="username" value="{username_esc}">
-  <input type="hidden" name="action" value="assign-config">
-  <input name="client" class="input-inline user-client-input" placeholder="{html.escape(t("user.client_name_placeholder"))}" required autocomplete="off">
-  <button type="submit" class="btn-sm">{html.escape(t("user.add_config"))}</button>
+  {approve_client_field}
+  <button type="submit" class="btn btn-sm user-primary-action" {approve_attr}>{html.escape(t("user.approve"))}</button>
 </form>
 """
-
-        client_cell = f"""
-<div class="user-configs-cell">
-  {chips_html}
-  {assign_form}
-</div>
+    elif can_enable:
+        primary = f"""
+<form class="inline-form user-quick-form" method="post" action="{admin_url("/user-action")}">
+  <input type="hidden" name="username" value="{username_esc}">
+  <input type="hidden" name="action" value="enable">
+  <button type="submit" class="btn btn-sm user-primary-action">{html.escape(t("user.enable"))}</button>
+</form>
 """
+    elif can_approve and needs_client:
+        primary = (
+            f'<button type="button" class="btn btn-sm user-primary-action user-open-manage" '
+            f'data-manage-for="{form_id}">{html.escape(t("user.approve_with_config"))}</button>'
+        )
 
-        if u.get("client_name") and not configs:
-            approve_client_field = (
-                f'<input type="hidden" name="client" value="{html.escape(u["client_name"])}">'
-            )
-        elif needs_client:
-            approve_client_field = ""
-        else:
-            approve_client_field = (
-                f'<input type="hidden" name="client" value="{html.escape(configs[0]["client_name"])}">'
-                if configs
-                else ""
-            )
+    show_enable_in_menu = can_enable and can_approve and not needs_client
+    menu = _user_action_menu(
+        u,
+        can_reject=u["status"] == UserStatus.PENDING,
+        can_disable=u["status"] == UserStatus.APPROVED,
+        can_enable=can_enable,
+        show_enable_in_menu=show_enable_in_menu,
+    )
 
-        approve_client_input = ""
-        if needs_client:
-            req = "required" if can_approve else ""
-            approve_client_input = (
-                f'<input name="client" form="{form_id}" placeholder="{html.escape(t("user.client_name_hint"))}" '
-                f'class="input-inline user-client-input" {approve_input} {req}>'
-            )
+    return f'<div class="user-toolbar">{primary}{menu}</div>'
 
-        primary_actions = f"""
-<div class="user-action-buttons user-action-primary">
+
+def _user_manage_panel(
+    u,
+    *,
+    form_id,
+    can_approve,
+    can_assign_more,
+    needs_client,
+    approve_attr,
+    approve_input,
+    approve_client_field,
+    approve_client_input,
+    approve_label,
+    configs,
+):
+    username_esc = html.escape(u["username"])
+
+    approve_section = ""
+    if can_approve or needs_client or u["status"] in (UserStatus.PENDING, UserStatus.REJECTED, UserStatus.DISABLED):
+        approve_section = f"""
+<div class="user-manage-section">
+  <span class="user-manage-label">{html.escape(t("user.approve"))}</span>
   <form id="{form_id}" class="inline-form user-approve-form" method="post" action="{admin_url("/user-action")}">
     <input type="hidden" name="action" value="approve">
     <input type="hidden" name="username" value="{username_esc}">
     {approve_client_field}
-    {approve_client_input}
-    <button type="submit" class="btn-sm" {approve_attr}>{html.escape(approve_label)}</button>
-  </form>
-  <form class="inline-form" method="post" action="{admin_url("/user-action")}">
-    <input type="hidden" name="username" value="{username_esc}">
-    <input type="hidden" name="action" value="reject">
-    <button type="submit" class="bad btn-sm" {reject_attr}>{html.escape(t("user.reject"))}</button>
-  </form>
-  <form class="inline-form" method="post" action="{admin_url("/user-action")}">
-    <input type="hidden" name="username" value="{username_esc}">
-    <input type="hidden" name="action" value="disable">
-    <button type="submit" class="dark btn-sm" {disable_attr}>{html.escape(t("user.disable"))}</button>
-  </form>
-  <form class="inline-form" method="post" action="{admin_url("/user-action")}">
-    <input type="hidden" name="username" value="{username_esc}">
-    <input type="hidden" name="action" value="enable">
-    <button type="submit" class="btn-sm" {enable_attr}>{html.escape(t("user.enable"))}</button>
+    <div class="user-manage-row">
+      {approve_client_input}
+      <button type="submit" class="btn btn-sm" {approve_attr}>{html.escape(approve_label)}</button>
+    </div>
   </form>
 </div>
 """
 
-        more_actions = f"""
-<details class="user-more-actions">
-  <summary>{html.escape(t("user.more_actions"))}</summary>
+    assign_section = ""
+    if can_assign_more:
+        assign_section = f"""
+<div class="user-manage-section">
+  <span class="user-manage-label">{html.escape(t("user.add_config"))}</span>
+  <form class="inline-form user-assign-config-form" method="post" action="{admin_url("/user-action")}">
+    <input type="hidden" name="username" value="{username_esc}">
+    <input type="hidden" name="action" value="assign-config">
+    <div class="user-manage-row">
+      <input name="client" class="field-input user-client-input" placeholder="{html.escape(t("user.client_name_placeholder"))}" required autocomplete="off">
+      <button type="submit" class="btn btn-sm">{html.escape(t("user.add_config"))}</button>
+    </div>
+  </form>
+</div>
+"""
+
+    password_section = f"""
+<div class="user-manage-section">
+  <span class="user-manage-label">{html.escape(t("user.change_password"))}</span>
   <form class="user-password-form inline-form" method="post" action="{admin_url("/user-action")}">
     <input type="hidden" name="username" value="{username_esc}">
     <input type="hidden" name="action" value="change-password">
-    <input type="password" name="new_password" placeholder="{html.escape(t("user.new_password"))}" class="input-inline user-password-input" minlength="6" required autocomplete="new-password">
-    <button type="submit" class="dark btn-sm">{html.escape(t("user.change_password"))}</button>
+    <div class="user-manage-row">
+      <input type="password" name="new_password" placeholder="{html.escape(t("user.new_password"))}" class="field-input user-password-input" minlength="6" required autocomplete="new-password">
+      <button type="submit" class="btn btn-sm dark">{html.escape(t("user.change_password"))}</button>
+    </div>
   </form>
-</details>
-"""
-
-        actions = primary_actions + more_actions
-
-        status_label = label_user_status(status)
-        config_names = [c["client_name"] for c in configs] or ([u["client_name"]] if u.get("client_name") else [])
-        client_name_raw = " ".join(config_names)
-        created_at = int(u["created_at"] or 0)
-        registered = _format_registered(created_at)
-        sort_name = html.escape(username.lower())
-        sort_client = html.escape(client_name_raw.lower())
-        sort_status = html.escape(status)
-        search_text = html.escape(
-            " ".join([str(u["id"]), username, client_name_raw, status, status_label, registered]).lower()
-        )
-
-        items += f"""
-<div class="user-item" data-list-item data-list-primary data-status="{sort_status}" data-sort-id="{u['id']}" data-sort-name="{sort_name}" data-sort-client="{sort_client}" data-sort-created="{created_at}" data-search="{search_text}">
-  <div class="user-field user-field-id" data-label="{html.escape(t("col.id"))}">{u['id']}</div>
-  <div class="user-field user-field-name" data-label="{html.escape(t("col.user"))}">{username_esc}</div>
-  <div class="user-field user-field-status" data-label="{html.escape(t("col.status"))}"><span class="badge {badge}">{html.escape(status_label)}</span></div>
-  <div class="user-field user-field-registered" data-label="{html.escape(t("col.registered"))}">{html.escape(registered)}</div>
-  <div class="user-field user-field-client user-field-configs" data-label="{html.escape(t("col.config"))}">{client_cell}</div>
-  <div class="user-field user-field-actions" data-label="{html.escape(t("col.actions"))}">{actions}</div>
 </div>
 """
 
-    if not items:
-        items = f'<div class="user-list-empty" data-list-static-empty>{html.escape(t("empty.no_users"))}</div>'
+    config_hint = ""
+    if configs:
+        config_hint = f'<p class="user-manage-hint muted">{html.escape(t("col.config"))}: {len(configs)}</p>'
 
     return f"""
+<details class="user-manage panel-expand" id="{form_id}">
+  <summary>{html.escape(t("user.manage"))}</summary>
+  <div class="panel-expand-body user-manage-body">
+    {config_hint}
+    {approve_section}
+    {assign_section}
+    {password_section}
+  </div>
+</details>
+"""
+
+
+def _user_item(u):
+    status = u["status"]
+    username = u["username"]
+    username_esc = html.escape(username)
+    configs = u.get("configs") or []
+
+    needs_client = not configs and not u.get("client_name")
+    can_approve = status in (UserStatus.PENDING, UserStatus.REJECTED) or (
+        status == UserStatus.DISABLED and needs_client
+    )
+    can_enable = status == UserStatus.DISABLED and not needs_client
+    can_assign_more = status == UserStatus.APPROVED
+    approve_label = (
+        t("user.approve_with_config")
+        if needs_client
+        and status in (UserStatus.PENDING, UserStatus.REJECTED, UserStatus.DISABLED)
+        else t("user.approve")
+    )
+
+    if can_approve:
+        approve_attr = ""
+        approve_input = ""
+    elif status == UserStatus.DISABLED:
+        approve_attr = f'disabled title="{html.escape(t("user.title_client_assigned"), quote=True)}"'
+        approve_input = "disabled"
+    else:
+        approve_attr = f'disabled title="{html.escape(t("user.title_already_approved"), quote=True)}"'
+        approve_input = "disabled"
+
+    badge = badge_user_status(status)
+    form_id = f"user-manage-{u['id']}"
+    chips_html = _config_chips(username, configs)
+
+    if u.get("client_name") and not configs:
+        approve_client_field = (
+            f'<input type="hidden" name="client" value="{html.escape(u["client_name"])}">'
+        )
+    elif needs_client:
+        approve_client_field = ""
+    else:
+        approve_client_field = (
+            f'<input type="hidden" name="client" value="{html.escape(configs[0]["client_name"])}">'
+            if configs
+            else ""
+        )
+
+    approve_client_input = ""
+    if needs_client:
+        req = "required" if can_approve else ""
+        approve_client_input = (
+            f'<input name="client" placeholder="{html.escape(t("user.client_name_hint"))}" '
+            f'class="field-input user-client-input" {approve_input} {req} autocomplete="off">'
+        )
+
+    toolbar = _user_toolbar(
+        u,
+        can_approve=can_approve,
+        can_enable=can_enable,
+        needs_client=needs_client,
+        approve_attr=approve_attr,
+        approve_client_field=approve_client_field,
+        form_id=form_id,
+    )
+    manage_panel = _user_manage_panel(
+        u,
+        form_id=form_id,
+        can_approve=can_approve,
+        can_assign_more=can_assign_more,
+        needs_client=needs_client,
+        approve_attr=approve_attr,
+        approve_input=approve_input,
+        approve_client_field=approve_client_field,
+        approve_client_input=approve_client_input,
+        approve_label=approve_label,
+        configs=configs,
+    )
+
+    status_label = label_user_status(status)
+    config_names = [c["client_name"] for c in configs] or ([u["client_name"]] if u.get("client_name") else [])
+    client_name_raw = " ".join(config_names)
+    created_at = int(u["created_at"] or 0)
+    registered = _format_registered(created_at)
+    sort_name = html.escape(username.lower())
+    sort_client = html.escape(client_name_raw.lower())
+    sort_status = html.escape(status)
+    search_text = html.escape(
+        " ".join([str(u["id"]), username, client_name_raw, status, status_label, registered]).lower()
+    )
+
+    return f"""
+<div class="user-item" data-list-item data-list-primary data-status="{sort_status}" data-sort-id="{u['id']}" data-sort-name="{sort_name}" data-sort-client="{sort_client}" data-sort-created="{created_at}" data-search="{search_text}">
+  <div class="user-field user-field-name" data-label="{html.escape(t("col.user"))}">
+    <span class="user-item-name">{username_esc}</span>
+    <span class="user-item-meta">#{u['id']} · {html.escape(registered)}</span>
+  </div>
+  <div class="user-field user-field-status" data-label="{html.escape(t("col.status"))}">
+    <span class="badge {badge}">{html.escape(status_label)}</span>
+  </div>
+  <div class="user-field user-field-configs" data-label="{html.escape(t("col.config"))}">
+    {chips_html}
+  </div>
+  <div class="user-field user-field-actions" data-label="{html.escape(t("col.actions"))}">
+    {toolbar}
+  </div>
+  {manage_panel}
+</div>
+"""
+
+
+def user_list(users):
+    if not users:
+        return f"""
+<div class="user-list" data-list-items data-list-kind="users">
+  <div class="user-list-empty" data-list-static-empty>{html.escape(t("empty.no_users"))}</div>
+</div>
+"""
+
+    items = "".join(_user_item(u) for u in users)
+    return f"""
+<div class="user-list-wrap">
 <div class="user-list" data-list-items data-list-kind="users">
   <div class="user-list-head">
-    <div>{html.escape(t("col.id"))}</div>
     <div>{html.escape(t("col.user"))}</div>
     <div>{html.escape(t("col.status"))}</div>
-    <div>{html.escape(t("col.registered"))}</div>
     <div>{html.escape(t("col.config"))}</div>
     <div>{html.escape(t("col.actions"))}</div>
   </div>
@@ -206,4 +321,9 @@ def user_rows(users):
     {items}
   </div>
 </div>
+</div>
 """
+
+
+def user_rows(users):
+    return user_list(users)
