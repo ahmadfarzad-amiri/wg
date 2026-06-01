@@ -70,8 +70,17 @@ The peer is persisted in `/etc/wireguard/wg-tunnel.conf` (survives reboot).
 
 | Server | Open ports |
 |--------|------------|
-| Entry | UDP 51820; TCP 80/443 (nginx) or 8088/8090 (direct) |
+| Entry | UDP **51820** (all clients share this one port); UDP **51822** (entry tunnel return path); or open range **51820–51830** |
 | Exit | UDP 51821 — restrict to entry server egress IP when possible |
+
+All client configs connect to the **same** `ENTRY_IP:51820`. You do not need a separate port per user unless you run custom multi-interface setups.
+
+Open a UDP range on the entry VPS (ufw + provider panel):
+
+```bash
+curl -fsSL .../open-firewall-ports.sh -o /tmp/open-ports.sh
+sudo WG_UDP_PORT_RANGE=51820:51830 bash /tmp/open-ports.sh --role entry
+```
 
 Note: entry servers behind NAT may connect to exit from a **different egress IP** than `WG_ENTRY_PUBLIC_IP`. Allow the IP shown as `endpoint` in `wg show wg-tunnel` on exit.
 

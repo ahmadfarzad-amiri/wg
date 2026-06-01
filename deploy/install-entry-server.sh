@@ -54,6 +54,7 @@ ENV_FILE="/etc/wireguard/entry-server.env"
 CLIENT_IF="wg-clients"
 TUNNEL_IF="wg-tunnel"
 CLIENT_PORT_WG="${WG_CLIENT_PORT:-51820}"
+TUNNEL_LISTEN_PORT="${WG_TUNNEL_LISTEN_PORT:-51822}"
 VPN_PREFIX="10.10.10"
 TUNNEL_LOCAL="10.200.0.2/30"
 CLIENT_CIDR="10.10.10.0/24"
@@ -157,6 +158,10 @@ DEF_IF="${DEF_IF:-eth0}"
 wg_stop_if "$CLIENT_IF"
 wg_stop_if "$TUNNEL_IF"
 
+if [[ "${WG_INSTALL_MODE:-fresh}" == "upgrade" ]]; then
+  ensure_tunnel_listen_port_in_conf "$TUNNEL_CONF" "$TUNNEL_LISTEN_PORT"
+fi
+
 if [[ "${WG_INSTALL_MODE:-fresh}" == "upgrade" && -f "$CLIENT_CONF" ]]; then
   log "Upgrade: preserving existing $CLIENT_CONF (including client peers)"
   fix_entry_client_postup_in_conf "$CLIENT_CONF" "$CLIENT_IF" "$CLIENT_CIDR"
@@ -191,6 +196,7 @@ fi
 cat > "$TUNNEL_CONF" <<EOF
 [Interface]
 Address = ${TUNNEL_LOCAL}
+ListenPort = ${TUNNEL_LISTEN_PORT}
 PrivateKey = ${TUNNEL_PRIV}
 Table = off
 PostUp = iptables -A FORWARD -i ${CLIENT_IF} -o ${TUNNEL_IF} -j ACCEPT; iptables -A FORWARD -i ${TUNNEL_IF} -o ${CLIENT_IF} -j ACCEPT; ip rule del from ${CLIENT_CIDR} lookup 100 priority 100 2>/dev/null || true; ip rule add from ${CLIENT_CIDR} lookup 100 priority 100; ip route del default dev ${TUNNEL_IF} table 100 2>/dev/null || true; ip route add default dev ${TUNNEL_IF} table 100
@@ -206,7 +212,7 @@ printf '%s\n' "$TUNNEL_PUB" > /etc/wireguard/tunnel-entry.pub
 chmod 600 "$TUNNEL_CONF" /etc/wireguard/tunnel-entry.pub
 
 if command -v ufw >/dev/null 2>&1; then
-  ufw allow "${CLIENT_PORT_WG}/udp" || true
+  wg_ufw_allow_udp_ports
   if [[ "$USE_NGINX" == "yes" ]]; then
     ufw allow 80/tcp || true
     ufw allow 443/tcp || true
@@ -224,6 +230,13 @@ grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null \
 wg_quick_up "$CLIENT_CONF" "$CLIENT_IF"
 wg_quick_up "$TUNNEL_CONF" "$TUNNEL_IF"
 systemctl enable "wg-quick@${CLIENT_IF}" "wg-quick@${TUNNEL_IF}" 2>/dev/null || true
+
+UDP_PORT_MIN="${WG_UDP_PORT_MIN:-$CLIENT_PORT_WG}"
+UDP_PORT_MAX="${WG_UDP_PORT_MAX:-}"
+if [[ -z "$UDP_PORT_MAX" && -n "${WG_UDP_PORT_RANGE:-}" ]]; then
+  UDP_PORT_MAX="${WG_UDP_PORT_RANGE#*:}"
+fi
+UDP_PORT_MAX="${UDP_PORT_MAX:-$UDP_PORT_MIN}"
 
 write_env_file "$ENV_FILE" \
   WG_ROLE entry \
@@ -243,6 +256,9 @@ write_env_file "$ENV_FILE" \
   WG_ADMIN_BRAND "$PANEL_BRAND" \
   WG_EXIT_IP "$EXIT_IP" \
   WG_EXIT_TUNNEL_PORT "$EXIT_TUNNEL_PORT" \
+  WG_TUNNEL_LISTEN_PORT "$TUNNEL_LISTEN_PORT" \
+  WG_UDP_PORT_MIN "$UDP_PORT_MIN" \
+  WG_UDP_PORT_MAX "$UDP_PORT_MAX" \
   WG_HTTPS "$([[ "$ENABLE_SSL" == "yes" ]] && echo 1 || echo 0)"
 
 export WG_CLIENT_CIDR="$CLIENT_CIDR"

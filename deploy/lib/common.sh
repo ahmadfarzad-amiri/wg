@@ -914,6 +914,45 @@ maybe_enable_ufw() {
   fi
 }
 
+# Resolve UDP port range for firewall (single port or min:max).
+# Set WG_UDP_PORT_RANGE=51820:51830 or WG_UDP_PORT_MIN + WG_UDP_PORT_MAX.
+wg_udp_port_range() {
+  local min="${WG_UDP_PORT_MIN:-${WG_CLIENT_PORT:-51820}}"
+  local max="${WG_UDP_PORT_MAX:-$min}"
+  if [[ -n "${WG_UDP_PORT_RANGE:-}" ]]; then
+    min="${WG_UDP_PORT_RANGE%%:*}"
+    max="${WG_UDP_PORT_RANGE#*:}"
+    max="${max:-$min}"
+  fi
+  printf '%s %s\n' "$min" "$max"
+}
+
+wg_ufw_allow_udp_ports() {
+  command -v ufw >/dev/null 2>&1 || return 0
+  local min max
+  read -r min max <<< "$(wg_udp_port_range)"
+  if [[ "$min" == "$max" ]]; then
+    ufw allow "${min}/udp" comment 'wg udp' 2>/dev/null || ufw allow "${min}/udp" || true
+    log "ufw: allowed UDP ${min}"
+  else
+    ufw allow "${min}:${max}/udp" comment 'wg udp range' 2>/dev/null \
+      || ufw allow "${min}:${max}/udp" || true
+    log "ufw: allowed UDP ${min}-${max}"
+  fi
+}
+
+# Fixed ListenPort on entry wg-tunnel (return path from exit); random ports often fail on VPS NAT.
+ensure_tunnel_listen_port_in_conf() {
+  local conf="${1:-/etc/wireguard/wg-tunnel.conf}"
+  local port="${2:-${WG_TUNNEL_LISTEN_PORT:-51822}}"
+  [[ -f "$conf" ]] || return 0
+  if grep -q '^ListenPort' "$conf"; then
+    return 0
+  fi
+  sed -i "/^\[Interface\]/a ListenPort = ${port}" "$conf"
+  log "Set ListenPort = ${port} in ${conf}"
+}
+
 wg_conf_private_key() {
   local conf="$1"
   grep -m1 '^PrivateKey' "$conf" 2>/dev/null | cut -d= -f2- | tr -d ' \t'
