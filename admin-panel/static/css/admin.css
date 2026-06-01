@@ -1250,17 +1250,42 @@ tr.client-row.is-list-hidden{
 }
 
 /* Client list */
+.card-clients.list-filterable,
+.card-clients .client-list-wrap,
+.card-clients .client-list{
+  width:100%;
+  min-width:0;
+  max-width:100%;
+}
+
+.client-list-wrap{
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+  margin-top:4px;
+  scrollbar-width:thin;
+  scrollbar-color:var(--line) transparent;
+}
+
 .client-list{
   display:flex;
   flex-direction:column;
   gap:0;
   width:100%;
+  min-width:min(100%,680px);
 }
 
 .client-list-head,
 .client-item{
   display:grid;
-  grid-template-columns:minmax(140px,1.4fr) minmax(88px,108px) minmax(150px,1.5fr) minmax(80px,100px) minmax(140px,1.4fr);
+  width:100%;
+  min-width:0;
+  box-sizing:border-box;
+  grid-template-columns:
+    minmax(160px,1.6fr)
+    minmax(96px,112px)
+    minmax(160px,1.5fr)
+    minmax(88px,108px)
+    minmax(150px,1.5fr);
   gap:12px;
   align-items:center;
   padding:14px 12px;
@@ -1271,6 +1296,17 @@ tr.client-row.is-list-hidden{
   color:#dbe4f2;
   border-bottom:1px solid var(--line);
   font-size:clamp(11px,2.4vw,13px);
+}
+
+.client-list-head > div{
+  min-width:0;
+}
+
+.client-list-body{
+  display:flex;
+  flex-direction:column;
+  width:100%;
+  min-width:0;
 }
 
 .client-item{
@@ -1286,10 +1322,18 @@ tr.client-row.is-list-hidden{
   background:rgba(255,255,255,.02);
 }
 
+.client-item.is-list-hidden{
+  display:none;
+}
+
 .client-field{
   min-width:0;
   font-size:clamp(11px,1.8vw,13px);
   line-height:1.35;
+}
+
+.client-field-actions{
+  justify-self:stretch;
 }
 
 .client-item-name{
@@ -1308,6 +1352,7 @@ tr.client-row.is-list-hidden{
   font-size:11px;
   color:var(--muted);
   direction:ltr;
+  text-align:start;
 }
 
 .client-item-chips{
@@ -1341,6 +1386,7 @@ tr.client-row.is-list-hidden{
   flex-direction:column;
   gap:4px;
   min-width:0;
+  width:100%;
 }
 
 .client-usage-bar{
@@ -1348,6 +1394,7 @@ tr.client-row.is-list-hidden{
   border-radius:999px;
   background:rgba(255,255,255,.08);
   overflow:hidden;
+  width:100%;
 }
 
 .client-usage-fill{
@@ -1374,7 +1421,8 @@ tr.client-row.is-list-hidden{
   flex-wrap:wrap;
   align-items:center;
   gap:6px;
-  justify-content:flex-end;
+  justify-content:flex-start;
+  width:100%;
 }
 
 .client-download{
@@ -1385,6 +1433,7 @@ tr.client-row.is-list-hidden{
   grid-column:1 / -1;
   margin-top:2px;
   padding:0 0 4px;
+  width:100%;
 }
 
 .client-subscription summary{
@@ -1453,7 +1502,7 @@ tr.client-row.is-list-hidden{
 .client-update-actions{
   display:flex;
   align-items:flex-end;
-  justify-content:flex-end;
+  justify-content:flex-start;
 }
 
 .client-limit-form{
@@ -1478,6 +1527,10 @@ tr.client-row.is-list-hidden{
   padding:24px 12px;
   text-align:center;
   color:var(--muted);
+}
+
+.card-clients.list-filterable > .list-section-head{
+  margin-bottom:14px;
 }
 
 .option-tabs{
@@ -1850,6 +1903,122 @@ tr.client-row.is-list-hidden{
 @media(max-width:1100px){
   .user-list-head{
     display:none;
+  }
+
+  .client-list-head{
+    display:none;
+  }
+
+  .client-list{
+    min-width:0;
+  }
+
+  .client-list-wrap{
+    overflow:visible;
+  }
+
+  .client-list-body{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    padding-top:4px;
+  }
+
+  .client-item{
+    grid-template-columns:minmax(0,1fr) auto;
+    grid-template-areas:
+      "name status"
+      "usage usage"
+      "duration duration"
+      "actions actions"
+      "subscription subscription";
+    gap:10px 12px;
+    padding:16px;
+    border:1px solid var(--line);
+    border-radius:16px;
+    background:#142033;
+    border-bottom:0;
+  }
+
+  .client-item:last-child{
+    border-bottom:0;
+  }
+
+  .client-field-name{grid-area:name}
+  .client-field-status{grid-area:status;justify-self:end;align-self:start}
+  .client-field-usage{grid-area:usage}
+  .client-field-duration{grid-area:duration}
+  .client-field-actions{grid-area:actions}
+  .client-subscription{grid-area:subscription;margin-top:0}
+
+  .client-item-name{
+    font-size:16px;
+    white-space:normal;
+    overflow:visible;
+    text-overflow:clip;
+  }
+
+  .client-field::before{
+    content:attr(data-label);
+    display:block;
+    font-size:11px;
+    font-weight:600;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    margin-bottom:4px;
+  }
+
+  .client-field-name::before,
+  .client-field-status::before{
+    display:none;
+  }
+
+  .client-toolbar{
+    justify-content:stretch;
+    display:grid;
+    grid-template-columns:1fr auto;
+    gap:8px;
+  }
+
+  .client-download{
+    min-width:0;
+    min-height:44px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .client-toolbar .action-menu-trigger{
+    min-width:44px;
+    min-height:44px;
+  }
+
+  .client-subscription-grid{
+    grid-template-columns:1fr;
+  }
+
+  .client-update-field--vpn{
+    grid-column:auto;
+  }
+
+  .client-update-actions{
+    justify-content:stretch;
+  }
+
+  .client-update-actions .btn{
+    width:100%;
+    min-height:44px;
+  }
+
+  .client-limit-row{
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .client-limit-row .btn{
+    width:100%;
+    min-height:44px;
   }
 
   .user-item{
@@ -3193,6 +3362,7 @@ input[readonly]:not(.config-textarea){
   }
 
   .card-users.list-filterable .list-section-head,
+  .card-clients.list-filterable .list-section-head,
   .card-requests.list-filterable .list-section-head,
   .card-active.list-filterable .list-section-head,
   .list-filterable.card .list-section-head{
@@ -3216,112 +3386,6 @@ input[readonly]:not(.config-textarea){
 
 @media(max-width:900px){
   .user-list-head{display:none}
-
-  .client-list-head{display:none}
-
-  .client-list-body{
-    display:flex;
-    flex-direction:column;
-    gap:10px;
-    padding-top:4px;
-  }
-
-  .client-item{
-    grid-template-columns:minmax(0,1fr) auto;
-    grid-template-areas:
-      "name status"
-      "usage usage"
-      "duration duration"
-      "actions actions"
-      "subscription subscription";
-    gap:10px 12px;
-    padding:16px;
-    border:1px solid var(--line);
-    border-radius:16px;
-    background:#142033;
-    border-bottom:0;
-  }
-
-  .client-item:last-child{
-    border-bottom:0;
-  }
-
-  .client-field-name{grid-area:name}
-  .client-field-status{grid-area:status;justify-self:end;align-self:start}
-  .client-field-usage{grid-area:usage}
-  .client-field-duration{grid-area:duration}
-  .client-field-actions{grid-area:actions}
-  .client-subscription{grid-area:subscription;margin-top:0}
-
-  .client-item-name{
-    font-size:16px;
-    white-space:normal;
-    overflow:visible;
-    text-overflow:clip;
-  }
-
-  .client-field::before{
-    content:attr(data-label);
-    display:block;
-    font-size:11px;
-    font-weight:600;
-    color:var(--muted);
-    text-transform:uppercase;
-    letter-spacing:.04em;
-    margin-bottom:4px;
-  }
-
-  .client-field-name::before,
-  .client-field-status::before{
-    display:none;
-  }
-
-  .client-toolbar{
-    justify-content:stretch;
-    display:grid;
-    grid-template-columns:1fr auto;
-    gap:8px;
-  }
-
-  .client-download{
-    min-width:0;
-    min-height:44px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-  }
-
-  .client-toolbar .action-menu-trigger{
-    min-width:44px;
-    min-height:44px;
-  }
-
-  .client-subscription-grid{
-    grid-template-columns:1fr;
-  }
-
-  .client-update-field--vpn{
-    grid-column:auto;
-  }
-
-  .client-update-actions{
-    justify-content:stretch;
-  }
-
-  .client-update-actions .btn{
-    width:100%;
-    min-height:44px;
-  }
-
-  .client-limit-row{
-    flex-direction:column;
-    align-items:stretch;
-  }
-
-  .client-limit-row .btn{
-    width:100%;
-    min-height:44px;
-  }
 
   .user-list-body{
     display:flex;

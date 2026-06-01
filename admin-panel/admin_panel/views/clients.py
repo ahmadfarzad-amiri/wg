@@ -14,7 +14,7 @@ def body(clients, msg=""):
 {notice(msg, role="alert")}
 
 <div class="page-stack">
-<section class="card list-filterable">
+<section class="card card-clients list-filterable">
   <div class="list-section-head">
     <h3>{t("clients.all_title")}</h3>
     {list_controls(

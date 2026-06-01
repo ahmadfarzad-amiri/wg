@@ -300,6 +300,7 @@ def client_list(clients, assigned_names=None, users_by_client_map=None):
         _client_item(c, assigned_names, users_by_client_map) for c in clients
     )
     return f"""
+<div class="client-list-wrap">
 <div class="client-list" data-list-items data-list-kind="clients">
   <div class="client-list-head">
     <div>{html.escape(t("col.name"))}</div>
@@ -311,6 +312,7 @@ def client_list(clients, assigned_names=None, users_by_client_map=None):
   <div class="client-list-body" data-list-body>
     {items}
   </div>
+</div>
 </div>
 """
 

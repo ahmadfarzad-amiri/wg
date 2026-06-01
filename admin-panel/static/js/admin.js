@@ -156,6 +156,7 @@
     var emptyEl = root.querySelector("[data-list-search-empty]");
     var metaEl = root.querySelector("[data-list-search-meta]");
     var listHead =
+      root.querySelector(".client-list-head") ||
       root.querySelector(".user-list-head") ||
       root.querySelector(".request-list-head") ||
       root.querySelector(".active-list-head");
@@ -170,8 +171,7 @@
     var kind = listHost.getAttribute("data-list-kind") || "default";
 
     if (kind === "clients") {
-      reorderClientDesktop(listHost.querySelector("[data-list-desktop]"), sortValueStr);
-      reorderItems(listHost.querySelector("[data-list-mobile]"), "[data-list-primary]", sortValueStr);
+      reorderItems(listHost.querySelector(".client-list-body"), "[data-list-primary]", sortValueStr);
     } else if (kind === "users") {
       reorderItems(listHost.querySelector("[data-list-body]"), "[data-list-primary]", sortValueStr);
     } else if (kind === "requests") {
@@ -190,13 +190,6 @@
     primaryItems.forEach(function (item) {
       var match = itemMatchesSearch(item, q) && itemMatchesStatus(item, statusFilter);
       setItemVisible(item, match);
-
-      if (kind === "clients") {
-        var actions = item.nextElementSibling;
-        if (item.tagName === "TR" && actions && actions.classList.contains("client-row-actions")) {
-          setItemVisible(actions, match);
-        }
-      }
 
       if (match) {
         visible += 1;
