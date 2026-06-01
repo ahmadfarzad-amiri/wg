@@ -274,6 +274,7 @@ After=network.target wg-quick@${CLIENT_IF}.service
 [Service]
 Type=simple
 EnvironmentFile=$ENV_FILE
+Environment=PYTHONPATH=$INSTALL_DIR/client-panel:$INSTALL_DIR/admin-panel
 ExecStart=/usr/bin/python3 $INSTALL_DIR/client-panel/app.py
 Restart=always
 RestartSec=3
@@ -290,6 +291,7 @@ After=network.target wg-quick@${CLIENT_IF}.service
 [Service]
 Type=simple
 EnvironmentFile=$ENV_FILE
+Environment=PYTHONPATH=$INSTALL_DIR/admin-panel:$INSTALL_DIR/client-panel
 ExecStart=/usr/bin/python3 $INSTALL_DIR/admin-panel/app.py
 Restart=always
 RestartSec=3

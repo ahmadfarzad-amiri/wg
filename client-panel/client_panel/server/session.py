@@ -33,7 +33,9 @@ def current_user(handler):
         (token.value, int(time.time())),
     ).fetchone()
     con.close()
-    return row
+    if row is None:
+        return None
+    return dict(row)
 
 
 def set_session(handler, user_id):

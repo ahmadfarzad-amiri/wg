@@ -214,16 +214,30 @@ def vpn_mode_text(mode):
     return t(f"vpn.{mode}", mode)
 
 
+def _user_field(user, key, default=""):
+    if not user:
+        return default
+    if isinstance(user, dict):
+        val = user.get(key, default)
+    else:
+        try:
+            val = user[key]
+        except (KeyError, IndexError, TypeError):
+            val = default
+    return default if val is None else val
+
+
 def assigned_client_names_for_user(user):
-    from client_panel.db.user_configs import client_names_for_user, primary_client_name
+    from client_panel.db.user_configs import client_names_for_user
 
     if not user:
         return []
     names = client_names_for_user(user["id"])
     if names:
         return names
-    if user.get("client_name"):
-        return [user["client_name"]]
+    legacy = _user_field(user, "client_name")
+    if legacy:
+        return [legacy]
     return []
 
 
@@ -232,7 +246,7 @@ def primary_client_for_user(user):
 
     if not user:
         return ""
-    return primary_client_name(user["id"], user.get("client_name") or "")
+    return primary_client_name(user["id"], _user_field(user, "client_name"))
 
 
 def statuses_for_user(user):

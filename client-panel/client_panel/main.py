@@ -12,10 +12,13 @@ def run():
         os.makedirs(REQ_DIR, exist_ok=True)
     except OSError:
         pass
-    db().close()
-    if os.path.exists(DB_PATH):
-        os.chmod(DB_PATH, 0o600)
-    print(f"Starting client panel on {HOST}:{PORT}")
+    try:
+        db().close()
+        if os.path.exists(DB_PATH):
+            os.chmod(DB_PATH, 0o600)
+    except Exception as exc:
+        print(f"Warning: database init failed: {exc}", flush=True)
+    print(f"Starting client panel on {HOST}:{PORT}", flush=True)
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 
 
