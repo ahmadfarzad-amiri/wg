@@ -102,6 +102,39 @@ def human_bytes(n):
         size /= 1024
 
 
+def human_time(epoch):
+    try:
+        epoch = int(epoch)
+    except (TypeError, ValueError):
+        epoch = 0
+    if epoch <= 0:
+        return t("unlimited")
+    return time.strftime("%Y-%m-%d", time.localtime(epoch))
+
+
+def compact_bytes(n):
+    """wg-client style limit string (e.g. 20G) for forms."""
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return ""
+    if n <= 0:
+        return ""
+    for div, suffix in (
+        (1024**4, "T"),
+        (1024**3, "G"),
+        (1024**2, "M"),
+        (1024, "K"),
+    ):
+        if n >= div:
+            val = n / div
+            if abs(val - round(val)) < 0.05:
+                return f"{int(round(val))}{suffix}"
+            text = f"{val:.1f}".rstrip("0").rstrip(".")
+            return f"{text}{suffix}"
+    return f"{n}B"
+
+
 def wg_map(command):
     if not wg_interface_up():
         return {}
@@ -158,6 +191,15 @@ def client_status(meta, snapshot=None):
     over_limit = limit_bytes > 0 and used_now >= limit_bytes
 
     limit_raw = int(meta.get("LIMIT_BYTES", "0") or 0)
+    days_left_num = None
+    if expires_at > 0:
+        if expired:
+            duration = t("state.expired")
+        else:
+            days_left_num = max(0, (expires_at - now) // 86400)
+            duration = tf("duration.days_left", n=days_left_num)
+    else:
+        duration = t("unlimited")
     state_key = "offline"
     if meta.get("DISABLED", "0") == "1":
         state_key = "disabled"
@@ -192,6 +234,12 @@ def client_status(meta, snapshot=None):
         "handshake_age": diff if hs else 999999999,
         "rx_bytes": rx,
         "tx_bytes": tx,
+        "duration": duration,
+        "expires_at": expires_at,
+        "days_left": days_left_num,
+        "limit_bytes": limit_raw,
+        "update_days": str(days_left_num) if days_left_num is not None else "",
+        "update_limit": compact_bytes(limit_raw),
     }
 
 

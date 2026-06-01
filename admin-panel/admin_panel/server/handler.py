@@ -209,27 +209,19 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def _users(self):
+        from admin_panel.actions.user import _fetch_users
         from admin_panel.config import DB_PATH
 
-        db_err = ""
-        rows = []
+        msg = security.notice_from_query(self)
+        users_data = []
         if not os.path.isfile(DB_PATH):
-            db_err = t("error.db_not_found_users")
+            msg = msg or t("error.db_not_found_users")
         else:
             try:
-                con = panel_db()
-                rows = con.execute(
-                    """
-                    SELECT id, username, status, COALESCE(client_name, '') AS client_name, created_at
-                    FROM users ORDER BY id DESC
-                    """
-                ).fetchall()
-                con.close()
+                users_data = _fetch_users()
             except Exception as exc:
-                db_err = tf("error.db_read", err=exc)
-        self.send_html(
-            page(t("nav.users"), users.body(rows, db_err or security.notice_from_query(self)), "users")
-        )
+                msg = msg or tf("error.db_read", err=exc)
+        self.send_html(page(t("nav.users"), users.body(users_data, msg), "users"))
 
     def _requests(self):
         from admin_panel.config import DB_PATH

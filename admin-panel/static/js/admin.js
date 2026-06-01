@@ -96,7 +96,7 @@
     if (field === "action") {
       return item.getAttribute("data-sort-action") || "";
     }
-    if (field === "last" || field === "rx" || field === "tx") {
+    if (field === "last" || field === "rx" || field === "tx" || field === "duration") {
       var n = parseInt(item.getAttribute("data-sort-" + field) || "0", 10);
       return isNaN(n) ? 0 : n;
     }
@@ -230,6 +230,27 @@
       }
     }
   }
+
+  document.addEventListener("click", function (e) {
+    document.querySelectorAll(".action-menu[open]").forEach(function (menu) {
+      if (!menu.contains(e.target)) {
+        menu.removeAttribute("open");
+      }
+    });
+  });
+
+  document.querySelectorAll(".action-menu").forEach(function (menu) {
+    menu.addEventListener("toggle", function () {
+      if (!menu.open) {
+        return;
+      }
+      document.querySelectorAll(".action-menu[open]").forEach(function (other) {
+        if (other !== menu) {
+          other.removeAttribute("open");
+        }
+      });
+    });
+  });
 
   document.querySelectorAll(".list-filterable").forEach(function (root) {
     var searchInput = root.querySelector("[data-list-search]");

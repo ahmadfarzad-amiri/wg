@@ -522,22 +522,29 @@ body.modal-open{overflow:hidden}
 }
 
 .table-clients th:nth-child(1),
-.table-clients .col-name{width:11%}
+.table-clients .col-name{width:10%}
 .table-clients th:nth-child(2),
-.table-clients .col-ip{width:10%}
+.table-clients .col-ip{width:9%}
 .table-clients th:nth-child(3),
-.table-clients .col-status{width:11%}
+.table-clients .col-vpn{width:8%}
 .table-clients th:nth-child(4),
-.table-clients .col-usage{width:17%}
+.table-clients .col-status{width:9%}
 .table-clients th:nth-child(5),
-.table-clients .col-last{width:11%}
+.table-clients .col-usage{width:12%}
 .table-clients th:nth-child(6),
-.table-clients .col-endpoint{width:13%}
+.table-clients .col-duration{width:8%}
 .table-clients th:nth-child(7),
-.table-clients .col-limit{width:27%}
+.table-clients .col-last{width:9%}
+.table-clients th:nth-child(8),
+.table-clients .col-endpoint{width:11%}
+.table-clients th:nth-child(9),
+.table-clients .col-limit{width:17%}
+.table-clients th:nth-child(10),
+.table-clients .col-actions{width:8%;text-align:center}
 
 .table-clients .client-row-details td.col-status,
-.table-clients .client-row-details td.col-limit{
+.table-clients .client-row-details td.col-limit,
+.table-clients .client-row-details td.col-actions{
   overflow:visible;
   text-overflow:clip;
 }
@@ -584,36 +591,109 @@ body.modal-open{overflow:hidden}
   width:100%;
 }
 
-.table-clients .client-row-actions-inner .actions-compact{
-  display:grid;
-  grid-template-columns:repeat(5,minmax(0,1fr));
-  gap:clamp(4px,1vw,8px);
+.table-clients .client-row-actions-inner .client-update-form{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-end;
+  gap:10px 12px;
   width:100%;
   margin:0;
 }
 
-.table-clients .client-row-actions-inner .actions-compact > *{
+.client-update-field{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
   min-width:0;
 }
 
-.table-clients .client-row-actions-inner .actions-compact form{
-  display:block;
-  margin:0;
+.client-update-label{
+  font-size:11px;
+  color:var(--muted);
 }
 
-.table-clients .client-row-actions-inner .actions-compact .btn,
-.table-clients .client-row-actions-inner .actions-compact button{
-  display:flex;
+.action-menu{
+  position:relative;
+  display:inline-block;
+}
+
+.action-menu-trigger{
+  list-style:none;
+  cursor:pointer;
+  display:inline-flex;
   align-items:center;
   justify-content:center;
+  min-width:32px;
+  height:28px;
+  padding:0 8px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--field-bg);
+  color:var(--text);
+  font-size:18px;
+  line-height:1;
+  user-select:none;
+}
+
+.action-menu-trigger::-webkit-details-marker{display:none}
+
+.action-menu[open] .action-menu-trigger{
+  border-color:var(--accent);
+  background:rgba(56,189,248,.08);
+}
+
+.action-menu-panel{
+  position:absolute;
+  top:calc(100% + 4px);
+  inset-inline-end:0;
+  z-index:30;
+  min-width:168px;
+  padding:6px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--panel);
+  box-shadow:0 10px 28px rgba(0,0,0,.35);
+}
+
+.action-menu-form{margin:0;padding:0}
+
+.action-menu-item{
+  display:block;
   width:100%;
-  text-align:center;
+  margin:0;
+  padding:8px 10px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:var(--text);
+  font:inherit;
+  font-size:12px;
+  text-align:start;
+  text-decoration:none;
+  cursor:pointer;
   box-sizing:border-box;
 }
 
-.table-clients .client-row-actions-inner .actions-compact .inline-form{
-  display:block;
-  width:100%;
+.action-menu-item:hover:not(:disabled):not(.is-disabled){
+  background:rgba(255,255,255,.06);
+}
+
+.action-menu-item--danger{color:#f87171}
+
+.action-menu-item:disabled,
+.action-menu-item.is-disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+
+.rowactions-menu{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:8px;
+}
+
+.rowline-update .rowvalue{
+  min-width:0;
 }
 
 .table .inline-form{
@@ -662,12 +742,6 @@ body.modal-open{overflow:hidden}
   color:var(--text);
 }
 
-.table-clients .client-row-actions-inner .actions-compact .btn-sm,
-.table-clients .client-row-actions-inner .actions-compact .btn{
-  padding:clamp(4px,0.8vw,8px) clamp(3px,0.7vw,8px);
-  font-size:clamp(10px,1.7vw,12px);
-  line-height:1.2;
-}
 
 .table-users{
   table-layout:fixed;
@@ -2313,7 +2387,6 @@ body.ltr .layout{direction:ltr}
 .infra-form h4{margin:0 0 10px;font-size:15px}
 .infra-form label{display:block;margin:8px 0 4px;font-size:13px;color:var(--muted)}
 .infra-form .field-input{width:100%;max-width:480px}
-.client-update-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
 .client-update-form .input-compact{min-width:72px;max-width:120px}
 .client-reset-usage{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);white-space:normal}
 .client-update-wrap{width:100%}

@@ -86,8 +86,8 @@ def body(user, primary, all_statuses):
     <div class="item"><div class="label">{html.escape(t("dashboard.vpn_address"))}</div><div class="value">{html.escape(s['ip'])}</div></div>
     <div class="item"><div class="label">{html.escape(t("dashboard.last_handshake"))}</div><div class="value">{html.escape(s['handshake'])}</div></div>
     <div class="item"><div class="label">{html.escape(t("dashboard.endpoint"))}</div><div class="value">{html.escape(s['endpoint'])}</div></div>
-    <div class="item item-wide"><div class="label">{html.escape(t("dashboard.device_limit"))}</div><div class="value">{html.escape(s['single_text'])}</div></div>
     <div class="item"><div class="label">{html.escape(t("dashboard.disable_reason"))}</div><div class="value">{html.escape(s['disabled_reason'])}</div></div>
+    <div class="item item-wide"><div class="label">{html.escape(t("dashboard.device_limit"))}</div><div class="value">{html.escape(s['single_text'])}</div></div>
   </div>
 </section>
 

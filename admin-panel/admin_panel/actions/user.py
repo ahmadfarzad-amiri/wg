@@ -35,8 +35,10 @@ def _fetch_users():
             u["configs"] = configs
             result.append(u)
         return result
-    except Exception:
-        return []
+    except ImportError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"users fetch failed: {exc}") from exc
 
 
 def _friendly_error(output, client=""):
