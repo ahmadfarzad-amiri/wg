@@ -157,7 +157,12 @@ def _user_manage_panel(
 
     config_hint = ""
     if configs:
-        config_hint = f'<p class="user-manage-hint muted">{html.escape(t("col.config"))}: {len(configs)}</p>'
+        config_hint = f"""
+<div class="user-manage-section user-manage-section--configs">
+  <span class="user-manage-label">{html.escape(t("col.config"))}</span>
+  {_config_chips(username, configs)}
+</div>
+"""
 
     return f"""
 <details class="user-manage panel-expand" id="{form_id}">
