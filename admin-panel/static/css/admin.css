@@ -2390,6 +2390,17 @@ body.ltr .layout{direction:ltr}
 .client-update-form .input-compact{min-width:72px;max-width:120px}
 .client-reset-usage{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);white-space:normal}
 .client-update-wrap{width:100%}
+
+.infra-current-summary code{
+  font-size:12px;
+  word-break:break-all;
+}
+
+.infra-form + .infra-form{
+  margin-top:20px;
+  padding-top:20px;
+  border-top:1px solid var(--line);
+}
 @media(max-width:1100px){
   .user-field-configs{grid-area:client}
 }
