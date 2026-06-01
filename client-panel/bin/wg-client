@@ -22,8 +22,40 @@ read_default_endpoint() {
 DEFAULT_ENDPOINT="$(read_default_endpoint)"
 VPN_PREFIX="10.10.10"
 VPN_CIDR="10.10.10.0/24"
-MTU="1280"
 DNS_SERVERS="1.1.1.1, 8.8.8.8"
+
+load_entry_env() {
+  if [[ -f /etc/wireguard/entry-server.env ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source /etc/wireguard/entry-server.env
+    set +a
+  fi
+}
+
+resolve_mtu() {
+  local mode="${1:-twohop}"
+  local override="${2:-}"
+  if [ -n "$override" ]; then
+    echo "$override"
+    return 0
+  fi
+  load_entry_env
+  mode="$(normalize_vpn_mode "$mode" 2>/dev/null || echo "$mode")"
+  if [ "$mode" = "direct" ] && [ -n "${WG_CLIENT_MTU_DIRECT:-}" ]; then
+    echo "$WG_CLIENT_MTU_DIRECT"
+    return 0
+  fi
+  if [ "$mode" = "twohop" ] && [ -n "${WG_CLIENT_MTU_TWOHOP:-}" ]; then
+    echo "$WG_CLIENT_MTU_TWOHOP"
+    return 0
+  fi
+  if [ -n "${WG_CLIENT_MTU:-}" ]; then
+    echo "$WG_CLIENT_MTU"
+    return 0
+  fi
+  echo "1280"
+}
 
 usage() {
   cat <<USAGE
@@ -49,6 +81,7 @@ Options for add/renew/update:
   --limit SIZE             Total data limit. Examples: 5G, 500M, 20GB
   --endpoint HOST:PORT     Default: from /etc/wireguard/wg-endpoint
   --vpn-mode direct|twohop Default: twohop (direct = egress via entry server NAT)
+  --mtu SIZE               WireGuard MTU in client .conf (default: from entry-server.env)
   --single-ip              Lock to first source IP
   --single-endpoint        Lock to first source IP:port, stricter but may break on mobile networks
   --no-single              Disable single-device protection
@@ -444,16 +477,21 @@ create_client_config() {
   local ip="$2"
   local private_key="$3"
   local endpoint="$4"
+  local vpn_mode="${5:-twohop}"
+  local mtu_override="${6:-}"
 
   mkdir -p "$CLIENT_DIR"
   chmod 700 "$CLIENT_DIR"
+
+  local mtu
+  mtu="$(resolve_mtu "$vpn_mode" "$mtu_override")"
 
   cat > "$(client_conf_path "$name")" <<EOF2
 [Interface]
 PrivateKey = $private_key
 Address = $ip/32
 DNS = $DNS_SERVERS
-MTU = $MTU
+MTU = $mtu
 
 [Peer]
 PublicKey = $(cat "$SERVER_PUBLIC_KEY_FILE")
@@ -472,6 +510,7 @@ parse_opts() {
   OP_ENDPOINT="$DEFAULT_ENDPOINT"
   OP_SINGLE_MODE=""
   OP_VPN_MODE=""
+  OP_MTU=""
   OP_RESET_USAGE=""
 
   while [ "$#" -gt 0 ]; do
@@ -494,6 +533,10 @@ parse_opts() {
         ;;
       --vpn-mode)
         OP_VPN_MODE="${2:-}"
+        shift 2
+        ;;
+      --mtu)
+        OP_MTU="${2:-}"
         shift 2
         ;;
       --single-ip)
@@ -640,6 +683,8 @@ add_client() {
   fi
 
   local single_mode="${OP_SINGLE_MODE:-off}"
+  local vpn_mode
+  vpn_mode="$(normalize_vpn_mode "${OP_VPN_MODE:-twohop}")"
 
   local private_key public_key
   private_key="$(wg genkey)"
@@ -648,7 +693,7 @@ add_client() {
   backup_conf
   add_client_block "$name" "$public_key" "$ip"
   add_live_peer "$public_key" "$ip"
-  create_client_config "$name" "$ip" "$private_key" "$OP_ENDPOINT"
+  create_client_config "$name" "$ip" "$private_key" "$OP_ENDPOINT" "$vpn_mode" "$OP_MTU"
 
   NAME="$name"
   IP="$ip"
@@ -663,7 +708,7 @@ add_client() {
   LOCKED_IP=""
   DISABLED="0"
   DISABLED_REASON=""
-  VPN_MODE="$(normalize_vpn_mode "${OP_VPN_MODE:-twohop}")"
+  VPN_MODE="$vpn_mode"
   save_meta
   apply_vpn_mode_for_loaded_client
 
@@ -770,7 +815,7 @@ renew_client() {
 
   add_client_block "$name" "$public_key" "$ip"
   add_live_peer "$public_key" "$ip"
-  create_client_config "$name" "$ip" "$private_key" "$OP_ENDPOINT"
+  create_client_config "$name" "$ip" "$private_key" "$OP_ENDPOINT" "$vpn_mode" "$OP_MTU"
 
   NAME="$name"
   IP="$ip"

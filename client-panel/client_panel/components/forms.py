@@ -20,7 +20,7 @@ def request_controls(s, include_download=True):
     )
 
     return f"""
-<div class="actions actions-center">
+<div class="actions actions-center support-request-actions">
   <form method="post" action="/request">
     <input type="hidden" name="action" value="renew">
     <button type="submit" {renew_disabled} {renew_title}>{html.escape(t("status.request_renew"))}</button>

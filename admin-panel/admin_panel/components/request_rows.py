@@ -4,6 +4,7 @@ import time
 from admin_panel.config import admin_url
 from admin_panel.core.i18n import t, tf
 from admin_panel.core.labels import badge_request_status, label_action, label_request_status
+from admin_panel.core.statuses import RequestStatus
 
 
 def _human_time(epoch):
@@ -38,7 +39,7 @@ def request_list(items):
     cards = ""
 
     for r in items:
-        can_process = r["status"] == "pending"
+        can_process = r["status"] == RequestStatus.PENDING
         attr = (
             ""
             if can_process
@@ -82,7 +83,7 @@ def request_list(items):
   <div class="request-field request-field-id" data-label="{html.escape(t("col.id"))}">#{r['id']}</div>
   <div class="request-field request-field-user" data-label="{html.escape(t("col.user"))}">{username}</div>
   <div class="request-field request-field-client" data-label="{html.escape(t("col.client"))}">{client_name}</div>
-  <div class="request-field request-field-action" data-label="{html.escape(t("col.subject"))}">{action_label}</div>
+  <div class="request-field request-field-action" data-label="{html.escape(t("col.request_type"))}">{action_label}</div>
   <div class="request-field request-field-status" data-label="{html.escape(t("col.status"))}"><span class="badge {badge}">{status_label}</span></div>
   <div class="request-field request-field-date" data-label="{html.escape(t("col.date"))}">{created}</div>
   <div class="request-field request-field-actions" data-label="{html.escape(t("col.actions"))}">{actions}</div>
@@ -94,7 +95,7 @@ def request_list(items):
   <div class="rowcard-title">{html.escape(tf("request.row_title", id=r['id']))}</div>
   <div class="rowline"><div class="rowlabel">{html.escape(t("col.user"))}</div><div class="rowvalue">{username}</div></div>
   <div class="rowline"><div class="rowlabel">{html.escape(t("col.client"))}</div><div class="rowvalue">{client_name}</div></div>
-  <div class="rowline"><div class="rowlabel">{html.escape(t("col.subject"))}</div><div class="rowvalue">{action_label}</div></div>
+  <div class="rowline"><div class="rowlabel">{html.escape(t("col.request_type"))}</div><div class="rowvalue">{action_label}</div></div>
   <div class="rowline"><div class="rowlabel">{html.escape(t("col.status"))}</div><div class="rowvalue"><span class="badge {badge}">{status_label}</span></div></div>
   <div class="rowline"><div class="rowlabel">{html.escape(t("col.date"))}</div><div class="rowvalue">{created}</div></div>
   <div class="rowactions">{actions}</div>
@@ -113,7 +114,7 @@ def request_list(items):
       <div>{html.escape(t("col.id"))}</div>
       <div>{html.escape(t("col.user"))}</div>
       <div>{html.escape(t("col.client"))}</div>
-      <div>{html.escape(t("col.subject"))}</div>
+      <div>{html.escape(t("col.request_type"))}</div>
       <div>{html.escape(t("col.status"))}</div>
       <div>{html.escape(t("col.date"))}</div>
       <div>{html.escape(t("col.actions"))}</div>

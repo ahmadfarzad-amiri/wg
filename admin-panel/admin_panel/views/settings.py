@@ -13,6 +13,7 @@ def body(msg=""):
 <h1>{html.escape(t("settings.title"))}</h1>
 <p class="subtitle">{html.escape(t("settings.subtitle"))}</p>
 
+<div class="page-stack">
 {locale_version_bar("/settings")}
 
 <div class="settings-grid">
@@ -39,5 +40,6 @@ def body(msg=""):
       <button type="submit" class="bad">{html.escape(t("settings.logout_btn"))}</button>
     </form>
   </section>
+</div>
 </div>
 """

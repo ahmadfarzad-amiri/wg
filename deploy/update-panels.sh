@@ -56,6 +56,9 @@ rsync -a --delete \
 rsync -a --delete \
   --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
   "$REPO_DIR/admin-panel/" "$INSTALL_DIR/admin-panel/"
+rsync -a --delete \
+  --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
+  "$REPO_DIR/wg_common/" "$INSTALL_DIR/wg_common/"
 
 systemctl restart wg-panel wg-admin-panel
 log "Panels restarted."

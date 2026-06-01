@@ -4,6 +4,7 @@ import time
 from admin_panel.config import admin_url
 from admin_panel.core.i18n import t, tf
 from admin_panel.core.labels import badge_request_status, badge_user_status, label_action_short, label_request_status_short
+from admin_panel.core.statuses import UserStatus
 from admin_panel.core.wireguard import human_bytes
 
 
@@ -39,10 +40,10 @@ def _health_bars(health, total):
 def _user_breakdown(users, label_fn):
     items = ""
     for status, count in (
-        ("approved", users.get("approved", 0)),
-        ("pending", users.get("pending", 0)),
-        ("disabled", users.get("disabled", 0)),
-        ("rejected", users.get("rejected", 0)),
+        (UserStatus.APPROVED, users.get(UserStatus.APPROVED, 0)),
+        (UserStatus.PENDING, users.get(UserStatus.PENDING, 0)),
+        (UserStatus.DISABLED, users.get(UserStatus.DISABLED, 0)),
+        (UserStatus.REJECTED, users.get(UserStatus.REJECTED, 0)),
     ):
         if count <= 0:
             continue
@@ -78,7 +79,7 @@ def _top_usage_table(top_usage):
 """
     return f"""
 <table class="table">
-  <thead><tr><th>{html.escape(t("col.client"))}</th><th>{html.escape(t("col.usage"))}</th><th>{html.escape(t("dashboard.top_usage.limit_pct"))}</th><th>{html.escape(t("col.last_connection"))}</th></tr></thead>
+  <thead><tr><th>{html.escape(t("col.client"))}</th><th>{html.escape(t("col.usage"))}</th><th>{html.escape(t("dashboard.top_usage.limit_pct"))}</th><th>{html.escape(t("col.last_seen"))}</th></tr></thead>
   <tbody>{rows}</tbody>
 </table>
 """
@@ -107,7 +108,7 @@ def _recent_requests_table(recent, label_action, label_status):
 
     return f"""
 <table class="table table-recent">
-  <thead><tr><th>{html.escape(t("col.id"))}</th><th class="col-user">{html.escape(t("col.user"))}</th><th>{html.escape(t("col.subject"))}</th><th>{html.escape(t("col.status"))}</th><th>{html.escape(t("col.date"))}</th></tr></thead>
+  <thead><tr><th>{html.escape(t("col.id"))}</th><th class="col-user">{html.escape(t("col.user"))}</th><th>{html.escape(t("col.request_type"))}</th><th>{html.escape(t("col.status"))}</th><th>{html.escape(t("col.date"))}</th></tr></thead>
   <tbody>{rows}</tbody>
 </table>
 """
@@ -122,6 +123,7 @@ def body(metrics):
 <h1>{html.escape(t("dashboard.title"))}</h1>
 <p class="subtitle">{html.escape(t("dashboard.subtitle"))}</p>
 
+<div class="page-stack">
 <section class="card quick-access-card">
   <h3>{html.escape(t("dashboard.quick_access"))}</h3>
   <div class="quick-actions">
@@ -139,12 +141,15 @@ def body(metrics):
   {_kpi(t("dashboard.kpi.open_requests"), k["pending_requests"], hint=tf("dashboard.kpi.today_hint", n=k["requests_today"]))}
 </div>
 
-<div class="grid kpi-grid kpi-grid-secondary">
-  {_kpi(t("dashboard.kpi.disabled"), k["disabled"])}
-  {_kpi(t("dashboard.kpi.expired"), k["expired"])}
-  {_kpi(t("dashboard.kpi.over_limit"), k["over_limit"])}
-  {_kpi(t("dashboard.kpi.expiring_soon"), k["expiring_soon"], hint=t("dashboard.kpi.expiring_hint"))}
-</div>
+<details class="kpi-details card">
+  <summary>{html.escape(t("dashboard.kpi.more_stats"))}</summary>
+  <div class="grid kpi-grid kpi-grid-secondary">
+    {_kpi(t("dashboard.kpi.disabled"), k["disabled"])}
+    {_kpi(t("dashboard.kpi.expired"), k["expired"])}
+    {_kpi(t("dashboard.kpi.over_limit"), k["over_limit"])}
+    {_kpi(t("dashboard.kpi.expiring_soon"), k["expiring_soon"], hint=t("dashboard.kpi.expiring_hint"))}
+  </div>
+</details>
 
 <div class="dashboard-grid">
   <section class="card">
@@ -157,7 +162,7 @@ def body(metrics):
     <h3>{html.escape(t("dashboard.users.title"))}</h3>
     <p class="hint">{html.escape(tf("dashboard.users.hint", users=k["total_users"], requests=k["requests_week"]))}</p>
     {_user_breakdown(metrics["users"], metrics["label_user_status"])}
-    <div class="actions">
+    <div class="actions card-footer-actions">
       <a class="btn btn-sm" href="{admin_url('/users')}">{html.escape(t("dashboard.users.manage"))}</a>
     </div>
   </section>
@@ -170,7 +175,7 @@ def body(metrics):
       <div class="item"><div class="label">{html.escape(t("dashboard.traffic.rx"))}</div><div class="value">{html.escape(traffic['rx'])}</div></div>
       <div class="item"><div class="label">{html.escape(t("dashboard.traffic.tx"))}</div><div class="value">{html.escape(traffic['tx'])}</div></div>
     </div>
-    <div class="label" style="margin-top:18px">{html.escape(tf("dashboard.traffic.avg_label", n=traffic['limited_count']))}</div>
+    <div class="label metric-spaced">{html.escape(tf("dashboard.traffic.avg_label", n=traffic['limited_count']))}</div>
     <div class="progress" role="progressbar" aria-valuenow="{traffic['avg_usage_pct']}" aria-valuemin="0" aria-valuemax="100">
       <div class="bar" style="width:{traffic['avg_usage_pct']}%"></div>
     </div>
@@ -179,19 +184,20 @@ def body(metrics):
 
   <section class="card">
     <h3>{html.escape(t("dashboard.top_usage.title"))}</h3>
-    <div class="table-wrap">{_top_usage_table(metrics["top_usage"])}</div>
-    <div class="actions">
+    <div class="table-scroll">{_top_usage_table(metrics["top_usage"])}</div>
+    <div class="actions card-footer-actions">
       <a class="btn dark btn-sm" href="{admin_url('/clients')}">{html.escape(t("dashboard.all_clients"))}</a>
       <a class="btn dark btn-sm" href="{admin_url('/active')}">{html.escape(tf("dashboard.online_link", n=k['active']))}</a>
     </div>
   </section>
 </div>
 
-<section class="card card-spaced">
+<section class="card">
   <h3>{html.escape(t("dashboard.recent_requests.title"))}</h3>
-  <div class="table-wrap recent-requests-wrap">{_recent_requests_table(metrics["recent_requests"], label_action_short, label_request_status_short)}</div>
-  <div class="actions" style="margin-top:12px">
+  <div class="table-scroll recent-requests-wrap">{_recent_requests_table(metrics["recent_requests"], label_action_short, label_request_status_short)}</div>
+  <div class="actions card-footer-actions">
     <a class="btn dark btn-sm" href="{admin_url('/requests')}">{html.escape(t("dashboard.all_requests"))}</a>
   </div>
 </section>
+</div>
 """

@@ -42,8 +42,9 @@ def page(title, body, active="dashboard", auth=False, extra_head="", next_path="
 <html lang="{lang}" dir="{direction}">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0b1424">
+<meta name="color-scheme" content="dark">
 <title>{safe_title} · {html.escape(t("admin_label"))}</title>
 {assets}
 </head>
@@ -106,6 +107,7 @@ def page(title, body, active="dashboard", auth=False, extra_head="", next_path="
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#172337">
+<meta name="color-scheme" content="dark">
 <title>{safe_title} · {html.escape(t("admin_label"))}</title>
 {assets}
 </head>

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from client_panel.config import CLIENT_DIR, STATE_DIR, STATIC_DIR
 from client_panel.core.i18n import t
+from client_panel.core.statuses import UserStatus
 from client_panel.core.wireguard import assigned_client_names_for_user, parse_meta, primary_client_for_user
 
 
@@ -145,7 +146,7 @@ def _zip_entry_name(client_name, label=""):
 def get_user_config_entries(user):
     if not user:
         return None, t("error.sign_in_first")
-    if user["status"] != "approved":
+    if user["status"] != UserStatus.APPROVED:
         return None, t("error.config_not_assigned")
 
     from client_panel.db.user_configs import configs_for_user
@@ -179,7 +180,7 @@ def get_user_config_entries(user):
 def get_user_config_text(user, client_name=None):
     if not user:
         return None, t("error.sign_in_first")
-    if user["status"] != "approved":
+    if user["status"] != UserStatus.APPROVED:
         return None, t("error.config_not_assigned")
 
     name = (client_name or "").strip() or primary_client_for_user(user)

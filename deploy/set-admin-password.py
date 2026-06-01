@@ -4,6 +4,7 @@ import getpass
 import os
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "admin-panel"))
 
 from admin_panel.core.auth import set_admin_password  # noqa: E402

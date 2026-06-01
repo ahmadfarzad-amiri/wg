@@ -15,6 +15,7 @@ from client_panel.components.layout import page
 from client_panel.config import CLIENT_DIR
 from client_panel.core import i18n
 from client_panel.core.i18n import t
+from client_panel.core.statuses import UserStatus
 from client_panel.core.wireguard import (
     assigned_client_names_for_user,
     primary_client_for_user,
@@ -71,10 +72,16 @@ class Handler(BaseHTTPRequestHandler):
         i18n.begin_request(self)
         user = self.current_user()
         n_configs = len(assigned_client_names_for_user(user)) if user else 0
+        has_vpn = bool(user and user.get("status") == UserStatus.APPROVED and n_configs > 0)
         self.send_html(
             page(
                 t("page.settings"),
-                settings.body(msg, show_config_actions, config_count=max(1, n_configs)),
+                settings.body(
+                    msg,
+                    show_config_actions,
+                    config_count=max(1, n_configs),
+                    has_vpn_config=has_vpn,
+                ),
                 user,
                 "settings",
                 next_path="/settings",
@@ -120,12 +127,12 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path_only == "/":
-            if user["status"] == "pending":
+            if user["status"] == UserStatus.PENDING:
                 self.send_html(
                     page(t("page.pending"), dashboard.body_pending(), user, next_path="/")
                 )
                 return
-            if user["status"] != "approved":
+            if user["status"] != UserStatus.APPROVED:
                 self.send_html(
                     page(t("page.inactive"), dashboard.body_inactive(), user, next_path="/")
                 )
@@ -177,7 +184,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path_only == "/configs.zip":
-            if user["status"] != "approved":
+            if user["status"] != UserStatus.APPROVED:
                 self.send_html(
                     page(
                         t("page.error"),
@@ -231,7 +238,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path_only == "/config":
-            if user["status"] != "approved":
+            if user["status"] != UserStatus.APPROVED:
                 self.send_html(
                     page(
                         t("page.error"),

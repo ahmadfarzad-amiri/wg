@@ -138,14 +138,23 @@ def main():
     # Add new live peer.
     run(["wg", "set", WG_IF, "peer", public_key, "allowed-ips", f"{ip}/32"], check=False)
 
-    # Write new client config.
+    # Preserve MTU from existing config when rotating keys.
     client_conf = os.path.join(CLIENT_DIR, f"{name}.conf")
+    mtu = "1280"
+    if os.path.isfile(client_conf):
+        with open(client_conf, encoding="utf-8", errors="ignore") as old:
+            for line in old:
+                if line.strip().startswith("MTU"):
+                    mtu = line.split("=", 1)[1].strip()
+                    break
+
+    # Write new client config.
     with open(client_conf, "w", encoding="utf-8") as f:
         f.write("[Interface]\n")
         f.write(f"PrivateKey = {private_key}\n")
         f.write(f"Address = {ip}/32\n")
         f.write("DNS = 1.1.1.1, 8.8.8.8\n")
-        f.write("MTU = 1280\n\n")
+        f.write(f"MTU = {mtu}\n\n")
         f.write("[Peer]\n")
         f.write(f"PublicKey = {server_pub}\n")
         f.write(f"Endpoint = {endpoint}\n")

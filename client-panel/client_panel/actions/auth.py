@@ -4,6 +4,7 @@ import time
 
 from client_panel.core.auth import hash_password, verify_password
 from client_panel.core.i18n import t
+from client_panel.core.statuses import UserStatus
 from client_panel.db import db
 from client_panel.server import security
 from client_panel.server.session import _secure_attrs
@@ -20,7 +21,7 @@ def handle_register(handler, data):
     try:
         con.execute(
             "INSERT INTO users(username,password_hash,salt,status,created_at) VALUES(?,?,?,?,?)",
-            (username, ph, salt, "pending", int(time.time())),
+            (username, ph, salt, UserStatus.PENDING, int(time.time())),
         )
         con.commit()
     except sqlite3.IntegrityError:

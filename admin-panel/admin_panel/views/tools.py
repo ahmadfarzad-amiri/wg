@@ -52,7 +52,7 @@ def body(msg=""):
                 f"<span class='muted'>({when})</span></li>"
             )
         audit_html = f"""
-<section class="card card-spaced">
+<section class="card">
   <h3>{html.escape(t("tools.audit_recent"))}</h3>
   <ul class="audit-list">{''.join(items)}</ul>
 </section>
@@ -62,7 +62,8 @@ def body(msg=""):
 <p class="subtitle">{html.escape(t("tools.subtitle"))}</p>
 {notice(msg, role="alert")}
 
-<section class="card card-spaced">
+<div class="page-stack">
+<section class="card">
   <h3>{html.escape(t("tools.infrastructure"))}</h3>
   <p class="hint">{html.escape(t("tools.infrastructure_hint"))}</p>
   {infra_summary}
@@ -90,7 +91,8 @@ def body(msg=""):
 
 <section class="card">
   <h3>{html.escape(t("tools.maintenance"))}</h3>
-  <div class="actions">
+  <p class="hint">{html.escape(t("tools.maintenance_hint"))}</p>
+  <div class="tools-action-grid">
     <form class="inline-form" method="post" action="{admin_url("/tool-action")}">
       <input type="hidden" name="action" value="enforce">
       <button type="submit" data-confirm="{html.escape(t("tools.enforce_confirm"), quote=True)}">{html.escape(t("tools.enforce_btn"))}</button>
@@ -106,4 +108,5 @@ def body(msg=""):
   </div>
 </section>
 {audit_html}
+</div>
 """

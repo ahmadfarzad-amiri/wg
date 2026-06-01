@@ -1,9 +1,12 @@
 """Admin action audit log."""
+import logging
 import os
 import sqlite3
 import time
 
 from admin_panel.config import SESSION_FILE
+
+log = logging.getLogger(__name__)
 
 
 def _audit_path():
@@ -36,7 +39,7 @@ def log_admin_action(action, detail=""):
         con.commit()
         con.close()
     except Exception:
-        pass
+        log.exception("log_admin_action failed for action=%s", action)
 
 
 def recent_audit(limit=20):
@@ -49,4 +52,5 @@ def recent_audit(limit=20):
         con.close()
         return rows
     except Exception:
+        log.exception("recent_audit failed")
         return []

@@ -1,5 +1,6 @@
 """Localized labels for admin panel codes."""
 from admin_panel.core.i18n import t
+from admin_panel.core.statuses import RequestStatus, UserStatus
 
 
 def label_client_status(key):
@@ -36,16 +37,16 @@ def label_vpn_mode(mode):
 
 
 def badge_user_status(status):
-    if status == "pending":
+    if status == UserStatus.PENDING:
         return "warn"
-    if status == "approved":
+    if status == UserStatus.APPROVED:
         return "ok"
     return "bad"
 
 
 def badge_request_status(status):
-    if status == "pending":
+    if status == RequestStatus.PENDING:
         return "warn"
-    if status == "rejected":
+    if status == RequestStatus.REJECTED:
         return "bad"
     return "ok"

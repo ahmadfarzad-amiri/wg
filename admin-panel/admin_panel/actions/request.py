@@ -7,6 +7,7 @@ from admin_panel.core.client_ops import (
 from admin_panel.core.i18n import t, tf
 from admin_panel.core.labels import label_action
 from admin_panel.core.shell import tail_message
+from admin_panel.core.statuses import RequestStatus
 from admin_panel.core.wireguard import find_client_status
 from admin_panel.db import panel_db
 from admin_panel.config import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_SINGLE
@@ -30,9 +31,9 @@ def _approve_request(rid):
             """
             SELECT users.username, COALESCE(users.client_name, '') AS client_name, requests.action
             FROM requests JOIN users ON users.id = requests.user_id
-            WHERE requests.id=? AND requests.status='pending'
+            WHERE requests.id=? AND requests.status=?
             """,
-            (rid,),
+            (rid, RequestStatus.PENDING),
         ).fetchone()
         con.close()
     except Exception as e:
@@ -74,7 +75,7 @@ def _approve_request(rid):
         return tf("msg.process_request_error", client=client)
 
     try:
-        if not _mark_request(rid, "approved"):
+        if not _mark_request(rid, RequestStatus.APPROVED):
             return t("msg.request_not_found")
     except Exception as e:
         return tf("msg.update_request_error", err=e)
@@ -108,7 +109,7 @@ def handle(handler, data):
         handler.flash("/requests", t("msg.request_not_found"))
         return
 
-    if row["status"] != "pending":
+    if row["status"] != RequestStatus.PENDING:
         handler.flash("/requests", t("msg.request_already_processed"))
         return
 
@@ -116,7 +117,7 @@ def handle(handler, data):
         out = _approve_request(rid)
     elif action == "reject":
         try:
-            if not _mark_request(rid, "rejected"):
+            if not _mark_request(rid, RequestStatus.REJECTED):
                 out = t("msg.request_not_found")
             else:
                 log_admin_action("reject_request", f"#{rid}")

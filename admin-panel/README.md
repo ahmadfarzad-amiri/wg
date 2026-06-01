@@ -18,7 +18,14 @@ From a cloned repo:
 sudo bash deploy/install-entry-server.sh
 ```
 
-See **[../deploy/README-DEPLOY.md](../deploy/README-DEPLOY.md)**.
+See **[../deploy/README-DEPLOY.md](../deploy/README-DEPLOY.md)** and **[../docs/ADMIN_GUIDE.md](../docs/ADMIN_GUIDE.md)**.
+
+## Run locally (development)
+
+```bash
+cd admin-panel
+PYTHONPATH=. python3 app.py
+```
 
 ## Run (after install)
 

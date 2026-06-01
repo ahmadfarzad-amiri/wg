@@ -1,5 +1,6 @@
 """Localized labels for internal codes."""
 from client_panel.core.i18n import t
+from client_panel.core.statuses import RequestStatus
 
 
 def label_action(action):
@@ -11,8 +12,8 @@ def label_request_status(status):
 
 
 def badge_request_status(status):
-    if status == "pending":
+    if status == RequestStatus.PENDING:
         return "warn"
-    if status == "rejected":
+    if status == RequestStatus.REJECTED:
         return "bad"
     return "ok"

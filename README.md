@@ -108,3 +108,16 @@ sudo wg-client sync-vpn-modes
 Users can have **multiple configs** assigned in the admin panel; the client panel downloads all assigned configs as a **ZIP** from Settings.
 
 Full guide: **[deploy/README-DEPLOY.md](deploy/README-DEPLOY.md)**
+
+## Documentation
+
+Step-by-step guides for every role:
+
+| Guide | Audience |
+|-------|----------|
+| **[docs/README.md](docs/README.md)** | Documentation index |
+| **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** | VPN users (client panel) |
+| **[docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)** | Administrators (admin panel) |
+| **[docs/OPERATIONS.md](docs/OPERATIONS.md)** | Server install, backup, migration |
+| **[docs/PERFORMANCE.md](docs/PERFORMANCE.md)** | VPN speed tuning (MTU, BBR, direct vs twohop) |
+| **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | How the two-hop stack works |

@@ -7,6 +7,7 @@ import time
 from admin_panel.config import CLIENT_DIR, STATE_DIR, WG_IF
 from admin_panel.core.i18n import human_duration, t, tf
 from admin_panel.core.shell import run
+from wg_common.client_status import evaluate_client_meta
 
 
 def parse_meta_file(path):
@@ -135,18 +136,6 @@ def compact_bytes(n):
     return f"{n}B"
 
 
-def wg_map(command):
-    if not wg_interface_up():
-        return {}
-    out = run(_wg_cmd("show", WG_IF, command))
-    result = {}
-    for line in out.splitlines():
-        parts = line.split()
-        if parts:
-            result[parts[0]] = parts[1:]
-    return result
-
-
 def build_wg_snapshot():
     """Fetch transfer/endpoints/handshakes once for batch status reads."""
     return {
@@ -167,48 +156,28 @@ def client_status(meta, snapshot=None):
         endpoints = snapshot["endpoints"]
         handshakes = snapshot["handshakes"]
 
-    rx = tx = current_total = 0
-    if pub in transfers and len(transfers[pub]) >= 2:
-        rx = int(transfers[pub][0])
-        tx = int(transfers[pub][1])
-        current_total = rx + tx
+    core = evaluate_client_meta(meta, transfers, handshakes)
+    rx = core["rx_bytes"]
+    tx = core["tx_bytes"]
+    used_now = core["used_now"]
+    hs = core["handshake_epoch"]
+    diff = core["handshake_age"]
+    active = core["active"]
+    expired = core["expired"]
+    over_limit = core["over_limit"]
+    state_key = core["state_key"]
+    limit_raw = core["limit_bytes"]
+    expires_at = core["expires_at"]
 
-    used_base = int(meta.get("USED_BYTES", "0") or 0)
-    last_total = int(meta.get("LAST_TOTAL", "0") or 0)
-    used_now = used_base + max(0, current_total - last_total)
-
-    hs = 0
-    if pub in handshakes and handshakes[pub]:
-        hs = int(handshakes[pub][0])
-
-    now = int(time.time())
-    diff = now - hs if hs else 999999999
-    active = hs > 0 and diff <= 120
-
-    limit_bytes = int(meta.get("LIMIT_BYTES", "0") or 0)
-    expires_at = int(meta.get("EXPIRES_AT", "0") or 0)
-    expired = expires_at > 0 and now >= expires_at
-    over_limit = limit_bytes > 0 and used_now >= limit_bytes
-
-    limit_raw = int(meta.get("LIMIT_BYTES", "0") or 0)
     days_left_num = None
     if expires_at > 0:
         if expired:
             duration = t("state.expired")
         else:
-            days_left_num = max(0, (expires_at - now) // 86400)
+            days_left_num = max(0, (expires_at - int(time.time())) // 86400)
             duration = tf("duration.days_left", n=days_left_num)
     else:
         duration = t("unlimited")
-    state_key = "offline"
-    if meta.get("DISABLED", "0") == "1":
-        state_key = "disabled"
-    elif expired:
-        state_key = "expired"
-    elif over_limit:
-        state_key = "over_limit"
-    elif active:
-        state_key = "active"
 
     return {
         "name": meta.get("NAME", ""),

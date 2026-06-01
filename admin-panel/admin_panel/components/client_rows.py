@@ -3,15 +3,16 @@ import html
 from admin_panel.config import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_SINGLE, admin_url
 from admin_panel.core.i18n import t, tf
 from admin_panel.core.labels import label_client_status, label_single_mode, label_vpn_mode
+from admin_panel.core.statuses import ClientState
 from admin_panel.core.wireguard import human_time
 
-CLIENT_COLSPAN = 10
+CLIENT_COLSPAN = 6
 
 
 def _badge_class(state_key):
-    if state_key == "active":
+    if state_key == ClientState.ACTIVE:
         return "ok"
-    if state_key in ("disabled", "offline"):
+    if state_key in (ClientState.DISABLED, ClientState.OFFLINE):
         return "bad"
     return "warn"
 
@@ -61,7 +62,7 @@ def _client_update_form(c):
 """
 
 
-def _client_action_menu(c, assigned_users=None):
+def _client_action_buttons(c, assigned_users=None):
     name = html.escape(c["name"])
     assigned_users = assigned_users or []
     can_enable = c["disabled"]
@@ -73,46 +74,42 @@ def _client_action_menu(c, assigned_users=None):
     renew_attr = "" if can_renew else "disabled"
 
     if c["has_config"]:
-        config_item = (
-            f'<a class="action-menu-item" href="{admin_url("/config/" + c["name"])}">'
+        download = (
+            f'<a class="btn btn-sm" href="{admin_url("/config/" + c["name"])}">'
             f"{html.escape(t('client.download'))}</a>"
         )
     else:
-        config_item = (
-            f'<span class="action-menu-item is-disabled" title="{html.escape(t("client.download_missing"), quote=True)}">'
+        download = (
+            f'<span class="btn btn-sm is-disabled" title="{html.escape(t("client.download_missing"), quote=True)}">'
             f"{html.escape(t('client.download'))}</span>"
         )
 
     remove_confirm = html.escape(_remove_confirm_message(c["name"], assigned_users), quote=True)
-    menu_label = html.escape(t("client.actions_menu"))
 
     return f"""
-<details class="action-menu">
-  <summary class="action-menu-trigger" aria-label="{menu_label}" title="{menu_label}">⋯</summary>
-  <div class="action-menu-panel" role="menu">
-    {config_item}
-    <form class="action-menu-form" method="post" action="{admin_url("/client-action")}" role="none">
-      <input type="hidden" name="client" value="{name}">
-      <input type="hidden" name="action" value="enable">
-      <button type="submit" class="action-menu-item" {enable_attr}>{html.escape(t("client.enable"))}</button>
-    </form>
-    <form class="action-menu-form" method="post" action="{admin_url("/client-action")}" role="none">
-      <input type="hidden" name="client" value="{name}">
-      <input type="hidden" name="action" value="disable">
-      <button type="submit" class="action-menu-item" {disable_attr}>{html.escape(t("client.disable"))}</button>
-    </form>
-    <form class="action-menu-form" method="post" action="{admin_url("/client-action")}" role="none">
-      <input type="hidden" name="client" value="{name}">
-      <input type="hidden" name="action" value="renew">
-      <button type="submit" class="action-menu-item" {renew_attr}>{html.escape(t("client.renew"))}</button>
-    </form>
-    <form class="action-menu-form" method="post" action="{admin_url("/client-action")}" role="none">
-      <input type="hidden" name="client" value="{name}">
-      <input type="hidden" name="action" value="remove">
-      <button type="submit" class="action-menu-item action-menu-item--danger" data-confirm="{remove_confirm}">{html.escape(t("client.remove"))}</button>
-    </form>
-  </div>
-</details>
+<div class="client-action-buttons">
+  {download}
+  <form class="inline-form" method="post" action="{admin_url("/client-action")}">
+    <input type="hidden" name="client" value="{name}">
+    <input type="hidden" name="action" value="renew">
+    <button type="submit" class="btn-sm" {renew_attr}>{html.escape(t("client.renew"))}</button>
+  </form>
+  <form class="inline-form" method="post" action="{admin_url("/client-action")}">
+    <input type="hidden" name="client" value="{name}">
+    <input type="hidden" name="action" value="enable">
+    <button type="submit" class="btn-sm" {enable_attr}>{html.escape(t("client.enable"))}</button>
+  </form>
+  <form class="inline-form" method="post" action="{admin_url("/client-action")}">
+    <input type="hidden" name="client" value="{name}">
+    <input type="hidden" name="action" value="disable">
+    <button type="submit" class="dark btn-sm" {disable_attr}>{html.escape(t("client.disable"))}</button>
+  </form>
+  <form class="inline-form" method="post" action="{admin_url("/client-action")}">
+    <input type="hidden" name="client" value="{name}">
+    <input type="hidden" name="action" value="remove">
+    <button type="submit" class="bad btn-sm" data-confirm="{remove_confirm}">{html.escape(t("client.remove"))}</button>
+  </form>
+</div>
 """
 
 
@@ -123,7 +120,7 @@ def _client_single_form(c):
 <form class="inline-form table-limit-form" method="post" action="{admin_url("/client-action")}">
   <input type="hidden" name="client" value="{name}">
   <input type="hidden" name="action" value="set-single">
-  <select name="single_mode" class="table-select">
+  <select name="single_mode" class="table-select" aria-label="{html.escape(t("client.device_limit"))}">
     <option value="off" {selected["off"]}>{html.escape(label_single_mode("off"))}</option>
     <option value="ip" {selected["ip"]}>{html.escape(label_single_mode("ip"))}</option>
     <option value="endpoint" {selected["endpoint"]}>{html.escape(label_single_mode("endpoint"))}</option>
@@ -144,7 +141,7 @@ def client_rows(clients, assigned_names=None, users_by_client_map=None):
         assigned_users = users_by_client_map.get(c["name"], [])
         single_form = _client_single_form(c)
         update_form = _client_update_form(c)
-        action_menu = _client_action_menu(c, assigned_users)
+        action_buttons = _client_action_buttons(c, assigned_users)
         vpn_badge = html.escape(label_vpn_mode(c.get("vpn_mode", "twohop")))
 
         usage = f"{c['used']} / {c['limit']}"
@@ -177,22 +174,25 @@ def client_rows(clients, assigned_names=None, users_by_client_map=None):
             f'data-sort-name="{sort_name}" data-sort-ip="{sort_ip}" data-sort-duration="{sort_duration}" '
             f'data-search="{search_text}"'
         )
+        ip_hint = html.escape(c["ip"])
         rows += f"""
 <tr class="client-row client-row-details" {item_attrs}>
-  <td class="col-name" title="{html.escape(c['name'])}">{html.escape(c['name'])}</td>
-  <td class="col-ip" title="{html.escape(c['ip'])}">{html.escape(c['ip'])}</td>
-  <td class="col-vpn" title="{vpn_badge}"><span class="badge vpn-badge">{vpn_badge}</span></td>
+  <td class="col-name" title="{html.escape(c['name'])} · {ip_hint}">
+    <span class="client-name">{html.escape(c['name'])}</span>
+    <span class="client-name-meta">{ip_hint}</span>
+  </td>
   <td class="col-status"><span class="badge {badge}">{html.escape(status)}</span></td>
   <td class="col-usage" title="{html.escape(usage)}">{html.escape(usage)}</td>
   <td class="col-duration"{expires_title}>{html.escape(duration)}</td>
-  <td class="col-last" title="{html.escape(c['last'])}">{html.escape(c['last'])}</td>
-  <td class="col-endpoint" title="{html.escape(c['endpoint'])}">{html.escape(c['endpoint'])}</td>
   <td class="col-limit">{single_form}</td>
-  <td class="col-actions">{action_menu}</td>
+  <td class="col-actions">{action_buttons}</td>
 </tr>
 <tr class="client-row client-row-actions" data-list-actions-row>
   <td colspan="{CLIENT_COLSPAN}">
-    <div class="client-row-actions-inner">{update_form}</div>
+    <details class="client-edit-details">
+      <summary>{html.escape(t("client.edit_subscription"))}</summary>
+      <div class="client-row-actions-inner">{update_form}</div>
+    </details>
   </td>
 </tr>
 """
@@ -201,17 +201,14 @@ def client_rows(clients, assigned_names=None, users_by_client_map=None):
 <div class="rowcard" {item_attrs}>
   <div class="rowcard-title">{html.escape(c['name'])} <span class="badge {badge}">{html.escape(status)}</span></div>
   <div class="rowline"><div class="rowlabel">{html.escape(t("col.ip"))}</div><div class="rowvalue">{html.escape(c['ip'])}</div></div>
-  <div class="rowline"><div class="rowlabel">{html.escape(t("col.vpn_mode"))}</div><div class="rowvalue"><span class="badge vpn-badge">{vpn_badge}</span></div></div>
   <div class="rowline"><div class="rowlabel">{html.escape(t("col.usage"))}</div><div class="rowvalue">{html.escape(c['used'])} / {html.escape(c['limit'])}</div></div>
   <div class="rowline"><div class="rowlabel">{html.escape(t("col.duration"))}</div><div class="rowvalue"{expires_title}>{html.escape(duration)}</div></div>
-  <div class="rowline"><div class="rowlabel">{html.escape(t("col.last_connection"))}</div><div class="rowvalue">{html.escape(c['last'])}</div></div>
-  <div class="rowline"><div class="rowlabel">{html.escape(t("col.endpoint"))}</div><div class="rowvalue">{html.escape(c['endpoint'])}</div></div>
   <div class="rowline"><div class="rowlabel">{html.escape(t("client.device_limit"))}</div><div class="rowvalue">{single_form}</div></div>
-  <div class="rowline rowline-update">
-    <div class="rowlabel">{html.escape(t("client.update"))}</div>
-    <div class="rowvalue">{update_form}</div>
-  </div>
-  <div class="rowactions rowactions-menu">{action_menu}</div>
+  <details class="client-edit-details">
+    <summary>{html.escape(t("client.edit_subscription"))}</summary>
+    <div class="rowline rowline-update"><div class="rowvalue">{update_form}</div></div>
+  </details>
+  <div class="rowactions">{action_buttons}</div>
 </div>
 """
     return rows, cards
@@ -246,6 +243,7 @@ def add_client_form():
         <option value="twohop" selected>{html.escape(label_vpn_mode("twohop"))}</option>
         <option value="direct">{html.escape(label_vpn_mode("direct"))}</option>
       </select>
+      <span class="field-hint">{html.escape(t("client.vpn_mode_hint"))}</span>
     </label>
     <label class="field field-days">
       <span class="field-label">{html.escape(t("client.days"))}</span>

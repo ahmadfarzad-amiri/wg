@@ -88,13 +88,39 @@
     if (!btn) return;
     if (loading) {
       btn.disabled = true;
+      btn.classList.add("is-loading");
+      btn.setAttribute("aria-busy", "true");
       btn.dataset.prevText = btn.textContent;
       btn.textContent = i18n.pleaseWait || "…";
     } else if (btn.dataset.prevText) {
       btn.disabled = false;
+      btn.classList.remove("is-loading");
+      btn.removeAttribute("aria-busy");
       btn.textContent = btn.dataset.prevText;
+      delete btn.dataset.prevText;
     }
   }
+
+  document.querySelectorAll("form").forEach(function (form) {
+    form.addEventListener("submit", function (e) {
+      var submitter = e.submitter;
+      if (!submitter || submitter.type !== "submit") {
+        submitter = form.querySelector('button[type="submit"], input[type="submit"]');
+      }
+      if (!submitter || submitter.disabled) {
+        return;
+      }
+      var confirmMsg = submitter.getAttribute("data-confirm");
+      if (confirmMsg && !window.confirm(confirmMsg)) {
+        e.preventDefault();
+        return;
+      }
+      if (form.getAttribute("data-no-loading") === "1") {
+        return;
+      }
+      setButtonLoading(submitter, true);
+    });
+  });
 
   function copyFromFetch(btn) {
     setButtonLoading(btn, true);
@@ -213,6 +239,22 @@
   document.addEventListener("keydown", function (e) {
     if (!modal.hidden && e.key === "Escape") {
       closeQrModal();
+      return;
+    }
+    if (!modal.hidden && e.key === "Tab") {
+      var focusable = modal.querySelectorAll(
+        'button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusable.length) return;
+      var first = focusable[0];
+      var last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
   });
 

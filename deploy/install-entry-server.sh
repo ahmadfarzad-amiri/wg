@@ -151,6 +151,9 @@ rsync -a --delete \
 rsync -a --delete \
   --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
   "$REPO_DIR/admin-panel/" "$INSTALL_DIR/admin-panel/"
+rsync -a --delete \
+  --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
+  "$REPO_DIR/wg_common/" "$INSTALL_DIR/wg_common/"
 
 DEF_IF="$(default_route_iface)"
 DEF_IF="${DEF_IF:-eth0}"
@@ -223,10 +226,6 @@ if command -v ufw >/dev/null 2>&1; then
 fi
 maybe_enable_ufw
 
-sysctl -w net.ipv4.ip_forward=1
-grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null \
-  || echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
-
 wg_quick_up "$CLIENT_CONF" "$CLIENT_IF"
 wg_quick_up "$TUNNEL_CONF" "$TUNNEL_IF"
 systemctl enable "wg-quick@${CLIENT_IF}" "wg-quick@${TUNNEL_IF}" 2>/dev/null || true
@@ -259,7 +258,12 @@ write_env_file "$ENV_FILE" \
   WG_TUNNEL_LISTEN_PORT "$TUNNEL_LISTEN_PORT" \
   WG_UDP_PORT_MIN "$UDP_PORT_MIN" \
   WG_UDP_PORT_MAX "$UDP_PORT_MAX" \
-  WG_HTTPS "$([[ "$ENABLE_SSL" == "yes" ]] && echo 1 || echo 0)"
+  WG_HTTPS "$([[ "$ENABLE_SSL" == "yes" ]] && echo 1 || echo 0)" \
+  WG_CLIENT_MTU "${WG_CLIENT_MTU:-1280}" \
+  WG_CLIENT_MTU_DIRECT "${WG_CLIENT_MTU_DIRECT:-1420}" \
+  WG_CLIENT_MTU_TWOHOP "${WG_CLIENT_MTU_TWOHOP:-1280}" \
+  WG_ENABLE_BBR "${WG_ENABLE_BBR:-1}" \
+  WG_ENABLE_MSS_CLAMP "${WG_ENABLE_MSS_CLAMP:-1}"
 
 export WG_CLIENT_CIDR="$CLIENT_CIDR"
 export WG_TUNNEL_IF="$TUNNEL_IF"
@@ -274,7 +278,7 @@ After=network.target wg-quick@${CLIENT_IF}.service
 [Service]
 Type=simple
 EnvironmentFile=$ENV_FILE
-Environment=PYTHONPATH=$INSTALL_DIR/client-panel:$INSTALL_DIR/admin-panel
+Environment=PYTHONPATH=$INSTALL_DIR:$INSTALL_DIR/client-panel:$INSTALL_DIR/admin-panel
 ExecStart=/usr/bin/python3 $INSTALL_DIR/client-panel/app.py
 Restart=always
 RestartSec=3
@@ -291,7 +295,7 @@ After=network.target wg-quick@${CLIENT_IF}.service
 [Service]
 Type=simple
 EnvironmentFile=$ENV_FILE
-Environment=PYTHONPATH=$INSTALL_DIR/admin-panel:$INSTALL_DIR/client-panel
+Environment=PYTHONPATH=$INSTALL_DIR:$INSTALL_DIR/admin-panel:$INSTALL_DIR/client-panel
 ExecStart=/usr/bin/python3 $INSTALL_DIR/admin-panel/app.py
 Restart=always
 RestartSec=3
@@ -308,6 +312,7 @@ if [[ -n "${ADMIN_PASS:-}" ]]; then
   export ADMIN_USER ADMIN_PASS INSTALL_DIR
   python3 <<'PY'
 import os, sys
+sys.path.insert(0, os.environ["INSTALL_DIR"])
 sys.path.insert(0, os.path.join(os.environ["INSTALL_DIR"], "admin-panel"))
 from admin_panel.core.auth import set_admin_password
 set_admin_password(os.environ["ADMIN_USER"], os.environ["ADMIN_PASS"])

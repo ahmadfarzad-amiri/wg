@@ -11,14 +11,10 @@ def body(clients, msg=""):
     table = data_table(
         [
             t("col.name"),
-            t("col.ip"),
-            t("col.vpn_mode"),
             t("col.status"),
             t("col.usage"),
             t("col.duration"),
-            t("col.last_connection"),
-            t("col.endpoint"),
-            t("col.limit"),
+            t("col.device_limit"),
             t("col.actions"),
         ],
         rows,
@@ -29,15 +25,11 @@ def body(clients, msg=""):
     return f"""
 <h1>{t("clients.title")}</h1>
 <p class="subtitle">{t("clients.subtitle")}</p>
+<p class="hint page-glossary">{t("glossary.clients")}</p>
 {notice(msg, role="alert")}
 
-<section class="card add-client-card">
-  <h3>{t("clients.add_title")}</h3>
-  <p class="hint add-client-intro">{t("clients.add_intro")}</p>
-  {add_client_form()}
-</section>
-
-<section class="card card-spaced list-filterable">
+<div class="page-stack">
+<section class="card list-filterable">
   <div class="list-section-head">
     <h3>{t("clients.all_title")}</h3>
     {list_controls(
@@ -49,4 +41,11 @@ def body(clients, msg=""):
   {table}
   <p class="list-search-empty" data-list-search-empty hidden>{t("empty.no_results")}</p>
 </section>
+
+<details class="add-client-details card">
+  <summary><h3>{t("clients.add_title")}</h3></summary>
+  <p class="hint add-client-intro">{t("clients.add_intro")}</p>
+  {add_client_form()}
+</details>
+</div>
 """

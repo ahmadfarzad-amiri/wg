@@ -25,7 +25,7 @@ def data_table(
     table_attrs = f' class="table {cls}"' if cls else ' class="table"'
     return f"""
 <div class="list-items-host" data-list-items data-list-kind="clients">
-<div class="table-wrap desktop-table">
+<div class="table-scroll desktop-table">
   <table{table_attrs}>
     <thead><tr>{head}</tr></thead>
     <tbody data-list-desktop>{rows_html}</tbody>

@@ -59,6 +59,10 @@ test_exit() {
   check "NAT masquerade for clients" sh -c "iptables -t nat -C POSTROUTING -s ${client_cidr} -j MASQUERADE 2>/dev/null || iptables -t nat -L POSTROUTING -n -v | grep -q MASQUERADE"
   check "tunnel server pubkey saved" test -f /etc/wireguard/tunnel-server.pub
   check "outbound internet" curl -4fsS --max-time 5 https://api.ipify.org
+  if [[ "${WG_ENABLE_BBR:-1}" != "0" ]]; then
+    check "TCP BBR enabled" sh -c '[ "$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)" = "bbr" ]'
+  fi
+  check "TCP MSS clamp" sh -c "iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu"
   if [[ -f /etc/wireguard/tunnel-entry.pub ]]; then
     check "entry peer in config" grep -q 'BEGIN ENTRY TUNNEL PEER' /etc/wireguard/wg-tunnel.conf
     check "entry server peer configured" wg show wg-tunnel peers
@@ -111,6 +115,10 @@ test_entry() {
     echo "FAIL"
     fail=$((fail + 1))
   fi
+  if [[ "${WG_ENABLE_BBR:-1}" != "0" ]]; then
+    check "TCP BBR enabled" sh -c '[ "$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)" = "bbr" ]'
+  fi
+  check "TCP MSS clamp" sh -c "iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu"
   check "client panel health" curl -fsS "http://127.0.0.1:${WG_PANEL_PORT:-8088}/health"
   check "admin panel health" curl -fsS "http://127.0.0.1:${WG_ADMIN_PORT:-8090}/admin/health"
 }

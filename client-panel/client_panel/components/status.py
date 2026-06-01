@@ -1,48 +1,53 @@
 import html
 
 from client_panel.core.i18n import t
+from client_panel.core.statuses import ClientState
 
 
 def client_status_section(s):
     state_key = s.get("state_key", "unknown")
     mapping = {
-        "active": ("ok", "status.active.title", "status.active.desc", False, False),
-        "expired": ("warn", "status.expired.title", "status.expired.desc", True, False),
-        "over_limit": ("warn", "status.over_limit.title", "status.over_limit.desc", True, False),
-        "disabled": ("bad", "status.disabled.title", "status.disabled.desc", False, True),
+        ClientState.ACTIVE: ("ok", "status.active.title", "status.active.desc"),
+        ClientState.EXPIRED: ("warn", "status.expired.title", "status.expired.desc"),
+        ClientState.OVER_LIMIT: ("warn", "status.over_limit.title", "status.over_limit.desc"),
+        ClientState.DISABLED: ("bad", "status.disabled.title", "status.disabled.desc"),
     }
-    box_class, title_key, desc_key, renew_enabled, enable_enabled = mapping.get(
+    box_class, title_key, desc_key = mapping.get(
         state_key,
-        ("warn", "status.unknown.title", "status.unknown.desc", False, False),
+        ("warn", "status.unknown.title", "status.unknown.desc"),
     )
     title = t(title_key)
     desc = t(desc_key)
+    needs_support = state_key in ClientState.NEEDS_SUPPORT
 
-    renew_disabled = "" if renew_enabled else "disabled"
-    enable_disabled = "" if enable_enabled else "disabled"
+    support_link = ""
+    if needs_support:
+        support_link = f"""
+<p class="hint status-support-link">
+  <a class="btn btn-sm" href="/support">{html.escape(t("status.go_support"))}</a>
+</p>
+"""
 
     return f"""
 <section class="statusbox {box_class}">
   <h3>{html.escape(title)}</h3>
   <p>{html.escape(desc)}</p>
-  <div class="actions actions-center">
-    <form method="post" action="/request">
-      <input type="hidden" name="action" value="renew">
-      <button type="submit" {renew_disabled}>{html.escape(t("status.request_renew"))}</button>
-    </form>
-    <form method="post" action="/request">
-      <input type="hidden" name="action" value="enable">
-      <button type="submit" class="dark" {enable_disabled}>{html.escape(t("status.request_enable"))}</button>
-    </form>
-  </div>
+  {support_link}
 </section>
 
-<div class="downloadbox">
+<section class="card install-card">
+  <h3>{html.escape(t("status.install_title"))}</h3>
+  <p class="hint">{html.escape(t("status.install_hint"))}</p>
+  <ol class="install-steps">
+    <li>{html.escape(t("status.install_step1"))}</li>
+    <li>{html.escape(t("status.install_step2"))}</li>
+    <li>{html.escape(t("status.install_step3"))}</li>
+  </ol>
   <div class="config-actions">
     <a class="btn" href="/config">{html.escape(t("status.download"))}</a>
     <button type="button" class="btn dark" data-qr-open>{html.escape(t("settings.show_qr"))}</button>
     <button type="button" class="btn dark" data-copy-config>{html.escape(t("status.copy"))}</button>
   </div>
   <span class="downloadhint">{html.escape(t("status.download_hint"))}</span>
-</div>
+</section>
 """

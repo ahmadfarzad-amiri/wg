@@ -39,7 +39,7 @@ require_entry_server
 INSTALL_DIR="${WG_INSTALL_DIR:-/opt/wg}"
 ENV_FILE="/etc/wireguard/entry-server.env"
 CLIENT_IF="${WG_IF:-wg-clients}"
-PY_PATH="${INSTALL_DIR}/client-panel:${INSTALL_DIR}/admin-panel"
+PY_PATH="${INSTALL_DIR}:${INSTALL_DIR}/client-panel:${INSTALL_DIR}/admin-panel"
 
 [[ -f "$ENV_FILE" ]] || die "Missing $ENV_FILE"
 
@@ -64,6 +64,7 @@ for req in \
   "${INSTALL_DIR}/client-panel/app.py" \
   "${INSTALL_DIR}/admin-panel/app.py" \
   "${INSTALL_DIR}/client-panel/client_panel/db/user_configs.py" \
+  "${INSTALL_DIR}/wg_common/__init__.py" \
   "${INSTALL_DIR}/admin-panel/admin_panel/bootstrap.py"; do
   [[ -f "$req" ]] || warn "Missing: $req (run update-panels.sh or rsync from repo)"
 done

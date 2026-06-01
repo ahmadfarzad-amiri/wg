@@ -7,6 +7,7 @@ import secrets
 
 from admin_panel.config import ADMIN_CONFIG
 from admin_panel.core.i18n import t
+from wg_common.passwords import PBKDF2_ITERATIONS
 
 
 def load_admin():
@@ -24,7 +25,7 @@ def verify_admin(username, password):
     salt = data.get("salt", "")
     expected = data.get("password_hash", "")
     got = hashlib.pbkdf2_hmac(
-        "sha256", password.encode(), salt.encode(), 300000
+        "sha256", password.encode(), salt.encode(), PBKDF2_ITERATIONS
     ).hex()
     return hmac.compare_digest(got, expected)
 
@@ -34,7 +35,7 @@ def set_admin_password(username, password):
         raise ValueError(t("msg.admin_password_min_length"))
     salt = secrets.token_hex(16)
     password_hash = hashlib.pbkdf2_hmac(
-        "sha256", password.encode(), salt.encode(), 300000
+        "sha256", password.encode(), salt.encode(), PBKDF2_ITERATIONS
     ).hex()
     data = {
         "username": username,

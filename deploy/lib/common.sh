@@ -665,6 +665,45 @@ wg_apply_ip_forward() {
     || echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
 }
 
+wg_apply_mss_clamp() {
+  if [[ "${WG_ENABLE_MSS_CLAMP:-1}" == "0" ]]; then
+    return 0
+  fi
+  if iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null; then
+    return 0
+  fi
+  iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+  log "TCP MSS clamp enabled on FORWARD chain"
+}
+
+wg_apply_performance_sysctl() {
+  if [[ "${WG_ENABLE_BBR:-1}" == "0" ]]; then
+    log "Performance sysctl skipped (WG_ENABLE_BBR=0)"
+    return 0
+  fi
+  local sysctl_file="/etc/sysctl.d/99-wg-performance.conf"
+  cat > "$sysctl_file" <<'EOF'
+# WireGuard VPN — TCP BBR and larger UDP buffers for tunnel throughput
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+net.core.rmem_max = 2500000
+net.core.wmem_max = 2500000
+net.core.rmem_default = 212992
+net.core.wmem_default = 212992
+EOF
+  sysctl -p "$sysctl_file" 2>/dev/null || sysctl --system 2>/dev/null || true
+  log "Performance sysctl applied (BBR + UDP buffers)"
+}
+
+wg_apply_vpn_performance() {
+  wg_apply_mss_clamp
+  wg_apply_performance_sysctl
+}
+
+wg_performance_enabled() {
+  [[ "${WG_ENABLE_BBR:-1}" != "0" ]]
+}
+
 wg_apply_rp_filter_for_wg() {
   # Entry VPN router: asymmetric paths (policy routing + tunnel return) need rp_filter off.
   # Do NOT set this in wg-quick PostUp — some hosts block /proc writes from PostUp and
@@ -782,6 +821,7 @@ apply_entry_vpn_routing_fix() {
   fix_entry_client_postup_in_conf "/etc/wireguard/${client_if}.conf" "$client_if" "$client_cidr"
   wg_apply_rp_filter_for_wg
   wg_install_docker_forward_systemd
+  wg_apply_vpn_performance
   ensure_wg_conf_permissions
 
   if wg_entry_client_subnet_route_ok "10.10.10.2" "$client_if"; then
@@ -808,6 +848,7 @@ apply_exit_vpn_routing_fix() {
   iptables -C FORWARD -o "$tunnel_if" -j ACCEPT 2>/dev/null \
     || iptables -A FORWARD -o "$tunnel_if" -j ACCEPT
   wg_exit_tunnel_routes_up "$client_cidr" "$tunnel_peer_ip" "$tunnel_if"
+  wg_apply_vpn_performance
   ensure_wg_conf_permissions
 
   if wg_exit_route_to_client_ok "10.10.10.2" "$tunnel_if"; then

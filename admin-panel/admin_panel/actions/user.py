@@ -2,7 +2,9 @@ from admin_panel.components.layout import page
 from admin_panel.core.client_ops import ensure_client, run_client_action
 from admin_panel.core.i18n import t, tf
 from admin_panel.core.shell import safe_name, tail_message
+from admin_panel.core.statuses import UserStatus
 from admin_panel.core.wireguard import find_client_status
+from admin_panel.db.connection import panel_db
 from admin_panel.db.panel_queries import configs_for_user_id
 from admin_panel.views import users
 
@@ -11,9 +13,7 @@ def _fetch_users():
     try:
         from client_panel.db.user_configs import configs_for_user
 
-        con_users = __import__(
-            "admin_panel.db.connection", fromlist=["panel_db"]
-        ).panel_db()
+        con_users = panel_db()
         rows = con_users.execute(
             """
             SELECT id, username, status, COALESCE(client_name, '') AS client_name, created_at
@@ -69,9 +69,7 @@ def _approve_user(username, client, *, reassigned=False):
         return _friendly_error(create_out, client)
 
     try:
-        con = __import__(
-            "admin_panel.db.connection", fromlist=["panel_db"]
-        ).panel_db()
+        con = panel_db()
         row = _user_row(con, username)
         if not row:
             con.close()
@@ -99,8 +97,8 @@ def _approve_user(username, client, *, reassigned=False):
             return t("msg.assign_config_failed")
 
         con.execute(
-            "UPDATE users SET status='approved', client_name=? WHERE username=?",
-            (user_configs.primary_client_name(row["id"], client), username),
+            "UPDATE users SET status=?, client_name=? WHERE username=?",
+            (UserStatus.APPROVED, user_configs.primary_client_name(row["id"], client), username),
         )
         con.commit()
         con.close()
@@ -119,12 +117,10 @@ def _approve_user(username, client, *, reassigned=False):
 
 def _reject_user(username):
     try:
-        con = __import__(
-            "admin_panel.db.connection", fromlist=["panel_db"]
-        ).panel_db()
+        con = panel_db()
         cur = con.execute(
-            "UPDATE users SET status='rejected' WHERE username=?",
-            (username,),
+            "UPDATE users SET status=? WHERE username=?",
+            (UserStatus.REJECTED, username),
         )
         con.commit()
         con.close()
@@ -137,12 +133,10 @@ def _reject_user(username):
 
 def _disable_user(username):
     try:
-        con = __import__(
-            "admin_panel.db.connection", fromlist=["panel_db"]
-        ).panel_db()
+        con = panel_db()
         cur = con.execute(
-            "UPDATE users SET status='disabled' WHERE username=?",
-            (username,),
+            "UPDATE users SET status=? WHERE username=?",
+            (UserStatus.DISABLED, username),
         )
         con.commit()
         con.close()
@@ -157,9 +151,7 @@ def _enable_user(username):
     from client_panel.db.user_configs import client_names_for_user, primary_client_name
 
     try:
-        con = __import__(
-            "admin_panel.db.connection", fromlist=["panel_db"]
-        ).panel_db()
+        con = panel_db()
         row = _user_row(con, username)
         if not row:
             con.close()
@@ -170,8 +162,8 @@ def _enable_user(username):
             return t("msg.assign_client_first")
         primary = primary_client_name(row["id"], row["client_name"])
         cur = con.execute(
-            "UPDATE users SET status='approved', client_name=? WHERE username=?",
-            (primary, username),
+            "UPDATE users SET status=?, client_name=? WHERE username=?",
+            (UserStatus.APPROVED, primary, username),
         )
         con.commit()
         con.close()
@@ -199,9 +191,7 @@ def _change_password(username, new_password):
 
     password_hash, salt = hash_password(new_password)
     try:
-        con = __import__(
-            "admin_panel.db.connection", fromlist=["panel_db"]
-        ).panel_db()
+        con = panel_db()
         cur = con.execute(
             "UPDATE users SET password_hash=?, salt=? WHERE username=?",
             (password_hash, salt, username),
@@ -231,9 +221,7 @@ def handle(handler, data):
         return
 
     try:
-        con = __import__(
-            "admin_panel.db.connection", fromlist=["panel_db"]
-        ).panel_db()
+        con = panel_db()
         row = _user_row(con, username)
         con.close()
     except Exception:
@@ -249,7 +237,7 @@ def handle(handler, data):
     has_configs = bool(assigned_configs) or bool(row["client_name"])
 
     if action == "assign-config":
-        if status != "approved":
+        if status != UserStatus.APPROVED:
             handler.send_html(_users_page(t("msg.only_approved_assign_config")))
             return
         if not client:
@@ -268,17 +256,18 @@ def handle(handler, data):
             handler.send_html(_users_page(t("msg.assign_config_failed")))
             return
         try:
-            con = __import__(
-                "admin_panel.db.connection", fromlist=["panel_db"]
-            ).panel_db()
+            con = panel_db()
             con.execute(
                 "UPDATE users SET client_name=? WHERE id=?",
                 (user_configs.primary_client_name(user_id, client), user_id),
             )
             con.commit()
             con.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            handler.send_html(
+                _users_page(tf("msg.user_record_sync_error", err=exc))
+            )
+            return
         handler.send_html(
             _users_page(tf("msg.config_assigned", client=client, user=username))
         )
@@ -290,9 +279,7 @@ def handle(handler, data):
             return
         user_configs.unassign_config(user_id, client)
         try:
-            con = __import__(
-                "admin_panel.db.connection", fromlist=["panel_db"]
-            ).panel_db()
+            con = panel_db()
             primary = user_configs.primary_client_name(user_id, "")
             con.execute(
                 "UPDATE users SET client_name=? WHERE id=?",
@@ -300,37 +287,40 @@ def handle(handler, data):
             )
             con.commit()
             con.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            handler.send_html(
+                _users_page(tf("msg.user_record_sync_error", err=exc))
+            )
+            return
         handler.send_html(
             _users_page(tf("msg.config_unassigned", client=client, user=username))
         )
         return
 
     if action == "approve":
-        if status == "pending":
+        if status == UserStatus.PENDING:
             if not client:
                 client = row["client_name"]
             if not client:
                 handler.send_html(_users_page(t("msg.client_required_for_approve")))
                 return
             out = _approve_user(username, client)
-        elif status == "disabled" and not has_configs:
+        elif status == UserStatus.DISABLED and not has_configs:
             if not client:
                 handler.send_html(_users_page(t("msg.client_required_for_assign")))
                 return
             out = _approve_user(username, client, reassigned=True)
-        elif status == "rejected":
+        elif status == UserStatus.REJECTED:
             if not client:
                 client = row["client_name"]
             if not client:
                 handler.send_html(_users_page(t("msg.client_required_for_approve")))
                 return
             out = _approve_user(username, client)
-        elif status == "approved":
+        elif status == UserStatus.APPROVED:
             handler.send_html(_users_page(t("msg.user_already_approved")))
             return
-        elif status == "disabled":
+        elif status == UserStatus.DISABLED:
             handler.send_html(_users_page(t("msg.use_enable_button")))
             return
         else:
@@ -338,19 +328,19 @@ def handle(handler, data):
             return
 
     elif action == "reject":
-        if status != "pending":
+        if status != UserStatus.PENDING:
             handler.send_html(_users_page(t("msg.only_pending_reject")))
             return
         out = _reject_user(username)
 
     elif action == "disable":
-        if status != "approved":
+        if status != UserStatus.APPROVED:
             handler.send_html(_users_page(t("msg.only_approved_disable")))
             return
         out = _disable_user(username)
 
     elif action == "enable":
-        if status != "disabled":
+        if status != UserStatus.DISABLED:
             handler.send_html(_users_page(t("msg.only_disabled_enable")))
             return
         if not has_configs:

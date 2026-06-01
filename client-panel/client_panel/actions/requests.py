@@ -4,6 +4,7 @@ import time
 from client_panel.components.layout import page
 from client_panel.components.notice import notice
 from client_panel.core.i18n import t
+from client_panel.core.statuses import RequestStatus
 from client_panel.core.wireguard import can_request_for_user
 from client_panel.db import db
 
@@ -36,7 +37,7 @@ def handle_request(handler, user, data):
     con = db()
     con.execute(
         "INSERT INTO requests(user_id,action,status,created_at) VALUES(?,?,?,?)",
-        (user["id"], action, "pending", int(time.time())),
+        (user["id"], action, RequestStatus.PENDING, int(time.time())),
     )
     con.commit()
     con.close()

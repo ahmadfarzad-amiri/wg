@@ -42,6 +42,48 @@ if [[ "$ROLE" == "auto" ]]; then
   [[ "$ROLE" != "unknown" ]] || die "Could not detect role — use: sudo bash deploy/diagnose-vpn.sh --role entry|exit"
 fi
 
+diag_performance() {
+  log "=== Performance tuning ==="
+  if [[ -f /etc/wireguard/entry-server.env ]]; then
+    # shellcheck disable=SC1091
+    source /etc/wireguard/entry-server.env
+  elif [[ -f /etc/wireguard/exit-server.env ]]; then
+    # shellcheck disable=SC1091
+    source /etc/wireguard/exit-server.env
+  fi
+  log "WG_ENABLE_BBR=${WG_ENABLE_BBR:-1} WG_ENABLE_MSS_CLAMP=${WG_ENABLE_MSS_CLAMP:-1}"
+  if [[ -f /etc/sysctl.d/99-wg-performance.conf ]]; then
+    log "Performance sysctl file: present"
+    grep -E 'bbr|qdisc|rmem|wmem' /etc/sysctl.d/99-wg-performance.conf 2>/dev/null || true
+  else
+    warn "No /etc/sysctl.d/99-wg-performance.conf — run: sudo bash deploy/tune-vpn-performance.sh"
+  fi
+  log "TCP congestion: $(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo unknown)"
+  log "Default qdisc: $(sysctl -n net.core.default_qdisc 2>/dev/null || echo unknown)"
+  log "UDP rmem_max: $(sysctl -n net.core.rmem_max 2>/dev/null || echo unknown)"
+  if iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null; then
+    log "TCP MSS clamp: enabled"
+  else
+    warn "TCP MSS clamp missing — run: sudo bash deploy/tune-vpn-performance.sh"
+  fi
+  if [[ -d /etc/wireguard/clients ]]; then
+    local sample
+    sample="$(find /etc/wireguard/clients -name '*.conf' 2>/dev/null | head -1)"
+    if [[ -n "$sample" ]]; then
+      log "Sample client MTU: $(grep -E '^MTU' "$sample" 2>/dev/null || echo 'not set')"
+    fi
+  fi
+  if [[ -f /etc/wireguard/entry-server.env ]]; then
+    log "Configured MTU defaults: WG_CLIENT_MTU=${WG_CLIENT_MTU:-1280} direct=${WG_CLIENT_MTU_DIRECT:-1420} twohop=${WG_CLIENT_MTU_TWOHOP:-1280}"
+  fi
+  echo
+  log "Tunnel transfer counters (reset on reboot):"
+  wg show wg-tunnel transfer 2>/dev/null || true
+  if wg show wg-clients >/dev/null 2>&1; then
+    wg show wg-clients transfer 2>/dev/null | head -5 || true
+  fi
+}
+
 diag_exit() {
   local client_cidr="${WG_CLIENT_CIDR:-10.10.10.0/24}"
   if [[ -f /etc/wireguard/exit-server.env ]]; then
@@ -72,6 +114,7 @@ diag_exit() {
   else
     warn "Route check FAIL — run: sudo bash deploy/fix-vpn-routing.sh --role exit"
   fi
+  diag_performance
 }
 
 diag_entry() {
@@ -139,6 +182,7 @@ diag_entry() {
   echo
   log "End-to-end test: on a connected client device run: curl -4 https://api.ipify.org"
   log "Expected: exit server public IP for twohop clients; entry server public IP for direct clients"
+  diag_performance
 }
 
 case "$ROLE" in

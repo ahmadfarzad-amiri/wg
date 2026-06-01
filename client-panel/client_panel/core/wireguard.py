@@ -6,6 +6,8 @@ import time
 
 from client_panel.config import STATE_DIR, WG_IF
 from client_panel.core.i18n import t, tf
+from client_panel.core.statuses import ClientState, UserStatus
+from wg_common.client_status import evaluate_client_meta
 
 
 def run(cmd, timeout=8):
@@ -124,55 +126,26 @@ def status_for_client(client_name):
     transfers = wg_map("transfer")
     endpoints = wg_map("endpoints")
     handshakes = wg_map("latest-handshakes")
+    core = evaluate_client_meta(c, transfers, handshakes, use_reason_hints=True)
 
-    current_total = 0
-    if pub in transfers and len(transfers[pub]) >= 2:
-        rx = int(transfers[pub][0])
-        tx = int(transfers[pub][1])
-        current_total = rx + tx
-
-    used_base = int(c.get("USED_BYTES", "0") or 0)
-    last_total = int(c.get("LAST_TOTAL", "0") or 0)
-    used_now = used_base + max(0, current_total - last_total)
-
-    limit = int(c.get("LIMIT_BYTES", "0") or 0)
-    expires = int(c.get("EXPIRES_AT", "0") or 0)
+    used_now = core["used_now"]
+    limit = core["limit_bytes"]
+    expires = core["expires_at"]
     created = int(c.get("CREATED_AT", "0") or 0)
-    disabled = c.get("DISABLED", "0") == "1"
     now = int(time.time())
+    state_key = core["state_key"]
 
     endpoint = endpoints.get(pub, [t("none")])[0] if pub in endpoints else t("none")
+    hs = core["handshake_epoch"]
+    handshake = t("never") if hs <= 0 else human_duration(core["handshake_age"])
 
-    hs = 0
-    if pub in handshakes and handshakes[pub]:
-        hs = int(handshakes[pub][0])
-
-    handshake = t("never") if hs <= 0 else human_duration(now - hs)
-
-    disabled_reason = (c.get("DISABLED_REASON", "") or "").lower()
-
-    expired_by_time = bool(expires and now >= expires)
-    expired_by_reason = "expired" in disabled_reason or "expire" in disabled_reason
-
-    limit_finished_by_usage = bool(limit and used_now >= limit)
-    limit_finished_by_reason = (
-        "data limit" in disabled_reason
-        or "limit reached" in disabled_reason
-        or "over data" in disabled_reason
-        or "quota" in disabled_reason
-    )
-
-    if expired_by_time or expired_by_reason:
-        state_key = "expired"
+    if state_key == ClientState.EXPIRED:
         badge = "warn"
-    elif limit_finished_by_usage or limit_finished_by_reason:
-        state_key = "over_limit"
+    elif state_key == ClientState.OVER_LIMIT:
         badge = "warn"
-    elif disabled:
-        state_key = "disabled"
+    elif state_key == ClientState.DISABLED:
         badge = "bad"
     else:
-        state_key = "active"
         badge = "ok"
 
     if expires == 0:
@@ -264,11 +237,11 @@ def can_request_status(s, action):
         return False, t("error.config_not_found")
     state_key = s.get("state_key", "")
     if action == "enable":
-        if state_key == "disabled":
+        if state_key == ClientState.DISABLED:
             return True, ""
         return False, t("error.enable_not_needed")
     if action == "renew":
-        if state_key in ("expired", "over_limit"):
+        if state_key in (ClientState.EXPIRED, ClientState.OVER_LIMIT):
             return True, ""
         return False, t("error.renew_not_needed")
     return False, t("error.invalid_request")
@@ -277,7 +250,7 @@ def can_request_status(s, action):
 def can_request_for_user(user, action):
     if not user:
         return False, t("error.sign_in_first")
-    if user["status"] != "approved":
+    if user["status"] != UserStatus.APPROVED:
         return False, t("error.not_approved")
     primary = primary_client_for_user(user)
     if not primary:

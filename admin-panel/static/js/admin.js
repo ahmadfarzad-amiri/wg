@@ -9,15 +9,6 @@
     return template.replace("{visible}", visible).replace("{total}", total);
   }
 
-  document.querySelectorAll("[data-confirm]").forEach(function (btn) {
-    btn.addEventListener("click", function (e) {
-      var msg = btn.getAttribute("data-confirm") || i18n.confirmDefault || "Continue?";
-      if (!window.confirm(msg)) {
-        e.preventDefault();
-      }
-    });
-  });
-
   function normalizeSearch(value) {
     return (value || "")
       .trim()
@@ -252,6 +243,44 @@
     });
   });
 
+  function setButtonLoading(btn, loading) {
+    if (!btn) return;
+    if (loading) {
+      btn.disabled = true;
+      btn.classList.add("is-loading");
+      btn.setAttribute("aria-busy", "true");
+      btn.dataset.prevText = btn.textContent;
+      btn.textContent = i18n.pleaseWait || "…";
+    } else if (btn.dataset.prevText) {
+      btn.disabled = false;
+      btn.classList.remove("is-loading");
+      btn.removeAttribute("aria-busy");
+      btn.textContent = btn.dataset.prevText;
+      delete btn.dataset.prevText;
+    }
+  }
+
+  document.querySelectorAll("form").forEach(function (form) {
+    form.addEventListener("submit", function (e) {
+      var submitter = e.submitter;
+      if (!submitter || submitter.type !== "submit") {
+        submitter = form.querySelector('button[type="submit"], input[type="submit"]');
+      }
+      if (!submitter || submitter.disabled) {
+        return;
+      }
+      var confirmMsg = submitter.getAttribute("data-confirm");
+      if (confirmMsg && !window.confirm(confirmMsg)) {
+        e.preventDefault();
+        return;
+      }
+      if (form.getAttribute("data-no-loading") === "1") {
+        return;
+      }
+      setButtonLoading(submitter, true);
+    });
+  });
+
   document.querySelectorAll(".list-filterable").forEach(function (root) {
     var searchInput = root.querySelector("[data-list-search]");
     var filterSelect = root.querySelector("[data-list-filter]");
@@ -271,6 +300,7 @@
     if (sortSelect) {
       sortSelect.addEventListener("change", refresh);
     }
+    refresh();
   });
 })();
 

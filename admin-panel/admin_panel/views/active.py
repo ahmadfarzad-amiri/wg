@@ -17,8 +17,10 @@ def body(clients, msg="", wg_hint=""):
 {empty_block}
 {notice(msg, role="alert")}
 
+<div class="page-stack">
 <section class="card card-active list-filterable">
   <div class="list-section-head">
+    <h3>{t("active.list_title")}</h3>
     {list_controls(
         search_placeholder=t("list.search_active"),
         filters=active_filters(),
@@ -28,4 +30,5 @@ def body(clients, msg="", wg_hint=""):
   {listing}
   <p class="list-search-empty" data-list-search-empty hidden>{t("empty.no_results")}</p>
 </section>
+</div>
 """

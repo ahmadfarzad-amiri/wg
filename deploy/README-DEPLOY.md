@@ -1,5 +1,7 @@
 # Deployment guide
 
+**Documentation:** [docs/README.md](../docs/README.md) · [Operations guide](../docs/OPERATIONS.md) · [Performance guide](../docs/PERFORMANCE.md) · [Admin guide](../docs/ADMIN_GUIDE.md)
+
 **Traffic path:** devices → **entry server** (`wg-clients`) → **encrypted tunnel** → **exit server** → internet
 
 Install scripts pull from [github.com/ahmadfarzad-amiri/wg](https://github.com/ahmadfarzad-amiri/wg).
@@ -114,6 +116,19 @@ sudo bash deploy/restore.sh /etc/wireguard/backups/TIMESTAMP-label
 ```
 
 Install and upgrade scripts automatically apply routing fixes. Use `fix-vpn-routing.sh` after manual iptables changes or if client traffic is one-way.
+
+## Performance tuning
+
+After install or when users report slow speeds:
+
+```bash
+sudo bash deploy/tune-vpn-performance.sh --role entry   # on entry
+sudo bash deploy/tune-vpn-performance.sh --role exit    # on exit
+```
+
+This applies routing repair, TCP MSS clamp, BBR + UDP buffers, and runs diagnostics. See **[docs/PERFORMANCE.md](../docs/PERFORMANCE.md)**.
+
+Per-client speed vs privacy: `wg-client set-mode CLIENT direct|twohop` (direct = faster, entry IP visible).
 
 ## Uninstall (remove everything)
 

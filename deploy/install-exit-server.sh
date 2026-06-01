@@ -117,15 +117,11 @@ if command -v ufw >/dev/null 2>&1; then
 fi
 maybe_enable_ufw
 
-sysctl -w net.ipv4.ip_forward=1
-grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null \
-  || echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
-
 systemctl enable "wg-quick@${TUNNEL_IF}" 2>/dev/null || true
 wg_quick_up "$TUNNEL_CONF" "$TUNNEL_IF"
 
-export WG_TUNNEL_IF="$TUNNEL_IF"
 export WG_CLIENT_CIDR="$CLIENT_CIDR"
+export WG_TUNNEL_IF="$TUNNEL_IF"
 export WG_TUNNEL_PEER_IP="$TUNNEL_PEER_IP"
 apply_exit_vpn_routing_fix
 
@@ -135,7 +131,9 @@ write_env_file /etc/wireguard/exit-server.env \
   WG_TUNNEL_PORT "$TUNNEL_PORT" \
   WG_TUNNEL_PUBLIC_IP "$PUBLIC_IP" \
   WG_CLIENT_CIDR "$CLIENT_CIDR" \
-  WG_TUNNEL_PEER_IP "$TUNNEL_PEER_IP"
+  WG_TUNNEL_PEER_IP "$TUNNEL_PEER_IP" \
+  WG_ENABLE_BBR "${WG_ENABLE_BBR:-1}" \
+  WG_ENABLE_MSS_CLAMP "${WG_ENABLE_MSS_CLAMP:-1}"
 
 cat <<EOF
 

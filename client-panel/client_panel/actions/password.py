@@ -5,6 +5,7 @@ from http.cookies import SimpleCookie
 from client_panel.config import ROTATE_KEYS_CMD
 from client_panel.core.auth import hash_password, verify_password
 from client_panel.core.i18n import t, tf
+from client_panel.core.statuses import UserStatus
 from client_panel.core.wireguard import primary_client_for_user
 from client_panel.db import db
 
@@ -24,7 +25,7 @@ def handle_change_password(handler, user, data):
         handler.render_settings(t("password.mismatch"))
         return
     client_name = primary_client_for_user(user)
-    if user["status"] != "approved" or not client_name:
+    if user["status"] != UserStatus.APPROVED or not client_name:
         handler.render_settings(t("password.not_ready"))
         return
 

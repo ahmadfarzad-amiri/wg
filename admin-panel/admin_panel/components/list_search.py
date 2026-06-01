@@ -2,16 +2,17 @@ import html
 
 from admin_panel.core.i18n import t
 from admin_panel.core.labels import label_client_status, label_request_status, label_user_status
+from admin_panel.core.statuses import ClientState, RequestStatus, UserStatus
 
 
 def client_filters():
     return [
         ("", t("filter.all_statuses")),
-        ("active", label_client_status("active")),
-        ("offline", label_client_status("offline")),
-        ("disabled", label_client_status("disabled")),
-        ("expired", label_client_status("expired")),
-        ("over_limit", label_client_status("over_limit")),
+        (ClientState.ACTIVE, label_client_status(ClientState.ACTIVE)),
+        (ClientState.OFFLINE, label_client_status(ClientState.OFFLINE)),
+        (ClientState.DISABLED, label_client_status(ClientState.DISABLED)),
+        (ClientState.EXPIRED, label_client_status(ClientState.EXPIRED)),
+        (ClientState.OVER_LIMIT, label_client_status(ClientState.OVER_LIMIT)),
         ("unassigned", t("filter.unassigned")),
     ]
 
@@ -28,10 +29,10 @@ def client_sorts():
 def user_filters():
     return [
         ("", t("filter.all_statuses")),
-        ("pending", label_user_status("pending")),
-        ("approved", label_user_status("approved")),
-        ("disabled", label_user_status("disabled")),
-        ("rejected", label_user_status("rejected")),
+        (UserStatus.PENDING, label_user_status(UserStatus.PENDING)),
+        (UserStatus.APPROVED, label_user_status(UserStatus.APPROVED)),
+        (UserStatus.DISABLED, label_user_status(UserStatus.DISABLED)),
+        (UserStatus.REJECTED, label_user_status(UserStatus.REJECTED)),
     ]
 
 
@@ -49,9 +50,9 @@ def user_sorts():
 def request_filters():
     return [
         ("", t("filter.all_statuses")),
-        ("pending", label_request_status("pending")),
-        ("approved", label_request_status("approved")),
-        ("rejected", label_request_status("rejected")),
+        (RequestStatus.PENDING, label_request_status(RequestStatus.PENDING)),
+        (RequestStatus.APPROVED, label_request_status(RequestStatus.APPROVED)),
+        (RequestStatus.REJECTED, label_request_status(RequestStatus.REJECTED)),
     ]
 
 
@@ -89,7 +90,7 @@ def active_sorts():
     ]
 
 
-def list_controls(*, search_placeholder=None, filters=None, sorts=None):
+def list_controls(*, search_placeholder=None, filters=None, sorts=None, default_filter=""):
     filters = filters or [("", t("filter.all"))]
     sorts = sorts or [("default", t("sort.default"))]
     if search_placeholder is None:
@@ -97,7 +98,8 @@ def list_controls(*, search_placeholder=None, filters=None, sorts=None):
 
     search_ph = html.escape(search_placeholder)
     filter_opts = "".join(
-        f'<option value="{html.escape(value)}">{html.escape(label)}</option>'
+        f'<option value="{html.escape(value)}"{" selected" if value == default_filter else ""}>'
+        f"{html.escape(label)}</option>"
         for value, label in filters
     )
     sort_opts = "".join(
@@ -110,8 +112,8 @@ def list_controls(*, search_placeholder=None, filters=None, sorts=None):
 
     return f"""
 <div class="list-controls">
-  <div class="list-search">
-    <input type="search" class="list-search-input" data-list-search placeholder="{search_ph}" aria-label="{search_ph}" autocomplete="off">
+  <div class="list-search list-search-field">
+    <input type="search" class="list-search-input" data-list-search placeholder="{search_ph}" aria-label="{search_ph}" autocomplete="off" enterkeyhint="search">
   </div>
   <label class="list-control">
     <span class="list-control-label">{filter_label}</span>

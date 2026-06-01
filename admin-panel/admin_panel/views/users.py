@@ -2,6 +2,7 @@ from admin_panel.components.list_search import list_controls, user_filters, user
 from admin_panel.components.notice import notice
 from admin_panel.components.user_rows import user_rows
 from admin_panel.core.i18n import t
+from admin_panel.core.statuses import UserStatus
 
 
 def body(users, msg=""):
@@ -9,17 +10,22 @@ def body(users, msg=""):
     return f"""
 <h1>{t("users.title")}</h1>
 <p class="subtitle">{t("users.subtitle")}</p>
+<p class="hint page-glossary">{t("glossary.users")}</p>
 {notice(msg, role="alert")}
 
+<div class="page-stack">
 <section class="card card-users list-filterable">
   <div class="list-section-head">
+    <h3>{t("users.list_title")}</h3>
     {list_controls(
         search_placeholder=t("list.search_users"),
         filters=user_filters(),
         sorts=user_sorts(),
+        default_filter=UserStatus.PENDING,
     )}
   </div>
   {listing}
   <p class="list-search-empty" data-list-search-empty hidden>{t("empty.no_results")}</p>
 </section>
+</div>
 """

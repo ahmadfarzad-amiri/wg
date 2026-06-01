@@ -24,10 +24,16 @@ else
 fi
 
 chmod +x /opt/wg/client-panel/app.py 2>/dev/null || true
+chmod +x /opt/wg/admin-panel/app.py 2>/dev/null || true
 chmod +x /opt/wg/admin-panel/admin_app.py 2>/dev/null || true
 
+ADMIN_UNIT="/opt/wg/admin-panel/deploy/wg-admin-panel.service"
+if [[ ! -f "$ADMIN_UNIT" ]]; then
+  ADMIN_UNIT="/opt/wg/client-panel/deploy/wg-admin-panel.service"
+fi
+
 install -m 644 /opt/wg/client-panel/deploy/wg-panel.service /etc/systemd/system/wg-panel.service
-install -m 644 /opt/wg/client-panel/deploy/wg-admin-panel.service /etc/systemd/system/wg-admin-panel.service
+install -m 644 "$ADMIN_UNIT" /etc/systemd/system/wg-admin-panel.service
 
 systemctl daemon-reload
 systemctl restart wg-panel.service
