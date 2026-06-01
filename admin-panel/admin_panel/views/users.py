@@ -2,7 +2,6 @@ from admin_panel.components.list_search import list_controls, user_filters, user
 from admin_panel.components.notice import notice
 from admin_panel.components.user_rows import user_rows
 from admin_panel.core.i18n import t
-from admin_panel.core.statuses import UserStatus
 
 
 def body(users, msg=""):
@@ -21,7 +20,6 @@ def body(users, msg=""):
         search_placeholder=t("list.search_users"),
         filters=user_filters(),
         sorts=user_sorts(),
-        default_filter=UserStatus.PENDING,
     )}
   </div>
   {listing}
