@@ -177,6 +177,7 @@ def client_status(meta, snapshot=None):
         "disabled": meta.get("DISABLED", "0") == "1",
         "reason": meta.get("DISABLED_REASON", "") or "—",
         "single": meta.get("SINGLE_MODE", "off"),
+        "vpn_mode": (meta.get("VPN_MODE") or "twohop").lower(),
         "endpoint": endpoints.get(pub, ["none"])[0] if pub in endpoints else "none",
         "last": t("never") if not hs else human_duration(diff),
         "active": active,

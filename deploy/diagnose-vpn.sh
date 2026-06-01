@@ -124,8 +124,21 @@ diag_entry() {
   wg show wg-clients latest-handshakes 2>/dev/null || true
   wg show wg-clients transfer 2>/dev/null || true
   echo
+  local direct=0 twohop=0
+  if [[ -d /etc/wireguard/client-state ]]; then
+    for f in /etc/wireguard/client-state/*.meta; do
+      [[ -f "$f" ]] || continue
+      if grep -q '^VPN_MODE=direct' "$f" 2>/dev/null || grep -q "^VPN_MODE='direct'" "$f" 2>/dev/null; then
+        direct=$((direct + 1))
+      else
+        twohop=$((twohop + 1))
+      fi
+    done
+  fi
+  log "VPN modes: direct=${direct} twohop=${twohop} (direct clients egress via entry NAT; twohop via exit)"
+  echo
   log "End-to-end test: on a connected client device run: curl -4 https://api.ipify.org"
-  log "Expected: exit server public IP (not entry server IP)"
+  log "Expected: exit server public IP for twohop clients; entry server public IP for direct clients"
 }
 
 case "$ROLE" in

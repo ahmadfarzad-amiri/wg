@@ -58,7 +58,7 @@ def _client_action_applied(action, name):
     return True
 
 
-def ensure_client(name, *, days=None, limit=None, single=None):
+def ensure_client(name, *, days=None, limit=None, single=None, vpn_mode=None):
     """Ensure a client exists. Returns (ok, created, output)."""
     if find_client_meta_by_name(name):
         return True, False, ""
@@ -66,6 +66,9 @@ def ensure_client(name, *, days=None, limit=None, single=None):
     days = str(days or DEFAULT_DAYS)
     limit = str(limit or DEFAULT_LIMIT)
     single = single or DEFAULT_SINGLE
+    mode = (vpn_mode or "twohop").strip().lower()
+    if mode not in ("direct", "twohop"):
+        mode = "twohop"
 
     output = run(
         [
@@ -76,6 +79,8 @@ def ensure_client(name, *, days=None, limit=None, single=None):
             days,
             "--limit",
             limit,
+            "--vpn-mode",
+            mode,
             single,
         ],
         timeout=CLIENT_CMD_TIMEOUT,

@@ -39,7 +39,7 @@ else
   SCRIPT_DIR="$_BOOT/deploy"
   # shellcheck source=lib/common.sh
   source "$SCRIPT_DIR/lib/common.sh"
-  fetch_deploy_helper_scripts test-connectivity.sh diagnose-vpn.sh fix-vpn-routing.sh
+  fetch_deploy_helper_scripts test-connectivity.sh diagnose-vpn.sh fix-vpn-routing.sh change-entry-server.sh change-exit-server.sh
 fi
 set -u
 require_root

@@ -797,3 +797,15 @@ body.auth-page.ltr .locale-bar{
 body.ltr{font-family:system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif}
 body.ltr .sidebar{border-left:0;border-right:1px solid var(--line)}
 body.ltr .layout{direction:ltr}
+
+.badge.vpn-badge{background:rgba(56,189,248,.15);color:#7dd3fc;border:1px solid rgba(56,189,248,.35)}
+.config-list{display:flex;flex-direction:column;gap:12px}
+.config-item.card-inset{padding:14px;border:1px solid var(--line);border-radius:14px;background:rgba(17,28,46,.45)}
+.config-item__head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px}
+.config-item__name{margin:0;font-size:16px;flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.config-item__grid{margin-bottom:10px}
+.config-item__actions{display:flex;flex-wrap:wrap;gap:8px}
+.config-download-card{margin-bottom:18px}
+@media(max-width:640px){
+  .config-item__actions .btn{width:100%;max-width:100%;justify-content:center}
+}

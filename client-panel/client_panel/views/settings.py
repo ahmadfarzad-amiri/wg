@@ -5,16 +5,22 @@ from client_panel.components.notice import notice
 from client_panel.core.i18n import t
 
 
-def body(msg="", show_config_actions=False):
+def body(msg="", show_config_actions=False, config_count=1):
     toast_variant = "success" if msg and show_config_actions else "info"
     config_actions = ""
     if show_config_actions:
+        zip_label = (
+            t("settings.download_all_zip")
+            if config_count > 1
+            else t("settings.download")
+        )
+        zip_href = "/configs.zip" if config_count > 1 else "/config"
         config_actions = f"""
-<section class="card card-spaced">
+<section class="card card-spaced config-download-card">
   <h3>{html.escape(t("settings.new_config"))}</h3>
   <p class="hint">{html.escape(t("settings.new_config_hint"))}</p>
-  <div class="settings-actions">
-    <a class="btn" href="/config">{html.escape(t("settings.download"))}</a>
+  <div class="settings-actions config-actions">
+    <a class="btn" href="{zip_href}">{html.escape(zip_label)}</a>
     <button type="button" class="btn dark" data-qr-open>{html.escape(t("settings.show_qr"))}</button>
   </div>
 </section>
@@ -22,6 +28,8 @@ def body(msg="", show_config_actions=False):
     return f"""
 <h1>{html.escape(t("settings.title"))}</h1>
 <p class="subtitle">{html.escape(t("settings.subtitle"))}</p>
+
+{config_actions}
 
 {locale_version_bar("/settings")}
 
@@ -39,8 +47,6 @@ def body(msg="", show_config_actions=False):
     <button type="submit">{html.escape(t("settings.submit"))}</button>
   </form>
 </section>
-
-{config_actions}
 
 <section class="card card-spaced">
   <h3>{html.escape(t("settings.account"))}</h3>

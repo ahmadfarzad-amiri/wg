@@ -36,5 +36,8 @@ def db():
         note TEXT
     )
     """)
+    from client_panel.db.user_configs import ensure_user_configs_schema
+
+    ensure_user_configs_schema(con)
     con.commit()
     return con

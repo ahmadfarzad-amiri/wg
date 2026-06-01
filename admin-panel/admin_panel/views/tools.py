@@ -29,6 +29,31 @@ def body(msg=""):
 <p class="subtitle">{html.escape(t("tools.subtitle"))}</p>
 {notice(msg, role="alert")}
 
+<section class="card card-spaced">
+  <h3>{html.escape(t("tools.infrastructure"))}</h3>
+  <p class="hint">{html.escape(t("tools.infrastructure_hint"))}</p>
+  <form class="form-stack infra-form" method="post" action="{admin_url("/tool-action")}">
+    <input type="hidden" name="action" value="change-entry">
+    <h4>{html.escape(t("tools.change_entry"))}</h4>
+    <label>{html.escape(t("tools.new_endpoint"))}</label>
+    <input name="new_endpoint" class="field-input" placeholder="198.51.100.10:51820" required>
+    <label>{html.escape(t("tools.old_ip"))}</label>
+    <input name="old_ip" class="field-input" placeholder="216.147.121.53">
+    <button type="submit" class="btn" data-confirm="{html.escape(t("tools.change_entry_confirm"), quote=True)}">{html.escape(t("tools.change_entry_btn"))}</button>
+  </form>
+  <form class="form-stack infra-form" method="post" action="{admin_url("/tool-action")}">
+    <input type="hidden" name="action" value="change-exit">
+    <h4>{html.escape(t("tools.change_exit"))}</h4>
+    <label>{html.escape(t("tools.exit_ip"))}</label>
+    <input name="exit_ip" class="field-input" placeholder="203.0.113.50" required>
+    <label>{html.escape(t("tools.exit_tunnel_pub"))}</label>
+    <input name="exit_tunnel_pub" class="field-input" required>
+    <label>{html.escape(t("tools.exit_tunnel_port"))}</label>
+    <input name="exit_tunnel_port" class="field-input" value="51821">
+    <button type="submit" class="btn dark" data-confirm="{html.escape(t("tools.change_exit_confirm"), quote=True)}">{html.escape(t("tools.change_exit_btn"))}</button>
+  </form>
+</section>
+
 <section class="card">
   <h3>{html.escape(t("tools.maintenance"))}</h3>
   <div class="actions">

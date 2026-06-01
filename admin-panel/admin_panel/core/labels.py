@@ -30,6 +30,11 @@ def label_single_mode(mode):
     return t(f"single.{mode}", mode)
 
 
+def label_vpn_mode(mode):
+    mode = (mode or "twohop").lower()
+    return t(f"vpn.{mode}", mode)
+
+
 def badge_user_status(status):
     if status == "pending":
         return "warn"

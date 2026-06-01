@@ -3,7 +3,7 @@ import html
 from client_panel.components.forms import request_controls
 from client_panel.core.i18n import t
 from client_panel.core.labels import badge_request_status, label_action, label_request_status
-from client_panel.core.wireguard import human_time
+from client_panel.core.wireguard import human_time, primary_client_for_user
 
 
 def body(user, rows, s=None):
@@ -20,7 +20,7 @@ def body(user, rows, s=None):
         tr = f'<tr><td colspan="4" class="empty">{html.escape(t("support.empty"))}</td></tr>'
 
     controls = ""
-    if user["status"] == "approved" and user["client_name"] and s:
+    if user["status"] == "approved" and primary_client_for_user(user) and s:
         controls = request_controls(s, include_download=False)
     else:
         controls = f'<div class="notice">{html.escape(t("error.not_approved"))}</div>'

@@ -203,8 +203,46 @@ def status_for_client(client_name):
         "handshake": handshake,
         "single": c.get("SINGLE_MODE", "off"),
         "single_text": single_mode_text(c.get("SINGLE_MODE", "off")),
+        "vpn_mode": (c.get("VPN_MODE") or "twohop").lower(),
+        "vpn_mode_text": vpn_mode_text(c.get("VPN_MODE", "twohop")),
         "disabled_reason": c.get("DISABLED_REASON", "") or t("disabled_reason.none"),
     }
+
+
+def vpn_mode_text(mode):
+    mode = (mode or "twohop").lower()
+    return t(f"vpn.{mode}", mode)
+
+
+def assigned_client_names_for_user(user):
+    from client_panel.db.user_configs import client_names_for_user, primary_client_name
+
+    if not user:
+        return []
+    names = client_names_for_user(user["id"])
+    if names:
+        return names
+    if user.get("client_name"):
+        return [user["client_name"]]
+    return []
+
+
+def primary_client_for_user(user):
+    from client_panel.db.user_configs import primary_client_name
+
+    if not user:
+        return ""
+    return primary_client_name(user["id"], user.get("client_name") or "")
+
+
+def statuses_for_user(user):
+    names = assigned_client_names_for_user(user)
+    rows = []
+    for name in names:
+        s = status_for_client(name)
+        if s:
+            rows.append(s)
+    return rows
 
 
 def can_request_status(s, action):
@@ -225,7 +263,10 @@ def can_request_status(s, action):
 def can_request_for_user(user, action):
     if not user:
         return False, t("error.sign_in_first")
-    if user["status"] != "approved" or not user["client_name"]:
+    if user["status"] != "approved":
         return False, t("error.not_approved")
-    s = status_for_client(user["client_name"])
+    primary = primary_client_for_user(user)
+    if not primary:
+        return False, t("error.config_not_assigned")
+    s = status_for_client(primary)
     return can_request_status(s, action)

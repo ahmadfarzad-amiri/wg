@@ -144,9 +144,26 @@ sudo bash /tmp/test-connectivity.sh --role entry
 curl -4 https://api.ipify.org
 ```
 
-Should show the **exit** server public IP.
+Should show the **exit** server public IP for **twohop** clients (`VPN_MODE=twohop`, default), or the **entry** server public IP for **direct** clients (`VPN_MODE=direct`).
 
 Do **not** use `curl ifconfig.me` on the VPS itself to test VPN — that checks the server's own internet path and may return HTTP 403.
+
+## Change entry / exit server
+
+On the **entry** server:
+
+```bash
+sudo bash deploy/change-entry-server.sh --new ENTRY_IP:51820
+sudo WG_EXIT_PUBLIC_IP=NEW_EXIT WG_EXIT_TUNNEL_PUB='...' bash deploy/change-exit-server.sh
+```
+
+After changing exit, on the **new** exit: `add-entry-peer.sh` with this entry's tunnel public key. Remove the old entry peer on the previous exit if replacing it.
+
+## Multiple configs per user
+
+Admin assigns one or more WireGuard clients per panel user. Users download all assigned `.conf` files from the client panel as **`/configs.zip`**.
+
+Per-client routing: `wg-client add NAME --vpn-mode direct|twohop` (admin **Clients** form includes VPN path).
 
 ## Troubleshooting one-way traffic (TX up, RX stuck)
 

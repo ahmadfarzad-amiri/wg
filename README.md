@@ -80,4 +80,31 @@ sudo bash deploy/restore.sh /etc/wireguard/backups/TIMESTAMP-label
 sudo bash deploy/update-panels.sh   # entry server only
 ```
 
+### Change entry or exit server
+
+```bash
+# New client endpoint (entry public IP:port) for all .conf files
+sudo bash deploy/change-entry-server.sh --new 198.51.100.10:51820
+
+# Point wg-tunnel at a new exit VPS (then run add-entry-peer.sh on the new exit)
+sudo WG_EXIT_PUBLIC_IP=203.0.113.50 WG_EXIT_TUNNEL_PUB='...' sudo bash deploy/change-exit-server.sh
+```
+
+Admin panel: **Tools → Server infrastructure** (same scripts).
+
+### Per-client VPN path (on entry server)
+
+| Mode | Egress IP |
+|------|-----------|
+| `twohop` (default) | Exit VPS |
+| `direct` | Entry VPS |
+
+```bash
+sudo wg-client add alice --vpn-mode direct
+sudo wg-client set-mode bob twohop
+sudo wg-client sync-vpn-modes
+```
+
+Users can have **multiple configs** assigned in the admin panel; the client panel downloads all assigned configs as a **ZIP** from Settings.
+
 Full guide: **[deploy/README-DEPLOY.md](deploy/README-DEPLOY.md)**

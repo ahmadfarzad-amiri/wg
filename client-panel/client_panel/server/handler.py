@@ -15,7 +15,12 @@ from client_panel.components.layout import page
 from client_panel.config import CLIENT_DIR
 from client_panel.core import i18n
 from client_panel.core.i18n import t
-from client_panel.core.wireguard import status_for_client
+from client_panel.core.wireguard import (
+    assigned_client_names_for_user,
+    primary_client_for_user,
+    statuses_for_user,
+    status_for_client,
+)
 from client_panel.db import db
 from client_panel.server import responses, security, session
 from client_panel.views import copy_config, dashboard, login, register, settings, support
@@ -65,10 +70,11 @@ class Handler(BaseHTTPRequestHandler):
     def render_settings(self, msg="", show_config_actions=False):
         i18n.begin_request(self)
         user = self.current_user()
+        n_configs = len(assigned_client_names_for_user(user)) if user else 0
         self.send_html(
             page(
                 t("page.settings"),
-                settings.body(msg, show_config_actions),
+                settings.body(msg, show_config_actions, config_count=max(1, n_configs)),
                 user,
                 "settings",
                 next_path="/settings",
@@ -124,14 +130,28 @@ class Handler(BaseHTTPRequestHandler):
                     page(t("page.inactive"), dashboard.body_inactive(), user, next_path="/")
                 )
                 return
-            s = status_for_client(user["client_name"])
+            names = assigned_client_names_for_user(user)
+            if not names:
+                self.send_html(
+                    page(t("page.no_config"), dashboard.body_no_config(), user, next_path="/")
+                )
+                return
+            all_statuses = statuses_for_user(user)
+            primary_name = primary_client_for_user(user)
+            s = status_for_client(primary_name)
             if not s:
                 self.send_html(
                     page(t("page.no_config"), dashboard.body_no_config(), user, next_path="/")
                 )
                 return
             self.send_html(
-                page(t("page.dashboard"), dashboard.body(user, s), user, "dashboard", next_path="/")
+                page(
+                    t("page.dashboard"),
+                    dashboard.body(user, s, all_statuses),
+                    user,
+                    "dashboard",
+                    next_path="/",
+                )
             )
             return
 
@@ -142,7 +162,8 @@ class Handler(BaseHTTPRequestHandler):
                 (user["id"],),
             ).fetchall()
             con.close()
-            s = status_for_client(user["client_name"]) if user["client_name"] else None
+            primary = primary_client_for_user(user)
+            s = status_for_client(primary) if primary else None
             self.send_html(
                 page(t("page.support"), support.body(user, rows, s), user, "support", next_path="/support")
             )
@@ -155,8 +176,31 @@ class Handler(BaseHTTPRequestHandler):
             self.render_settings(security.notice_from_query(self), show_config_actions=show_cfg)
             return
 
+        if path_only == "/configs.zip":
+            if user["status"] != "approved":
+                self.send_html(
+                    page(
+                        t("page.error"),
+                        f"<h1>{html.escape(t('error.config_not_assigned'))}</h1>",
+                        user,
+                    ),
+                    403,
+                )
+                return
+            raw, err = responses.build_configs_zip(user)
+            if err:
+                self.send_html(page(t("page.error"), f"<h1>{html.escape(err)}</h1>", user), 403)
+                return
+            safe_user = "".join(
+                c if c.isalnum() or c in "._-" else "_" for c in user["username"]
+            )
+            responses.send_zip(self, raw, f"{safe_user}-wireguard-configs.zip")
+            return
+
         if path_only == "/config-text":
-            config_text, err = responses.get_user_config_text(user)
+            params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            client_q = (params.get("client") or [None])[0]
+            config_text, err = responses.get_user_config_text(user, client_name=client_q)
             if err:
                 self.send_html(page(t("page.error"), f"<h1>{html.escape(err)}</h1>", user), 403)
                 return
@@ -187,7 +231,20 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path_only == "/config":
-            if user["status"] != "approved" or not user["client_name"]:
+            if user["status"] != "approved":
+                self.send_html(
+                    page(
+                        t("page.error"),
+                        f"<h1>{html.escape(t('error.config_not_assigned'))}</h1>",
+                        user,
+                    ),
+                    403,
+                )
+                return
+            params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            client_q = (params.get("client") or [None])[0]
+            client_name = (client_q or "").strip() or primary_client_for_user(user)
+            if not client_name:
                 self.send_html(
                     page(
                         t("page.error"),
@@ -198,19 +255,19 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
             try:
-                responses._ensure_valid_client_config(user["client_name"])
+                responses._ensure_valid_client_config(client_name)
             except ValueError as exc:
                 self.send_html(
                     page(t("page.error"), f"<h1>{html.escape(str(exc))}</h1>", user), 404
                 )
                 return
-            conf_path = os.path.join(CLIENT_DIR, f"{user['client_name']}.conf")
+            conf_path = os.path.join(CLIENT_DIR, f"{client_name}.conf")
             raw = open(conf_path, "rb").read()
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.send_header(
                 "Content-Disposition",
-                f'attachment; filename="{user["client_name"]}.conf"',
+                f'attachment; filename="{client_name}.conf"',
             )
             self.send_header("Content-Length", str(len(raw)))
             self.end_headers()

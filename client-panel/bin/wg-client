@@ -37,6 +37,8 @@ Usage:
   wg-client list
   wg-client status CLIENT_NAME
   wg-client enforce
+  wg-client sync-vpn-modes
+  wg-client set-mode CLIENT_NAME direct|twohop
   wg-client qr CLIENT_NAME
   wg-client install-timer
 
@@ -45,6 +47,7 @@ Options for add/renew:
   --days DAYS              Expire after X days. Example: --days 30
   --limit SIZE             Total data limit. Examples: 5G, 500M, 20GB
   --endpoint HOST:PORT     Default: from /etc/wireguard/wg-endpoint
+  --vpn-mode direct|twohop Default: twohop (direct = egress via entry server NAT)
   --single-ip              Lock to first source IP
   --single-endpoint        Lock to first source IP:port, stricter but may break on mobile networks
   --no-single              Disable single-device protection
@@ -256,6 +259,86 @@ load_meta() {
   LOCKED_IP="${LOCKED_IP:-}"
   DISABLED="${DISABLED:-0}"
   DISABLED_REASON="${DISABLED_REASON:-}"
+  VPN_MODE="${VPN_MODE:-twohop}"
+}
+
+normalize_vpn_mode() {
+  local m="${1:-twohop}"
+  m="$(echo "$m" | tr '[:upper:]' '[:lower:]')"
+  case "$m" in
+    direct|twohop) echo "$m" ;;
+    *) die "Invalid vpn-mode: $1 (use direct or twohop)" ;;
+  esac
+}
+
+default_route_iface() {
+  local iface
+  iface="$(ip route show default 2>/dev/null | awk 'NR==1 {print $5; exit}')"
+  echo "${iface:-eth0}"
+}
+
+clear_direct_routing_for_ip() {
+  local ip="$1"
+  local iface="${2:-$(default_route_iface)}"
+  [ -n "$ip" ] || return 0
+  ip rule del from "${ip}/32" lookup main priority 90 2>/dev/null || true
+  iptables -t nat -D POSTROUTING -s "${ip}/32" -o "$iface" -j MASQUERADE 2>/dev/null || true
+  iptables -D FORWARD -i "$WG_IF" -o "$iface" -j ACCEPT 2>/dev/null || true
+  iptables -D FORWARD -i "$iface" -o "$WG_IF" -j ACCEPT 2>/dev/null || true
+}
+
+apply_direct_routing_for_ip() {
+  local ip="$1"
+  local iface="${2:-$(default_route_iface)}"
+  [ -n "$ip" ] || return 0
+  [ -n "$iface" ] || die "Could not detect default route interface for direct VPN"
+  clear_direct_routing_for_ip "$ip" "$iface"
+  ip rule add from "${ip}/32" lookup main priority 90
+  iptables -t nat -C POSTROUTING -s "${ip}/32" -o "$iface" -j MASQUERADE 2>/dev/null \
+    || iptables -t nat -A POSTROUTING -s "${ip}/32" -o "$iface" -j MASQUERADE
+  iptables -C FORWARD -i "$WG_IF" -o "$iface" -j ACCEPT 2>/dev/null \
+    || iptables -A FORWARD -i "$WG_IF" -o "$iface" -j ACCEPT
+  iptables -C FORWARD -i "$iface" -o "$WG_IF" -j ACCEPT 2>/dev/null \
+    || iptables -A FORWARD -i "$iface" -o "$WG_IF" -j ACCEPT
+}
+
+apply_vpn_mode_for_loaded_client() {
+  local mode
+  mode="$(normalize_vpn_mode "${VPN_MODE:-twohop}")"
+  VPN_MODE="$mode"
+  if [ "$mode" = "direct" ]; then
+    apply_direct_routing_for_ip "$IP"
+  else
+    clear_direct_routing_for_ip "$IP"
+  fi
+}
+
+sync_all_vpn_modes() {
+  check_base_files
+  local f name
+  for f in "$STATE_DIR"/*.meta; do
+    [ -f "$f" ] || continue
+    name="$(basename "$f" .meta)"
+    load_meta "$name"
+    apply_vpn_mode_for_loaded_client
+  done
+  echo "Synced VPN routing modes for all clients"
+}
+
+set_mode_client() {
+  local raw_name="${1:-}"
+  local mode_raw="${2:-}"
+  [ -n "$raw_name" ] || die "Usage: wg-client set-mode CLIENT_NAME direct|twohop"
+  [ -n "$mode_raw" ] || die "Usage: wg-client set-mode CLIENT_NAME direct|twohop"
+  check_base_files
+  local name mode
+  name="$(sanitize_name "$raw_name")"
+  mode="$(normalize_vpn_mode "$mode_raw")"
+  load_meta "$name"
+  VPN_MODE="$mode"
+  save_meta
+  apply_vpn_mode_for_loaded_client
+  echo "Set VPN mode for $name: $mode"
 }
 
 save_meta() {
@@ -277,6 +360,7 @@ save_meta() {
     echo "LOCKED_IP=$(q "$LOCKED_IP")"
     echo "DISABLED=$(q "$DISABLED")"
     echo "DISABLED_REASON=$(q "$DISABLED_REASON")"
+    echo "VPN_MODE=$(q "$(normalize_vpn_mode "${VPN_MODE:-twohop}")")"
     echo "UPDATED_AT=$(q "$(now_epoch)")"
   } > "$f"
 
@@ -385,6 +469,7 @@ parse_opts() {
   OP_LIMIT=""
   OP_ENDPOINT="$DEFAULT_ENDPOINT"
   OP_SINGLE_MODE=""
+  OP_VPN_MODE=""
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -402,6 +487,10 @@ parse_opts() {
         ;;
       --endpoint)
         OP_ENDPOINT="${2:-}"
+        shift 2
+        ;;
+      --vpn-mode)
+        OP_VPN_MODE="${2:-}"
         shift 2
         ;;
       --single-ip)
@@ -484,13 +573,16 @@ add_client() {
   LOCKED_IP=""
   DISABLED="0"
   DISABLED_REASON=""
+  VPN_MODE="$(normalize_vpn_mode "${OP_VPN_MODE:-twohop}")"
   save_meta
+  apply_vpn_mode_for_loaded_client
 
   echo "Created client: $name"
   echo "Client IP: $ip"
   echo "Limit: $( [ "$limit_bytes" = "0" ] && echo unlimited || human_bytes "$limit_bytes" )"
   echo "Expires: $(human_time "$expires_at")"
   echo "Single-device mode: $single_mode"
+  echo "VPN mode: $VPN_MODE"
   echo "Config file: $(client_conf_path "$name")"
   echo
   cat "$(client_conf_path "$name")"
@@ -515,6 +607,11 @@ remove_client() {
     public_key="$PUBLIC_KEY"
   else
     public_key="$(awk -v n="$name" '$0 == "# BEGIN CLIENT " n {flag=1} flag && /^PublicKey/ {print $3; exit}' "$WG_CONF")"
+  fi
+
+  if client_exists "$name"; then
+    load_meta "$name"
+    clear_direct_routing_for_ip "$IP"
   fi
 
   backup_conf
@@ -566,6 +663,13 @@ renew_client() {
     single_mode="$OP_SINGLE_MODE"
   fi
 
+  local vpn_mode="$VPN_MODE"
+  if [ -n "$OP_VPN_MODE" ]; then
+    vpn_mode="$(normalize_vpn_mode "$OP_VPN_MODE")"
+  fi
+
+  clear_direct_routing_for_ip "$IP"
+
   local private_key public_key
   private_key="$(wg genkey)"
   public_key="$(printf '%s' "$private_key" | wg pubkey)"
@@ -591,13 +695,16 @@ renew_client() {
   LOCKED_IP=""
   DISABLED="0"
   DISABLED_REASON=""
+  VPN_MODE="$vpn_mode"
   save_meta
+  apply_vpn_mode_for_loaded_client
 
   echo "Renewed client: $name"
   echo "Client IP: $ip"
   echo "Limit: $( [ "$limit_bytes" = "0" ] && echo unlimited || human_bytes "$limit_bytes" )"
   echo "Expires: $(human_time "$expires_at")"
   echo "Single-device mode: $single_mode"
+  echo "VPN mode: $VPN_MODE"
   echo "New config file: $(client_conf_path "$name")"
   echo
   cat "$(client_conf_path "$name")"
@@ -681,6 +788,7 @@ status_client() {
   echo "Limit: $( [ "$LIMIT_BYTES" = "0" ] && echo unlimited || human_bytes "$LIMIT_BYTES" )"
   echo "Expires: $(human_time "$EXPIRES_AT")"
   echo "Single-device mode: $SINGLE_MODE"
+  echo "VPN mode: ${VPN_MODE:-twohop}"
   echo "Locked endpoint: ${LOCKED_ENDPOINT:-none}"
   echo "Locked IP: ${LOCKED_IP:-none}"
   echo "Current endpoint: ${endpoint:-none}"
@@ -689,8 +797,8 @@ status_client() {
 list_clients() {
   check_base_files
 
-  printf "%-22s %-15s %-11s %-12s %-12s %-20s %-10s\n" "NAME" "IP" "STATUS" "USED" "LIMIT" "EXPIRES" "SINGLE"
-  printf "%-22s %-15s %-11s %-12s %-12s %-20s %-10s\n" "----" "--" "------" "----" "-----" "-------" "------"
+  printf "%-22s %-15s %-8s %-11s %-12s %-12s %-20s %-10s\n" "NAME" "IP" "VPN" "STATUS" "USED" "LIMIT" "EXPIRES" "SINGLE"
+  printf "%-22s %-15s %-8s %-11s %-12s %-12s %-20s %-10s\n" "----" "--" "---" "------" "----" "-----" "-------" "------"
 
   local f name status limit expires
   for f in "$STATE_DIR"/*.meta; do
@@ -713,8 +821,8 @@ list_clients() {
 
     expires="$(human_time "$EXPIRES_AT")"
 
-    printf "%-22s %-15s %-11s %-12s %-12s %-20s %-10s\n" \
-      "$NAME" "$IP" "$status" "$(human_bytes "$USED_BYTES")" "$limit" "$expires" "$SINGLE_MODE"
+    printf "%-22s %-15s %-8s %-11s %-12s %-12s %-20s %-10s\n" \
+      "$NAME" "$IP" "${VPN_MODE:-twohop}" "$status" "$(human_bytes "$USED_BYTES")" "$limit" "$expires" "$SINGLE_MODE"
   done
 }
 
@@ -824,6 +932,7 @@ enforce_clients() {
 
     check_single_device_for_loaded_client
   done
+  sync_all_vpn_modes
 }
 
 qr_client() {
@@ -904,6 +1013,12 @@ main() {
       ;;
     enforce)
       enforce_clients
+      ;;
+    sync-vpn-modes)
+      sync_all_vpn_modes
+      ;;
+    set-mode)
+      set_mode_client "$@"
       ;;
     qr)
       qr_client "$@"

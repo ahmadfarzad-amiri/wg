@@ -1,4 +1,4 @@
-from admin_panel.config import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_SINGLE, WG_CLIENT_SINGLE
+from admin_panel.config import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_SINGLE, WG_CLIENT, WG_CLIENT_SINGLE
 from admin_panel.core.audit import log_admin_action
 from admin_panel.core.client_ops import (
     client_was_removed,
@@ -21,11 +21,15 @@ def handle(handler, data):
         if not client:
             _render(handler, t("msg.client_name_required"))
             return
+        vpn_mode = (data.get("vpn_mode") or "twohop").strip().lower()
+        if vpn_mode not in ("direct", "twohop"):
+            vpn_mode = "twohop"
         ok, _, out = ensure_client(
             client,
             days=data.get("days", DEFAULT_DAYS),
             limit=data.get("limit", DEFAULT_LIMIT),
             single=data.get("single", DEFAULT_SINGLE),
+            vpn_mode=vpn_mode,
         )
         if not ok:
             _render(handler, tail_message(out))
@@ -47,6 +51,15 @@ def handle(handler, data):
             _render(handler, t("msg.invalid_single_mode"))
             return
         out = run([WG_CLIENT_SINGLE, client, mode])
+        _render(handler, tail_message(out))
+        return
+
+    if action == "set-vpn-mode":
+        mode = (data.get("vpn_mode") or "twohop").strip().lower()
+        if mode not in ("direct", "twohop"):
+            _render(handler, t("msg.invalid_vpn_mode"))
+            return
+        out = run([WG_CLIENT, "set-mode", client, mode])
         _render(handler, tail_message(out))
         return
 
@@ -91,7 +104,6 @@ def handle(handler, data):
         _render(handler, tail_message(out))
         return
 
-    log_admin_action(action, client)
     log_admin_action(action, client)
     _render(handler, tail_message(out))
 

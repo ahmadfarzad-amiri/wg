@@ -12,6 +12,7 @@ def body(clients, msg=""):
         [
             t("col.name"),
             t("col.ip"),
+            t("col.vpn_mode"),
             t("col.status"),
             t("col.usage"),
             t("col.last_connection"),

@@ -760,6 +760,12 @@ strip_wrong_entry_tunnel_peer_block() {
   log "Removed exit-only ENTRY TUNNEL PEER block from $conf"
 }
 
+wg_sync_all_client_modes() {
+  if command -v wg-client >/dev/null 2>&1; then
+    wg-client sync-vpn-modes 2>/dev/null || warn "wg-client sync-vpn-modes failed"
+  fi
+}
+
 apply_entry_vpn_routing_fix() {
   local client_if="${WG_IF:-wg-clients}"
   local tunnel_if="${WG_TUNNEL_IF:-wg-tunnel}"
@@ -783,6 +789,7 @@ apply_entry_vpn_routing_fix() {
   else
     warn "Entry: ip route get 10.10.10.2 still does not use ${client_if} — provider may inject a conflicting route; try: ip route replace ${client_cidr} dev ${client_if} scope link"
   fi
+  wg_sync_all_client_modes
 }
 
 apply_exit_vpn_routing_fix() {

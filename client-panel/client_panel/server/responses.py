@@ -1,12 +1,14 @@
+import io
 import mimetypes
 import os
 import subprocess
 import urllib.parse
+import zipfile
 from pathlib import Path
 
 from client_panel.config import CLIENT_DIR, STATE_DIR, STATIC_DIR
 from client_panel.core.i18n import t
-from client_panel.core.wireguard import parse_meta
+from client_panel.core.wireguard import assigned_client_names_for_user, parse_meta, primary_client_for_user
 
 
 def post_data(handler):
@@ -81,6 +83,15 @@ def send_svg(handler, content, code=200):
     handler.wfile.write(raw)
 
 
+def send_zip(handler, data, filename):
+    handler.send_response(200)
+    handler.send_header("Content-Type", "application/zip")
+    handler.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+    handler.send_header("Content-Length", str(len(data)))
+    handler.end_headers()
+    handler.wfile.write(data)
+
+
 def redirect(handler, path):
     handler.send_response(302)
     handler.send_header("Location", path)
@@ -123,22 +134,87 @@ def _ensure_valid_client_config(client_name):
         raise ValueError(t("error.conf_key_mismatch"))
 
 
-def get_user_config_text(user):
+def _zip_entry_name(client_name, label=""):
+    label = (label or "").strip()
+    if label:
+        safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in label)
+        return f"{safe}.conf"
+    return f"{client_name}.conf"
+
+
+def get_user_config_entries(user):
     if not user:
         return None, t("error.sign_in_first")
-    if user["status"] != "approved" or not user["client_name"]:
+    if user["status"] != "approved":
+        return None, t("error.config_not_assigned")
+
+    from client_panel.db.user_configs import configs_for_user
+
+    entries = []
+    configs = configs_for_user(user["id"])
+    if configs:
+        for row in configs:
+            name = row["client_name"]
+            try:
+                _ensure_valid_client_config(name)
+            except ValueError as exc:
+                return None, str(exc)
+            conf_path = os.path.join(CLIENT_DIR, f"{name}.conf")
+            with open(conf_path, "r", encoding="utf-8", errors="ignore") as f:
+                entries.append((_zip_entry_name(name, row.get("label")), f.read(), name))
+        return entries, None
+
+    primary = primary_client_for_user(user)
+    if not primary:
         return None, t("error.config_not_assigned")
     try:
-        _ensure_valid_client_config(user["client_name"])
+        _ensure_valid_client_config(primary)
     except ValueError as exc:
         return None, str(exc)
-    conf_path = os.path.join(CLIENT_DIR, f"{user['client_name']}.conf")
+    conf_path = os.path.join(CLIENT_DIR, f"{primary}.conf")
+    with open(conf_path, "r", encoding="utf-8", errors="ignore") as f:
+        return [(_zip_entry_name(primary), f.read(), primary)], None
+
+
+def get_user_config_text(user, client_name=None):
+    if not user:
+        return None, t("error.sign_in_first")
+    if user["status"] != "approved":
+        return None, t("error.config_not_assigned")
+
+    name = (client_name or "").strip() or primary_client_for_user(user)
+    if not name:
+        return None, t("error.config_not_assigned")
+
+    allowed = assigned_client_names_for_user(user)
+    if name not in allowed:
+        return None, t("error.config_not_assigned")
+
+    try:
+        _ensure_valid_client_config(name)
+    except ValueError as exc:
+        return None, str(exc)
+    conf_path = os.path.join(CLIENT_DIR, f"{name}.conf")
     with open(conf_path, "r", encoding="utf-8", errors="ignore") as f:
         return f.read(), None
 
 
-def build_qr_svg(user):
-    config_text, err = get_user_config_text(user)
+def build_configs_zip(user):
+    entries, err = get_user_config_entries(user)
+    if err:
+        return None, err
+    if not entries:
+        return None, t("error.config_not_assigned")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for filename, content, _ in entries:
+            zf.writestr(filename, content)
+    return buf.getvalue(), None
+
+
+def build_qr_svg(user, client_name=None):
+    config_text, err = get_user_config_text(user, client_name=client_name)
     if err:
         return None, err
     try:
