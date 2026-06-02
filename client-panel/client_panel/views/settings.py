@@ -45,10 +45,9 @@ def body(msg="", show_config_actions=False, config_count=1, has_vpn_config=False
 
 {locale_version_bar("/settings")}
 
-<div class="page-stack">
+<div class="page-stack page-stack--settings">
 {config_actions}
 
-<div class="settings-grid">
 <section class="card">
   <h3>{html.escape(t("settings.change_password"))}</h3>
   <p class="hint">{html.escape(t("settings.change_hint"))}</p>
@@ -72,6 +71,5 @@ def body(msg="", show_config_actions=False, config_count=1, has_vpn_config=False
     <button type="submit" class="bad btn-block">{html.escape(t("settings.logout"))}</button>
   </form>
 </section>
-</div>
 </div>
 """
