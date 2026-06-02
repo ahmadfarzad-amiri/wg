@@ -177,12 +177,12 @@ check_client_version() {
     local ver
     ver="$(grep -E '^VERSION[[:space:]]*=' "$CLIENT_SETTINGS" 2>/dev/null | head -1 | sed -E "s/.*[\"']([^\"']+)[\"'].*/\1/")"
     log "Client panel VERSION (cache bust): ${ver:-unknown}"
-    if [[ "${ver:-}" == "1.0.0" ]]; then
+    if [[ "${ver:-}" == "1.0.2" ]]; then
       check_ok "client VERSION ${ver} (cache bust)"
     elif [[ "${ver:-}" == "1.0.0" || "${ver:-}" == "1.0.1" ]]; then
-      check_warn "client VERSION is ${ver} (run --fix to bump to 1.0.0)"
+      check_warn "client VERSION is ${ver} (run --fix to bump to 1.0.2)"
     else
-      check_warn "client VERSION is ${ver:-?} (expected 1.0.0)"
+      check_warn "client VERSION is ${ver:-?} (expected 1.0.2)"
     fi
   else
     check_warn "client settings.py missing"
@@ -280,18 +280,20 @@ if [[ "$DO_FIX" -eq 0 ]]; then
 fi
 
 bump_client_panel_version() {
-  local f="$INSTALL_DIR/client-panel/client_panel/config/settings.py"
-  local repo_f="$REPO_DIR/client-panel/client_panel/config/settings.py"
+  local target="1.0.2"
   local bumped=0
-  for f in "$f" "$repo_f"; do
+  local f
+  for f in \
+    "$INSTALL_DIR/client-panel/client_panel/config/settings.py" \
+    "$REPO_DIR/client-panel/client_panel/config/settings.py"; do
     [[ -f "$f" ]] || continue
-    if grep -qE '^VERSION = "1\.0\.[01]"' "$f" 2>/dev/null; then
-      sed -i 's/^VERSION = .*/VERSION = "1.0.0"/' "$f"
+    if ! grep -qE "^VERSION = \"${target}\"" "$f" 2>/dev/null; then
+      sed -i "s/^VERSION = .*/VERSION = \"${target}\"/" "$f"
       bumped=1
     fi
   done
   if [[ "$bumped" -eq 1 ]]; then
-    log "Set client panel VERSION to 1.0.0 (forces new ?v= in browser)"
+    log "Set client panel VERSION to ${target} (forces new ?v= in browser)"
     systemctl restart wg-panel 2>/dev/null || true
     sleep 1
   fi
@@ -312,7 +314,7 @@ if [[ "$fail" -eq 0 ]]; then
   log "Panel UI sync complete."
   if [[ "$warn_count" -gt 0 ]]; then
     log "Warnings are OK — hard refresh the client panel: Ctrl+Shift+R"
-    log "CSS URL should load as panel.css?v=1.0.0"
+    log "CSS URL should load as panel.css?v=1.0.2"
   else
     log "Hard refresh the client panel once: Ctrl+Shift+R"
   fi
