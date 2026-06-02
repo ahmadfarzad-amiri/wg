@@ -185,6 +185,34 @@ sudo bash deploy/update-panels.sh
 
 Restarts systemd units after syncing code to `/opt/wg/`.
 
+### Check and fix panel UI (CSS / layout)
+
+If the client or admin panel looks wrong (overlapping cards, broken language toggle), run on the **entry** server:
+
+```bash
+# 1) Check installed CSS vs expected layout markers
+sudo bash deploy/check-sync-panel-styles.sh
+
+# 2) Sync from /opt/wg-src (or repo) and restart panels, then re-check
+sudo bash deploy/check-sync-panel-styles.sh --fix
+```
+
+From GitHub (no local clone):
+
+```bash
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg/main/deploy/check-sync-panel-styles.sh -o /tmp/check-panel-styles.sh
+sudo bash /tmp/check-panel-styles.sh --fix
+```
+
+Ensure the repo is current before `--fix`:
+
+```bash
+cd /opt/wg-src && sudo git pull
+sudo WG_REPO_DIR=/opt/wg-src bash /tmp/check-panel-styles.sh --fix
+```
+
+After a successful sync, hard-refresh the browser (Ctrl+Shift+R) so cached `panel.css?v=…` reloads.
+
 ---
 
 ## Change entry server IP

@@ -112,6 +112,8 @@ sudo bash /tmp/fix-ep.sh 31.25.93.168:51820
 
 sudo bash deploy/backup.sh
 sudo bash deploy/update-panels.sh
+sudo bash deploy/check-sync-panel-styles.sh        # verify panel CSS on disk + HTTP
+sudo bash deploy/check-sync-panel-styles.sh --fix  # sync panels from repo if stale
 sudo bash deploy/restore.sh /etc/wireguard/backups/TIMESTAMP-label
 ```
 

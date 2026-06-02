@@ -62,3 +62,9 @@ rsync -a --delete \
 
 systemctl restart wg-panel wg-admin-panel
 log "Panels restarted."
+if [[ -f "$INSTALL_DIR/client-panel/client_panel/config/settings.py" ]]; then
+  _ver="$(grep -E '^VERSION[[:space:]]*=' "$INSTALL_DIR/client-panel/client_panel/config/settings.py" \
+    | sed -E "s/.*[\"']([^\"']+)[\"'].*/\1/" | head -1)"
+  log "Client panel VERSION (CSS cache bust): ${_ver:-unknown}"
+  log "Verify UI: sudo bash ${SCRIPT_DIR}/check-sync-panel-styles.sh"
+fi
