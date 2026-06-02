@@ -3,7 +3,6 @@ import urllib.parse
 
 from client_panel.components.brand import brand_html
 from client_panel.components.icons import nav_icon
-from client_panel.components.locale_bar import locale_version_bar
 from client_panel.components.modal import qr_modal_html
 from client_panel.config import BRAND, VERSION
 from client_panel.core.i18n import html_dir, html_lang, js_i18n_script, t
@@ -18,13 +17,6 @@ def head_assets():
     )
 
 
-_TAB_PATHS = {
-    "dashboard": "/",
-    "support": "/support",
-    "settings": "/settings",
-}
-
-
 def page(title, body, user=None, active="dashboard", auth=False, extra_head="", next_path="/"):
     safe_title = html.escape(title)
     assets = head_assets() + extra_head
@@ -33,7 +25,6 @@ def page(title, body, user=None, active="dashboard", auth=False, extra_head="", 
     shell_class = "app-shell panel-shell" if not auth else "auth-page"
     if direction == "ltr":
         shell_class += " ltr"
-    lang_next = next_path if auth else _TAB_PATHS.get(active, next_path)
 
     if auth:
         return f"""<!doctype html>
@@ -48,7 +39,6 @@ def page(title, body, user=None, active="dashboard", auth=False, extra_head="", 
 </head>
 <body class="{shell_class}">
 <a class="skip-link" href="#main">{html.escape(t("skip_link"))}</a>
-{locale_version_bar(lang_next)}
 {body}
 <div id="toast-root" class="toast-root" aria-live="polite"></div>
 </body>
@@ -109,12 +99,7 @@ def page(title, body, user=None, active="dashboard", auth=False, extra_head="", 
 <a class="skip-link" href="#main">{html.escape(t("skip_link"))}</a>
 <div class="layout">
 {sidebar}
-<main class="main" id="main">
-{locale_version_bar(lang_next)}
-<div class="main-inner">
-{body}
-</div>
-</main>
+<main class="main" id="main">{body}</main>
 </div>
 <nav class="bottom-nav" aria-label="{html.escape(t("nav.bottom"))}">
   {bottom_nav()}

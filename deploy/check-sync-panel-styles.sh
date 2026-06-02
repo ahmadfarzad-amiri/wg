@@ -68,6 +68,7 @@ fi
 CLIENT_CSS="${INSTALL_DIR}/client-panel/static/css/panel.css"
 ADMIN_CSS="${INSTALL_DIR}/admin-panel/static/css/admin.css"
 CLIENT_LAYOUT="${INSTALL_DIR}/client-panel/client_panel/components/layout.py"
+CLIENT_SETTINGS_VIEW="${INSTALL_DIR}/client-panel/client_panel/views/settings.py"
 CLIENT_SETTINGS="${INSTALL_DIR}/client-panel/client_panel/config/settings.py"
 PANEL_PORT="${WG_PANEL_PORT:-8088}"
 ADMIN_PORT="${WG_ADMIN_PORT:-8090}"
@@ -150,11 +151,16 @@ check_panel_css() {
     check_fail "${label} dashboard-metrics grid"
   fi
 
-  if [[ -n "$layout" ]]; then
-    if [[ -f "$layout" ]] && grep -q 'locale_version_bar' "$layout"; then
-      check_ok "${label} locale bar in layout"
+  if [[ "$label" == "Client" ]]; then
+    if [[ -f "$CLIENT_LAYOUT" ]] && grep -q 'locale_version_bar' "$CLIENT_LAYOUT" 2>/dev/null; then
+      check_fail "${label} locale bar not in global layout"
     else
-      check_fail "${label} locale bar in layout"
+      check_ok "${label} locale bar not in global layout"
+    fi
+    if [[ -f "$CLIENT_SETTINGS_VIEW" ]] && grep -q 'locale_version_bar' "$CLIENT_SETTINGS_VIEW"; then
+      check_ok "${label} locale bar on settings page"
+    else
+      check_fail "${label} locale bar on settings page"
     fi
   fi
 }
@@ -177,12 +183,12 @@ check_client_version() {
     local ver
     ver="$(grep -E '^VERSION[[:space:]]*=' "$CLIENT_SETTINGS" 2>/dev/null | head -1 | sed -E "s/.*[\"']([^\"']+)[\"'].*/\1/")"
     log "Client panel VERSION (cache bust): ${ver:-unknown}"
-    if [[ "${ver:-}" == "1.0.2" ]]; then
+    if [[ "${ver:-}" == "1.0.3" ]]; then
       check_ok "client VERSION ${ver} (cache bust)"
-    elif [[ "${ver:-}" == "1.0.0" || "${ver:-}" == "1.0.1" ]]; then
-      check_warn "client VERSION is ${ver} (run --fix to bump to 1.0.2)"
+    elif [[ "${ver:-}" == "1.0.0" || "${ver:-}" == "1.0.1" || "${ver:-}" == "1.0.2" ]]; then
+      check_warn "client VERSION is ${ver} (run --fix to bump to 1.0.3)"
     else
-      check_warn "client VERSION is ${ver:-?} (expected 1.0.2)"
+      check_warn "client VERSION is ${ver:-?} (expected 1.0.3)"
     fi
   else
     check_warn "client settings.py missing"
@@ -220,7 +226,7 @@ run_all_checks() {
     warn "Not an entry server — panel UI runs on entry VPS only"
   fi
 
-  check_panel_css "Client" "$CLIENT_CSS" "$CLIENT_LAYOUT"
+  check_panel_css "Client" "$CLIENT_CSS" ""
   check_client_static_cache
   check_client_version
   check_panel_css "Admin" "$ADMIN_CSS" ""
@@ -280,7 +286,7 @@ if [[ "$DO_FIX" -eq 0 ]]; then
 fi
 
 bump_client_panel_version() {
-  local target="1.0.2"
+  local target="1.0.3"
   local bumped=0
   local f
   for f in \
@@ -314,7 +320,7 @@ if [[ "$fail" -eq 0 ]]; then
   log "Panel UI sync complete."
   if [[ "$warn_count" -gt 0 ]]; then
     log "Warnings are OK — hard refresh the client panel: Ctrl+Shift+R"
-    log "CSS URL should load as panel.css?v=1.0.2"
+    log "CSS URL should load as panel.css?v=1.0.3"
   else
     log "Hard refresh the client panel once: Ctrl+Shift+R"
   fi

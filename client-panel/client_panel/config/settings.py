@@ -22,7 +22,7 @@ HOST = os.environ.get("WG_PANEL_HOST", "0.0.0.0")
 PORT = int(os.environ.get("WG_PANEL_PORT", "8088"))
 SESSION_DAYS = 14
 BRAND = os.environ.get("WG_PANEL_BRAND", "VPN Access")
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 ROTATE_KEYS_CMD = os.environ.get(
     "WG_ROTATE_KEYS_CMD", os.path.join(_BIN, "wg-client-rotate-keys")
 )

@@ -960,8 +960,8 @@ body.auth-page.ltr .locale-bar{
   left:12px;
   right:12px;
 }
-body.panel-shell .main > .locale-bar,
-body.app-shell .main > .locale-bar{
+.subtitle + .locale-bar{
+  margin:0 0 24px;
   padding:12px 16px;
   border:1px solid var(--line);
   border-radius:14px;
@@ -1036,17 +1036,6 @@ body.ltr .layout{direction:ltr}
 .config-item__grid{margin-bottom:10px}
 .config-item__actions{display:flex;flex-wrap:wrap;gap:8px}
 .config-download-card{margin:0}
-
-/* Main content + page sections (aligned with admin panel) */
-.main-inner{
-  display:block;
-  width:100%;
-  min-width:0;
-}
-
-body.panel-shell .main > .locale-bar{
-  flex-shrink:0;
-}
 
 /* Page layout: explicit vertical spacing (flex gap alone was unreliable in RTL) */
 .page-stack{
@@ -1367,7 +1356,7 @@ input[readonly]:not(.config-textarea){
 
 @media(max-width:640px){
   .rowline{grid-template-columns:1fr;gap:4px}
-  body.app-shell .main > .locale-bar{padding:10px 12px}
+  .subtitle + .locale-bar{padding:10px 12px;margin-bottom:20px}
   .support-panel .support-actions-block{padding-bottom:14px;margin-bottom:14px}
 }
 

@@ -2,7 +2,6 @@ import html
 
 from admin_panel.components.brand import brand_html
 from admin_panel.components.icons import nav_icon
-from admin_panel.components.locale_bar import locale_version_bar
 from admin_panel.config import VERSION, admin_url
 from admin_panel.core.i18n import html_dir, html_lang, js_i18n_script, t
 
@@ -50,7 +49,6 @@ def page(title, body, active="dashboard", auth=False, extra_head="", next_path="
 </head>
 <body class="{shell_class}">
 <a class="skip-link" href="#main">{html.escape(t("skip_link"))}</a>
-{locale_version_bar(lang_next)}
 {body}
 <div id="toast-root" class="toast-root" aria-live="polite"></div>
 </body>
