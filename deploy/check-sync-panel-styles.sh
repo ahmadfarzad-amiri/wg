@@ -114,10 +114,10 @@ check_panel_css() {
   log "    path: $css"
   log "    modified: $(file_mtime "$css")"
 
-  if grep -A12 '^\.page-stack' "$css" 2>/dev/null | grep -qE 'gap:[[:space:]]*18px'; then
-    check_ok "${label} page-stack gap 18px"
+  if grep -A20 '^\.page-stack' "$css" 2>/dev/null | grep -qE 'margin-top:[[:space:]]*24px'; then
+    check_ok "${label} page-stack block spacing 24px"
   else
-    check_fail "${label} page-stack gap 18px"
+    check_fail "${label} page-stack block spacing 24px"
   fi
 
   if grep_file "$css" 'locale-bar-controls'; then
@@ -130,12 +130,6 @@ check_panel_css() {
     check_fail "${label} no display:contents (stale)"
   else
     check_ok "${label} no display:contents (stale)"
-  fi
-
-  if grep -A12 '^\.page-stack' "$css" 2>/dev/null | grep -qE 'gap:[[:space:]]*0'; then
-    check_fail "${label} page-stack gap:0 (stale)"
-  else
-    check_ok "${label} page-stack gap:0 absent"
   fi
 
   if [[ "$label" == "Client" ]] && grep -q 'dashboard-metrics' "$css"; then
@@ -153,15 +147,28 @@ check_panel_css() {
   fi
 }
 
+check_client_static_cache() {
+  local py="${INSTALL_DIR}/client-panel/client_panel/server/responses.py"
+  if [[ ! -f "$py" ]]; then
+    check_warn "client responses.py missing"
+    return
+  fi
+  if grep -q 'max-age=3600, must-revalidate' "$py"; then
+    check_ok "client static CSS/JS cache headers"
+  else
+    check_fail "client static CSS/JS cache headers"
+  fi
+}
+
 check_client_version() {
   if [[ -f "$CLIENT_SETTINGS" ]]; then
     local ver
     ver="$(grep -E '^VERSION[[:space:]]*=' "$CLIENT_SETTINGS" 2>/dev/null | head -1 | sed -E "s/.*[\"']([^\"']+)[\"'].*/\1/")"
     log "Client panel VERSION (cache bust): ${ver:-unknown}"
-    if [[ -n "${ver:-}" && "${ver:-}" != "1.0.0" ]]; then
+    if [[ "${ver:-}" == "1.0.2" ]]; then
       check_ok "client VERSION ${ver} (cache bust)"
     else
-      check_warn "client VERSION is ${ver:-?} (expected 1.0.1+ for latest CSS)"
+      check_warn "client VERSION is ${ver:-?} (expected 1.0.2 for latest CSS)"
     fi
   else
     check_warn "client settings.py missing"
@@ -200,11 +207,22 @@ run_all_checks() {
   fi
 
   check_panel_css "Client" "$CLIENT_CSS" "$CLIENT_LAYOUT"
+  check_client_static_cache
   check_client_version
   check_panel_css "Admin" "$ADMIN_CSS" ""
 
   if systemctl is-active wg-panel >/dev/null 2>&1; then
     check_http_css "$PANEL_PORT" "client" 'locale-bar-controls'
+    local cc
+    cc="$(curl -fsSI --max-time 5 "http://127.0.0.1:${PANEL_PORT}/static/css/panel.css" 2>/dev/null \
+      | grep -i '^cache-control:' | head -1 || true)"
+    if [[ "$cc" == *must-revalidate* ]]; then
+      check_ok "client CSS Cache-Control (must-revalidate)"
+    elif [[ "$cc" == *immutable* ]]; then
+      check_fail "client CSS Cache-Control still immutable (stale)"
+    else
+      check_warn "client CSS Cache-Control: ${cc:-unknown}"
+    fi
   else
     check_warn "wg-panel not active — skip HTTP CSS check"
   fi

@@ -1,4 +1,5 @@
 import html
+import urllib.parse
 
 from client_panel.components.brand import brand_html
 from client_panel.components.icons import nav_icon
@@ -9,7 +10,7 @@ from client_panel.core.i18n import html_dir, html_lang, js_i18n_script, t
 
 
 def head_assets():
-    v = VERSION.replace(".", "")
+    v = urllib.parse.quote(VERSION, safe="")
     return (
         f'<link rel="stylesheet" href="/static/css/panel.css?v={v}">'
         f"{js_i18n_script()}"
@@ -29,7 +30,7 @@ def page(title, body, user=None, active="dashboard", auth=False, extra_head="", 
     assets = head_assets() + extra_head
     lang = html_lang()
     direction = html_dir()
-    shell_class = "app-shell" if not auth else "auth-page"
+    shell_class = "app-shell panel-shell" if not auth else "auth-page"
     if direction == "ltr":
         shell_class += " ltr"
     lang_next = next_path if auth else _TAB_PATHS.get(active, next_path)
@@ -110,7 +111,9 @@ def page(title, body, user=None, active="dashboard", auth=False, extra_head="", 
 {sidebar}
 <main class="main" id="main">
 {locale_version_bar(lang_next)}
+<div class="main-inner">
 {body}
+</div>
 </main>
 </div>
 <nav class="bottom-nav" aria-label="{html.escape(t("nav.bottom"))}">

@@ -42,7 +42,11 @@ def serve_static(handler):
 
     handler.send_response(200)
     handler.send_header("Content-Type", ctype)
-    handler.send_header("Cache-Control", "public, max-age=31536000, immutable")
+    if str(target).endswith((".css", ".js")):
+        # Match admin panel: allow cache bust via ?v= when panel VERSION changes.
+        handler.send_header("Cache-Control", "public, max-age=3600, must-revalidate")
+    else:
+        handler.send_header("Cache-Control", "public, max-age=31536000, immutable")
     handler.send_header("Content-Length", str(len(data)))
     handler.end_headers()
     handler.wfile.write(data)

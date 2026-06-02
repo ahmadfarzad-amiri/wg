@@ -914,15 +914,18 @@ img,svg,video{max-width:100%;height:auto}
 
 .locale-bar{
   display:flex;
+  flex-direction:row;
   align-items:center;
   justify-content:space-between;
-  gap:12px;
+  gap:16px;
   flex-wrap:nowrap;
   margin:0 0 18px;
   width:100%;
   max-width:100%;
   min-width:0;
   box-sizing:border-box;
+  direction:ltr;
+  unicode-bidi:isolate;
 }
 .locale-bar-version{
   color:var(--muted);
@@ -930,11 +933,19 @@ img,svg,video{max-width:100%;height:auto}
   line-height:1.4;
   flex:1 1 auto;
   min-width:0;
-  white-space:nowrap;
+  text-align:start;
+  direction:rtl;
+  unicode-bidi:plaintext;
+  padding-inline-end:8px;
+}
+body.ltr .locale-bar-version{
+  direction:ltr;
 }
 .locale-bar-controls{
   flex:0 0 auto;
-  margin-inline-start:12px;
+  min-width:96px;
+  display:flex;
+  justify-content:flex-end;
 }
 .auth-page .locale-bar{
   position:absolute;
@@ -949,6 +960,7 @@ body.auth-page.ltr .locale-bar{
   left:12px;
   right:12px;
 }
+body.panel-shell .main > .locale-bar,
 body.app-shell .main > .locale-bar{
   padding:12px 16px;
   border:1px solid var(--line);
@@ -1025,24 +1037,52 @@ body.ltr .layout{direction:ltr}
 .config-item__actions{display:flex;flex-wrap:wrap;gap:8px}
 .config-download-card{margin:0}
 
-/* Page layout & sections (aligned with admin panel) */
-.page-stack{
-  display:flex;
-  flex-direction:column;
-  gap:18px;
+/* Main content + page sections (aligned with admin panel) */
+.main-inner{
+  display:block;
   width:100%;
   min-width:0;
 }
 
-.page-stack > .card,
-.page-stack > section,
-.page-stack > .grid,
-.page-stack > .dashboard-metrics,
-.page-stack > .settings-grid{
-  margin-top:0;
-  margin-bottom:0;
+body.panel-shell .main > .locale-bar{
+  flex-shrink:0;
+}
+
+/* Page layout: explicit vertical spacing (flex gap alone was unreliable in RTL) */
+.page-stack{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:0;
+  width:100%;
+  min-width:0;
+}
+
+.page-stack > *{
+  margin:0;
+  flex:0 0 auto;
   min-width:0;
   max-width:100%;
+  position:relative;
+  top:auto;
+  transform:none;
+}
+
+.page-stack > * + *{
+  margin-top:24px;
+}
+
+.page-stack > .card,
+.page-stack > section{
+  display:block;
+  box-sizing:border-box;
+}
+
+.page-stack > .dashboard-metrics,
+.page-stack > .settings-grid,
+.page-stack > .grid{
+  display:grid;
+  box-sizing:border-box;
 }
 
 .page-stack .card-spaced{
@@ -1056,12 +1096,14 @@ body.ltr .layout{direction:ltr}
   width:100%;
   min-width:0;
   align-items:start;
+  margin-bottom:0;
 }
 
 .dashboard-metrics > .card{
   margin:0;
   min-width:0;
   height:auto;
+  align-self:start;
 }
 
 .muted{color:var(--muted)}
