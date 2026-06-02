@@ -7,6 +7,7 @@ def body(config_text):
     return f"""
 <h1>{html.escape(t("page.copy_config"))}</h1>
 <p class="subtitle">{html.escape(t("copy.subtitle"))}</p>
+<div class="page-stack">
 <section class="card">
   <h3>{html.escape(t("copy.steps_title"))}</h3>
   <ol class="install-steps">
@@ -21,4 +22,5 @@ def body(config_text):
     <a class="btn dark" href="/">{html.escape(t("btn.back"))}</a>
   </div>
 </section>
+</div>
 """

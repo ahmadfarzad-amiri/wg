@@ -42,6 +42,7 @@ def body(user, rows, s=None):
     return f"""
 <h1>{html.escape(t("page.support"))}</h1>
 <p class="subtitle">{html.escape(t("support.subtitle"))}</p>
+<div class="page-stack">
 <section class="card support-panel">
   <div class="support-actions-block">
     <h3>{html.escape(t("support.actions_title"))}</h3>
@@ -66,4 +67,5 @@ def body(user, rows, s=None):
     </div>
   </div>
 </section>
+</div>
 """

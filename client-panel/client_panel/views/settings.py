@@ -1,6 +1,5 @@
 import html
 
-from client_panel.components.locale_bar import locale_version_bar
 from client_panel.components.notice import notice
 from client_panel.core.i18n import t
 
@@ -43,11 +42,10 @@ def body(msg="", show_config_actions=False, config_count=1, has_vpn_config=False
 <h1>{html.escape(t("settings.title"))}</h1>
 <p class="subtitle">{html.escape(t("settings.subtitle"))}</p>
 
-{locale_version_bar("/settings")}
-
-<div class="page-stack page-stack--settings">
+<div class="page-stack">
 {config_actions}
 
+<div class="settings-grid">
 <section class="card">
   <h3>{html.escape(t("settings.change_password"))}</h3>
   <p class="hint">{html.escape(t("settings.change_hint"))}</p>
@@ -71,5 +69,6 @@ def body(msg="", show_config_actions=False, config_count=1, has_vpn_config=False
     <button type="submit" class="bad btn-block">{html.escape(t("settings.logout"))}</button>
   </form>
 </section>
+</div>
 </div>
 """

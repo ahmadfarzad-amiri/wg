@@ -108,7 +108,10 @@ def page(title, body, user=None, active="dashboard", auth=False, extra_head="", 
 <a class="skip-link" href="#main">{html.escape(t("skip_link"))}</a>
 <div class="layout">
 {sidebar}
-<main class="main" id="main">{body}</main>
+<main class="main" id="main">
+{locale_version_bar(lang_next)}
+{body}
+</main>
 </div>
 <nav class="bottom-nav" aria-label="{html.escape(t("nav.bottom"))}">
   {bottom_nav()}
