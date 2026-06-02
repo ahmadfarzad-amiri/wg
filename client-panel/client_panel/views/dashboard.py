@@ -75,7 +75,7 @@ def body(user, primary, all_statuses):
 <p class="subtitle">{html.escape(t("dashboard.subtitle"))}</p>
 
 <div class="page-stack">
-<div class="grid">
+<div class="dashboard-metrics">
   <section class="card">
     <h3>{html.escape(t("dashboard.data_usage"))}</h3>
     <p class="hint">{html.escape(t("dashboard.primary_config"))}: <strong>{html.escape(s['client_name'])}</strong></p>
