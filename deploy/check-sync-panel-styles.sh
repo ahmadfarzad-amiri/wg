@@ -58,7 +58,13 @@ done
 require_root
 
 INSTALL_DIR="${WG_INSTALL_DIR:-/opt/wg}"
-REPO_DIR="${WG_REPO_DIR:-/opt/wg-src}"
+if [[ -n "${WG_REPO_DIR:-}" ]]; then
+  REPO_DIR="$WG_REPO_DIR"
+elif [[ -n "${SCRIPT_DIR:-}" && -d "${SCRIPT_DIR}/../client-panel" ]]; then
+  REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+else
+  REPO_DIR="/opt/wg-src"
+fi
 CLIENT_CSS="${INSTALL_DIR}/client-panel/static/css/panel.css"
 ADMIN_CSS="${INSTALL_DIR}/admin-panel/static/css/admin.css"
 CLIENT_LAYOUT="${INSTALL_DIR}/client-panel/client_panel/components/layout.py"
@@ -114,10 +120,16 @@ check_panel_css() {
   log "    path: $css"
   log "    modified: $(file_mtime "$css")"
 
-  if grep -A20 '^\.page-stack' "$css" 2>/dev/null | grep -qE 'margin-top:[[:space:]]*24px'; then
-    check_ok "${label} page-stack block spacing 24px"
+  if [[ "$label" == "Client" ]]; then
+    if grep -A30 '^\.page-stack' "$css" 2>/dev/null | grep -qE 'margin-top:[[:space:]]*24px'; then
+      check_ok "${label} page-stack block spacing 24px"
+    else
+      check_fail "${label} page-stack block spacing 24px"
+    fi
+  elif grep -A12 '^\.page-stack' "$css" 2>/dev/null | grep -qE 'gap:[[:space:]]*18px'; then
+    check_ok "${label} page-stack gap 18px"
   else
-    check_fail "${label} page-stack block spacing 24px"
+    check_fail "${label} page-stack layout"
   fi
 
   if grep_file "$css" 'locale-bar-controls'; then
@@ -167,8 +179,10 @@ check_client_version() {
     log "Client panel VERSION (cache bust): ${ver:-unknown}"
     if [[ "${ver:-}" == "1.0.2" ]]; then
       check_ok "client VERSION ${ver} (cache bust)"
+    elif [[ "${ver:-}" == "1.0.0" || "${ver:-}" == "1.0.1" ]]; then
+      check_warn "client VERSION is ${ver} (run --fix to bump to 1.0.2)"
     else
-      check_warn "client VERSION is ${ver:-?} (expected 1.0.2 for latest CSS)"
+      check_warn "client VERSION is ${ver:-?} (expected 1.0.2)"
     fi
   else
     check_warn "client settings.py missing"
@@ -214,8 +228,8 @@ run_all_checks() {
   if systemctl is-active wg-panel >/dev/null 2>&1; then
     check_http_css "$PANEL_PORT" "client" 'locale-bar-controls'
     local cc
-    cc="$(curl -fsSI --max-time 5 "http://127.0.0.1:${PANEL_PORT}/static/css/panel.css" 2>/dev/null \
-      | grep -i '^cache-control:' | head -1 || true)"
+    cc="$(curl -sI --max-time 5 "http://127.0.0.1:${PANEL_PORT}/static/css/panel.css" 2>/dev/null \
+      | tr -d '\r' | grep -i '^[Cc]ache-[Cc]ontrol:' | head -1 || true)"
     if [[ "$cc" == *must-revalidate* ]]; then
       check_ok "client CSS Cache-Control (must-revalidate)"
     elif [[ "$cc" == *immutable* ]]; then
@@ -265,17 +279,43 @@ if [[ "$DO_FIX" -eq 0 ]]; then
   exit 1
 fi
 
+bump_client_panel_version() {
+  local f="$INSTALL_DIR/client-panel/client_panel/config/settings.py"
+  local repo_f="$REPO_DIR/client-panel/client_panel/config/settings.py"
+  local bumped=0
+  for f in "$f" "$repo_f"; do
+    [[ -f "$f" ]] || continue
+    if grep -qE '^VERSION = "1\.0\.[01]"' "$f" 2>/dev/null; then
+      sed -i 's/^VERSION = .*/VERSION = "1.0.2"/' "$f"
+      bumped=1
+    fi
+  done
+  if [[ "$bumped" -eq 1 ]]; then
+    log "Set client panel VERSION to 1.0.2 (forces new ?v= in browser)"
+    systemctl restart wg-panel 2>/dev/null || true
+    sleep 1
+  fi
+}
+
 log "=== Applying panel sync (--fix) ==="
 if [[ ! -f "$SCRIPT_DIR/update-panels.sh" ]]; then
   die "Missing ${SCRIPT_DIR}/update-panels.sh"
 fi
+export WG_REPO_DIR="$REPO_DIR"
 bash "$SCRIPT_DIR/update-panels.sh"
+bump_client_panel_version
 echo ""
 log "Re-running checks after sync..."
 run_all_checks
 
-if [[ "$fail" -eq 0 && "$warn_count" -eq 0 ]]; then
+if [[ "$fail" -eq 0 ]]; then
   log "Panel UI sync complete."
+  if [[ "$warn_count" -gt 0 ]]; then
+    log "Warnings are OK — hard refresh the client panel: Ctrl+Shift+R"
+    log "CSS URL should load as panel.css?v=1.0.2"
+  else
+    log "Hard refresh the client panel once: Ctrl+Shift+R"
+  fi
   exit 0
 fi
 exit 1

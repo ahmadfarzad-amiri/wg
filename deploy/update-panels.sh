@@ -35,17 +35,19 @@ fi
 set -u
 require_root
 
-REPO_DIR="${WG_REPO_DIR:-/opt/wg-src}"
 INSTALL_DIR="${WG_INSTALL_DIR:-/opt/wg}"
 ENV_FILE="/etc/wireguard/entry-server.env"
 
 [[ -f "$ENV_FILE" ]] || die "Not an entry server ($ENV_FILE missing)"
 
-if [[ -f "$SCRIPT_DIR/../client-panel/app.py" ]]; then
-  REPO_DIR="$SCRIPT_DIR/.."
-else
-  install_packages git curl
-  clone_or_update_repo "${WG_GITHUB_REPO:-$GITHUB_REPO_URL}" "${WG_GITHUB_BRANCH:-$GITHUB_BRANCH}" "$REPO_DIR"
+REPO_DIR="${WG_REPO_DIR:-/opt/wg-src}"
+if [[ ! -f "$REPO_DIR/client-panel/app.py" ]]; then
+  if [[ -f "$SCRIPT_DIR/../client-panel/app.py" ]]; then
+    REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+  else
+    install_packages git curl
+    clone_or_update_repo "${WG_GITHUB_REPO:-$GITHUB_REPO_URL}" "${WG_GITHUB_BRANCH:-$GITHUB_BRANCH}" "$REPO_DIR"
+  fi
 fi
 
 log "Updating panels in $INSTALL_DIR from $REPO_DIR"
