@@ -13,9 +13,9 @@ def body(msg=""):
 <h1>{html.escape(t("settings.title"))}</h1>
 <p class="subtitle">{html.escape(t("settings.subtitle"))}</p>
 
-<div class="page-stack">
 {locale_version_bar("/settings")}
 
+<div class="page-stack">
 <div class="settings-grid">
   <section class="card">
     <h3>{html.escape(t("settings.change_password"))}</h3>

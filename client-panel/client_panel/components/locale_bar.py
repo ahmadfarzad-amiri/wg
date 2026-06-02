@@ -8,5 +8,5 @@ def locale_version_bar(next_path="/"):
     version = f"{html.escape(t('version'))} {html.escape(VERSION)}"
     return f"""<div class="locale-bar">
   <span class="locale-bar-version">{version}</span>
-  {lang_toggle_html(next_path)}
+  <div class="locale-bar-controls">{lang_toggle_html(next_path)}</div>
 </div>"""

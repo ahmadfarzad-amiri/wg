@@ -22,10 +22,16 @@ def _config_chips(username, configs):
     if not configs:
         return f'<span class="user-chip user-chip--empty">{html.escape(t("user.no_configs"))}</span>'
     chips = []
+    seen = set()
     for cfg in configs:
-        name = html.escape(cfg["client_name"])
+        raw = (cfg.get("client_name") or "").strip()
+        if not raw or raw in seen:
+            continue
+        seen.add(raw)
+        name = html.escape(raw)
+        title = html.escape(raw, quote=True)
         chips.append(
-            f'<span class="user-config-chip">'
+            f'<span class="user-config-chip" title="{title}">'
             f'<span class="user-config-chip__name">{name}</span>'
             f'<form class="inline-form user-config-chip__remove" method="post" action="{admin_url("/user-action")}">'
             f'<input type="hidden" name="username" value="{html.escape(username)}">'

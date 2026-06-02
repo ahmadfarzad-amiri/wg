@@ -43,10 +43,10 @@ def body(msg="", show_config_actions=False, config_count=1, has_vpn_config=False
 <h1>{html.escape(t("settings.title"))}</h1>
 <p class="subtitle">{html.escape(t("settings.subtitle"))}</p>
 
+{locale_version_bar("/settings")}
+
 <div class="page-stack">
 {config_actions}
-
-{locale_version_bar("/settings")}
 
 <div class="settings-grid">
 <section class="card">

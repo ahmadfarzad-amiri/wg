@@ -11,5 +11,5 @@ def locale_version_bar(next_path="/"):
     )
     return f"""<div class="locale-bar">
   <span class="locale-bar-version">{version}</span>
-  {lang_toggle_html(next_path)}
+  <div class="locale-bar-controls">{lang_toggle_html(next_path)}</div>
 </div>"""

@@ -916,11 +916,18 @@ img,svg,video{max-width:100%;height:auto}
   justify-content:space-between;
   gap:12px;
   flex-wrap:wrap;
+  margin-bottom:18px;
 }
 .locale-bar-version{
   color:var(--muted);
   font-size:13px;
-  white-space:nowrap;
+  line-height:1.4;
+  flex:1 1 auto;
+  min-width:0;
+}
+.locale-bar-controls{
+  flex-shrink:0;
+  margin-inline-start:auto;
 }
 .auth-page .locale-bar{
   position:absolute;
@@ -935,11 +942,15 @@ body.auth-page.ltr .locale-bar{
   right:12px;
 }
 .main .locale-bar{
-  margin-bottom:18px;
   padding:12px 16px;
   border:1px solid var(--line);
   border-radius:14px;
   background:rgba(17,28,46,.65);
+}
+.page-stack > .locale-bar,
+h1 + .locale-bar,
+.subtitle + .locale-bar{
+  margin-bottom:18px;
 }
 .lang-toggle,.locale-bar .lang-toggle{
   display:inline-flex;
@@ -948,6 +959,8 @@ body.auth-page.ltr .locale-bar{
   border-radius:999px;
   overflow:hidden;
   background:#111c2e;
+  direction:ltr;
+  unicode-bidi:isolate;
 }
 .lang-toggle-option{
   display:inline-flex;
@@ -987,7 +1000,7 @@ body.ltr .layout{direction:ltr}
   z-index:0;
 }
 .config-item__head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px}
-.config-item__name{margin:0;font-size:16px;flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.config-item__name{margin:0;font-size:16px;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .config-item__grid{margin-bottom:10px}
 .config-item__actions{display:flex;flex-wrap:wrap;gap:8px}
 .config-download-card{margin-bottom:0}
@@ -1229,17 +1242,20 @@ input[readonly]:not(.config-textarea){
   }
 
   .locale-bar{
-    flex-direction:column;
-    align-items:stretch;
-    gap:10px;
+    flex-direction:row;
+    align-items:center;
+    gap:12px;
   }
 
   .locale-bar-version{
-    text-align:center;
+    text-align:start;
+    white-space:normal;
   }
 
+  .locale-bar-controls,
   .locale-bar .lang-toggle{
     align-self:center;
+    margin-inline-start:auto;
   }
 
   .install-card .config-actions,
