@@ -6,7 +6,7 @@
 #   sudo bash deploy/check-sync-panel-styles.sh --fix    # check, sync panels, restart
 #
 # One-liner from GitHub:
-#   curl -fsSL https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main/deploy/check-sync-panel-styles.sh -o /tmp/check-panel-styles.sh
+#   curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/check-sync-panel-styles.sh -o /tmp/check-panel-styles.sh
 #   sudo bash /tmp/check-panel-styles.sh --fix
 #
 # Env:

@@ -197,10 +197,16 @@ sudo bash deploy/check-sync-panel-styles.sh
 sudo bash deploy/check-sync-panel-styles.sh --fix
 ```
 
-From GitHub (no local clone):
+From the repo on the server (recommended — no curl):
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg/main/deploy/check-sync-panel-styles.sh -o /tmp/check-panel-styles.sh
+sudo bash /opt/wg-src/deploy/check-sync-panel-styles.sh --fix
+```
+
+From GitHub (note `@main`, not `/main`):
+
+```bash
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/check-sync-panel-styles.sh -o /tmp/check-panel-styles.sh
 sudo bash /tmp/check-panel-styles.sh --fix
 ```
 
