@@ -129,10 +129,12 @@ install_xray_binary() {
 
 generate_reality_keys() {
   "$XRAY_BIN" x25519 2>/dev/null | awk '
-    /Private key/ {priv=$NF}
-    /Public key/  {pub=$NF}
-    END {print priv " " pub}
-  '
+  /PrivateKey:/ {priv=$NF}
+  /Password \(PublicKey\):/ {pub=$NF}
+  /Private key/ {priv=$NF}
+  /Public key/ {pub=$NF}
+  END {print priv, pub}
+'
 }
 
 generate_uuid() {

@@ -23,6 +23,15 @@ DEFAULT_ENDPOINT="$(read_default_endpoint)"
 VPN_PREFIX="10.10.10"
 VPN_CIDR="10.10.10.0/24"
 
+load_entry_env() {
+  if [[ -f /etc/wireguard/entry-server.env ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source /etc/wireguard/entry-server.env
+    set +a
+  fi
+}
+
 # DNS used in generated client configs. Override with WG_DNS in entry-server.env.
 # 1.1.1.1 and 8.8.8.8 are often blocked in Iran — operators should set WG_DNS
 # to the exit server IP (running a local resolver) or another reachable server.
@@ -35,15 +44,6 @@ resolve_dns_servers() {
   fi
 }
 DNS_SERVERS="$(resolve_dns_servers)"
-
-load_entry_env() {
-  if [[ -f /etc/wireguard/entry-server.env ]]; then
-    set -a
-    # shellcheck disable=SC1091
-    source /etc/wireguard/entry-server.env
-    set +a
-  fi
-}
 
 resolve_mtu() {
   local mode="${1:-twohop}"
