@@ -6,10 +6,9 @@ import logging
 import os
 import re
 import subprocess
+import uuid as _uuid_mod
 
 log = logging.getLogger(__name__)
-
-DEPLOY_DIR = os.environ.get("WG_DEPLOY_DIR", "/opt/wg/deploy")
 
 _XRAY_BIN = "/usr/local/bin/xray"
 _SECRETS_FILE = "/etc/xray/server-secrets.env"
@@ -128,30 +127,67 @@ def get_client(name):
 
 def add_client(name):
     """
-    Run xray-client-add.sh to create a new Xray client.
+    Create a new Xray client entirely in Python — no shell script dependency.
     Returns (True, links_dict) on success or (False, error_str) on failure.
     """
     safe = _safe_name(name)
-    script = os.path.join(DEPLOY_DIR, "xray-client-add.sh")
+    client_file = os.path.join(_CLIENTS_DIR, f"{safe}.env")
+
+    if not os.path.isfile(_SECRETS_FILE):
+        return False, "Xray not installed — server-secrets.env missing"
+    if not os.path.isfile(_CONFIG_FILE):
+        return False, "Xray not installed — config.json missing"
+
     try:
-        result = subprocess.run(
-            ["bash", script, safe],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode != 0:
-            err = (result.stderr or result.stdout or "unknown error").strip()
-            log.error("xray-client-add.sh failed for %s: %s", safe, err)
-            return False, err
-    except subprocess.TimeoutExpired:
-        log.error("xray-client-add.sh timed out for %s", safe)
-        return False, "command timed out"
+        os.makedirs(_CLIENTS_DIR, mode=0o700, exist_ok=True)
+
+        # Reuse existing UUID if the client was already created
+        if os.path.isfile(client_file):
+            data = _load_file(client_file)
+            client_uuid = data.get("CLIENT_UUID", "")
+        else:
+            client_uuid = ""
+
+        if not client_uuid:
+            client_uuid = str(_uuid_mod.uuid4())
+            with open(client_file, "w") as f:
+                f.write(f"CLIENT_NAME={safe}\nCLIENT_UUID={client_uuid}\n")
+            os.chmod(client_file, 0o600)
+
+        # Add UUID to every VLESS inbound in config.json
+        with open(_CONFIG_FILE) as f:
+            cfg = json.load(f)
+
+        changed = False
+        for ib in cfg.get("inbounds", []):
+            if ib.get("protocol") != "vless":
+                continue
+            clients = ib.setdefault("settings", {}).setdefault("clients", [])
+            if any(c.get("id") == client_uuid for c in clients):
+                continue
+            clients.append({"id": client_uuid, "email": safe, "flow": "xtls-rprx-vision"})
+            changed = True
+
+        if changed:
+            with open(_CONFIG_FILE, "w") as f:
+                json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+        # Reload xray without dropping connections (SIGHUP); fall back to restart
+        try:
+            subprocess.run(
+                ["systemctl", "reload", "xray"],
+                capture_output=True, text=True, timeout=10,
+            )
+        except Exception:
+            subprocess.run(
+                ["systemctl", "restart", "xray"],
+                capture_output=True, text=True, timeout=15,
+            )
+
     except Exception as exc:
-        log.error("xray-client-add.sh error for %s: %s", safe, exc)
+        log.error("add_client failed for %s: %s", safe, exc)
         return False, str(exc)
 
-    # Read the freshly-written client file to get the UUID and build links
     client = get_client(safe)
     if not client:
         return False, "client file not written"
