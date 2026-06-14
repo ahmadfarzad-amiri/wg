@@ -114,6 +114,14 @@ def body(user, primary, all_statuses):
 </section>
 
 {client_status_section(s)}
+
+<section class="card">
+  <h3>{html.escape(t("dashboard.tools_title"))}</h3>
+  <div class="dashboard-tools-grid">
+    <a class="btn btn-sm dark" href="/configs.zip">{html.escape(t("dashboard.download_zip"))}</a>
+    <a class="btn btn-sm dark" href="/sub-link">{html.escape(t("dashboard.sub_link"))}</a>
+  </div>
+</section>
 </div>
 """
 

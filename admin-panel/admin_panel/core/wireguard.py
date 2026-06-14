@@ -20,6 +20,12 @@ _WG_CACHE_TTL = 2  # seconds
 _wg_cache: dict = {}
 _wg_cache_lock = threading.Lock()
 
+# Separate short-lived cache for wg_interface_up() so it is not re-checked on
+# every wg_map() call (which would triple the kernel-call count per page load).
+_WG_UP_CACHE_TTL = 5
+_wg_up_cache: dict = {}  # key "up" -> (monotonic_time, bool)
+_wg_up_lock = threading.Lock()
+
 
 def parse_meta_file(path):
     data = {}
@@ -91,7 +97,7 @@ def wg_map(command):
     return result
 
 
-def wg_interface_up():
+def _wg_interface_up_uncached():
     if not shutil.which("wg") and not os.environ.get("WG_EXIT_SSH"):
         return False
     out = run(_wg_cmd("show", WG_IF))
@@ -103,6 +109,18 @@ def wg_interface_up():
     if "no such file" in text:
         return False
     return True
+
+
+def wg_interface_up():
+    now = time.monotonic()
+    with _wg_up_lock:
+        entry = _wg_up_cache.get("up")
+        if entry and now - entry[0] < _WG_UP_CACHE_TTL:
+            return entry[1]
+    result = _wg_interface_up_uncached()
+    with _wg_up_lock:
+        _wg_up_cache["up"] = (time.monotonic(), result)
+    return result
 
 
 def active_list_hint():

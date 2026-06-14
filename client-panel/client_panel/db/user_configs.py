@@ -3,6 +3,10 @@ import time
 
 from client_panel.db.connection import db
 
+# Set to True after the schema has been created in this process so we don't
+# run CREATE TABLE IF NOT EXISTS on every individual read call.
+_schema_ready = False
+
 
 def _migrate_legacy_assignments(con):
     con.execute(
@@ -19,6 +23,9 @@ def _migrate_legacy_assignments(con):
 
 
 def ensure_user_configs_schema(con=None):
+    global _schema_ready
+    if _schema_ready and con is None:
+        return
     own = con is None
     if own:
         con = db()
@@ -43,6 +50,7 @@ def ensure_user_configs_schema(con=None):
     if own:
         con.commit()
         con.close()
+    _schema_ready = True
 
 
 def configs_for_user(user_id):

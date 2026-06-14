@@ -621,7 +621,7 @@ body.modal-open{overflow:hidden}
 .table th,.table td{
   border-bottom:1px solid var(--line);
   padding:clamp(6px,1.8vw,13px) clamp(4px,1.2vw,10px);
-  text-align:right;
+  text-align:start;
   font-size:clamp(10px,2.8vw,14px);
   white-space:nowrap;
   overflow:hidden;

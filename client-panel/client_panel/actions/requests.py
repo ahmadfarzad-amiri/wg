@@ -11,6 +11,14 @@ from client_panel.db import db
 
 def handle_request(handler, user, data):
     action = data.get("action", "")
+
+    # Token rotation is handled entirely in the panel without WG interaction.
+    if action == "rotate-sub-token":
+        from client_panel.core.subscription import rotate_sub_token
+        rotate_sub_token(user["id"])
+        handler.flash("/sub-link", t("sub.rotated"))
+        return
+
     if action not in ["renew", "enable"]:
         handler.send_html(
             page(

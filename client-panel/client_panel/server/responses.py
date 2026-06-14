@@ -103,6 +103,13 @@ def redirect(handler, path):
     handler.end_headers()
 
 
+def _is_https(handler):
+    import os
+    if os.environ.get("WG_HTTPS", "").strip() in ("1", "true", "yes"):
+        return True
+    return handler.headers.get("X-Forwarded-Proto", "").lower() == "https"
+
+
 def _conf_public_key(conf_path):
     with open(conf_path, "r", encoding="utf-8", errors="ignore") as f:
         for line in f:

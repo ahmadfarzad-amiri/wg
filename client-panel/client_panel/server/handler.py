@@ -30,6 +30,35 @@ from client_panel.server import responses, security, session
 from client_panel.views import copy_config, dashboard, login, register, settings, support
 
 
+def _sub_link_page(sub_url):
+    import html as _html
+    url_esc = _html.escape(sub_url, quote=True)
+    url_disp = _html.escape(sub_url)
+    return f"""
+<h1>{_html.escape(t("sub.title"))}</h1>
+<p class="subtitle">{_html.escape(t("sub.hint"))}</p>
+<div class="page-stack">
+<section class="card">
+  <h3>{_html.escape(t("sub.your_link"))}</h3>
+  <p class="hint">{_html.escape(t("sub.link_hint"))}</p>
+  <div class="copy-block">
+    <input type="text" class="field-input copy-input" value="{url_esc}" readonly id="sub-url-input">
+    <button type="button" class="btn btn-sm" data-copy-target="sub-url-input">{_html.escape(t("sub.copy"))}</button>
+  </div>
+  <p class="hint warn-text">{_html.escape(t("sub.security_warning"))}</p>
+</section>
+<section class="card">
+  <h3>{_html.escape(t("sub.rotate_title"))}</h3>
+  <p class="hint">{_html.escape(t("sub.rotate_hint"))}</p>
+  <form method="post" action="/request">
+    <input type="hidden" name="action" value="rotate-sub-token">
+    <button type="submit" class="btn dark" data-confirm="{_html.escape(t("sub.rotate_confirm"), quote=True)}">{_html.escape(t("sub.rotate_btn"))}</button>
+  </form>
+</section>
+</div>
+"""
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         log.info("%s - %s", self.address_string(), fmt % args)
@@ -246,6 +275,14 @@ class Handler(BaseHTTPRequestHandler):
             self.redirect("/?qr=1")
             return
 
+        if path_only == "/sub-link":
+            self._serve_sub_link(user)
+            return
+
+        if path_only == "/connection-test":
+            self._serve_connection_test(user)
+            return
+
         if path_only == "/copy-config":
             config_text, err = responses.get_user_config_text(user)
             if err:
@@ -298,7 +335,114 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(raw)
             return
 
+        # /sub/<token> — unauthenticated subscription endpoint
+        if path_only.startswith("/sub/"):
+            self._serve_subscription(path_only[5:])
+            return
+
         self.send_html(page(t("page.not_found"), f"<h1>{html.escape(t('page.not_found'))}</h1>", user), 404)
+
+    def _serve_sub_link(self, user):
+        """Redirect to subscription info page with the user's token displayed."""
+        from client_panel.core.subscription import get_or_create_sub_token
+        from client_panel.core.statuses import UserStatus
+
+        if user["status"] != UserStatus.APPROVED:
+            self.send_html(
+                page(t("page.error"), f"<h1>{html.escape(t('error.config_not_assigned'))}</h1>", user), 403
+            )
+            return
+        token = get_or_create_sub_token(user["id"])
+        # Build the absolute URL using the Host header so it works behind any domain/port.
+        host = self.headers.get("Host", "")
+        scheme = "https" if responses._is_https(self) else "http"
+        sub_url = f"{scheme}://{host}/sub/{token}"
+        self.send_html(
+            page(
+                t("page.sub_link"),
+                _sub_link_page(sub_url),
+                user,
+                next_path="/sub-link",
+            )
+        )
+
+    def _serve_subscription(self, token):
+        """Return the WireGuard config(s) for the subscription token — no login required."""
+        from client_panel.core.subscription import user_by_sub_token
+        from client_panel.core.statuses import UserStatus
+
+        token = token.strip()
+        user = user_by_sub_token(token)
+        if not user or user["status"] != UserStatus.APPROVED:
+            self.send_response(404)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"Not found\n")
+            return
+
+        config_text, err = responses.get_user_config_text(user)
+        if err or not config_text:
+            self.send_response(404)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"Config not available\n")
+            return
+
+        raw = config_text.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def _serve_connection_test(self, user):
+        """Run a quick server-side diagnostic and return JSON results."""
+        import shutil
+        import subprocess as sp
+
+        from client_panel.config import WG_IF
+
+        results = {}
+
+        # WireGuard interface check
+        if shutil.which("wg"):
+            try:
+                out = sp.check_output(
+                    ["wg", "show", WG_IF], text=True, stderr=sp.DEVNULL, timeout=5
+                ).strip()
+                results["wg_interface"] = "up" if out else "down"
+            except Exception:
+                results["wg_interface"] = "down"
+        else:
+            results["wg_interface"] = "not_installed"
+
+        # Exit server reachability via the tunnel IP (10.200.0.1 is exit side)
+        exit_ip = os.environ.get("WG_EXIT_IP", "10.200.0.1")
+        try:
+            ret = sp.call(
+                ["ping", "-c", "1", "-W", "3", exit_ip],
+                stdout=sp.DEVNULL, stderr=sp.DEVNULL, timeout=6,
+            )
+            results["exit_ping"] = "ok" if ret == 0 else "unreachable"
+        except Exception:
+            results["exit_ping"] = "error"
+
+        # DNS resolution check via the tunnel
+        try:
+            import socket
+            socket.setdefaulttimeout(5)
+            socket.getaddrinfo("google.com", 80)
+            results["dns"] = "ok"
+        except Exception:
+            results["dns"] = "fail"
+
+        payload = json.dumps(results).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
 
     def _health(self):
         import shutil

@@ -6,7 +6,7 @@ import re
 
 from http.server import BaseHTTPRequestHandler
 
-from admin_panel.actions import active_action, auth, client, password, request, tool, user
+from admin_panel.actions import active_action, auth, client as client_action, password, request, tool, user
 from admin_panel.components.layout import page
 from admin_panel.config import CLIENT_DIR, admin_url, strip_admin_base
 from admin_panel.core import i18n
@@ -159,7 +159,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/client-action":
-            client.handle(self, data)
+            client_action.handle(self, data)
+        elif path == "/client-bulk":
+            client_action.handle_bulk(self, data)
         elif path == "/user-action":
             user.handle(self, data)
         elif path == "/request-action":
@@ -296,6 +298,7 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
+        tmp_path = None
         try:
             with open(conf_path, "rb") as f:
                 conf_data = f.read()
@@ -309,7 +312,6 @@ class Handler(BaseHTTPRequestHandler):
             )
             with open(tmp_path, "rb") as f:
                 png_data = f.read()
-            os.unlink(tmp_path)
 
             self.send_response(200)
             self.send_header("Content-Type", "image/png")
@@ -323,3 +325,6 @@ class Handler(BaseHTTPRequestHandler):
                 page("QR Error", f"<h1>Failed to generate QR</h1><p>{html.escape(str(exc))}</p>"),
                 500,
             )
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)

@@ -5,6 +5,15 @@ from admin_panel.config import BASE, SESSION_HOURS, admin_url
 from admin_panel.db import session_db
 
 
+def admin_actor():
+    """Return the currently configured admin username (single-admin system)."""
+    try:
+        from admin_panel.core.auth import admin_username
+        return admin_username()
+    except Exception:
+        return "admin"
+
+
 def _secure_attrs():
     import os
 

@@ -27,9 +27,15 @@ def db():
         salt TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending',
         client_name TEXT,
+        sub_token TEXT,
         created_at INTEGER NOT NULL
     )
     """)
+    # Add sub_token column if upgrading from older schema (idempotent).
+    try:
+        con.execute("ALTER TABLE users ADD COLUMN sub_token TEXT")
+    except Exception:
+        pass  # column already exists
     con.execute("""
     CREATE TABLE IF NOT EXISTS sessions (
         token TEXT PRIMARY KEY,
@@ -37,6 +43,9 @@ def db():
         expires_at INTEGER NOT NULL
     )
     """)
+    con.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)"
+    )
     con.execute("""
     CREATE TABLE IF NOT EXISTS requests (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,6 +57,15 @@ def db():
         note TEXT
     )
     """)
+    con.execute(
+        "CREATE INDEX IF NOT EXISTS idx_requests_user ON requests(user_id)"
+    )
+    con.execute(
+        "CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status)"
+    )
+    con.execute(
+        "CREATE INDEX IF NOT EXISTS idx_users_status ON users(status)"
+    )
     from client_panel.db.user_configs import ensure_user_configs_schema
 
     ensure_user_configs_schema(con)

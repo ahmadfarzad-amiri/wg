@@ -118,14 +118,76 @@ def human_duration(seconds):
 
 
 def status_for_client(client_name):
+    return _status_for_client_with_maps(
+        client_name,
+        wg_map("transfer"),
+        wg_map("endpoints"),
+        wg_map("latest-handshakes"),
+    )
+
+
+def vpn_mode_text(mode):
+    mode = (mode or "twohop").lower()
+    return t(f"vpn.{mode}", mode)
+
+
+def _user_field(user, key, default=""):
+    if not user:
+        return default
+    if isinstance(user, dict):
+        val = user.get(key, default)
+    else:
+        try:
+            val = user[key]
+        except (KeyError, IndexError, TypeError):
+            val = default
+    return default if val is None else val
+
+
+def assigned_client_names_for_user(user):
+    from client_panel.db.user_configs import client_names_for_user
+
+    if not user:
+        return []
+    names = client_names_for_user(user["id"])
+    if names:
+        return names
+    legacy = _user_field(user, "client_name")
+    if legacy:
+        return [legacy]
+    return []
+
+
+def primary_client_for_user(user):
+    from client_panel.db.user_configs import primary_client_name
+
+    if not user:
+        return ""
+    return primary_client_name(user["id"], _user_field(user, "client_name"))
+
+
+def statuses_for_user(user):
+    names = assigned_client_names_for_user(user)
+    if not names:
+        return []
+    # Build WireGuard maps once and reuse for all clients to avoid O(n) kernel calls.
+    transfers = wg_map("transfer")
+    endpoints = wg_map("endpoints")
+    handshakes = wg_map("latest-handshakes")
+    rows = []
+    for name in names:
+        s = _status_for_client_with_maps(name, transfers, endpoints, handshakes)
+        if s:
+            rows.append(s)
+    return rows
+
+
+def _status_for_client_with_maps(client_name, transfers, endpoints, handshakes):
     c = parse_meta(client_name)
     if not c:
         return None
 
     pub = c.get("PUBLIC_KEY", "")
-    transfers = wg_map("transfer")
-    endpoints = wg_map("endpoints")
-    handshakes = wg_map("latest-handshakes")
     core = evaluate_client_meta(c, transfers, handshakes, use_reason_hints=True)
 
     used_now = core["used_now"]
@@ -180,56 +242,6 @@ def status_for_client(client_name):
         "vpn_mode_text": vpn_mode_text(c.get("VPN_MODE", "twohop")),
         "disabled_reason": c.get("DISABLED_REASON", "") or t("disabled_reason.none"),
     }
-
-
-def vpn_mode_text(mode):
-    mode = (mode or "twohop").lower()
-    return t(f"vpn.{mode}", mode)
-
-
-def _user_field(user, key, default=""):
-    if not user:
-        return default
-    if isinstance(user, dict):
-        val = user.get(key, default)
-    else:
-        try:
-            val = user[key]
-        except (KeyError, IndexError, TypeError):
-            val = default
-    return default if val is None else val
-
-
-def assigned_client_names_for_user(user):
-    from client_panel.db.user_configs import client_names_for_user
-
-    if not user:
-        return []
-    names = client_names_for_user(user["id"])
-    if names:
-        return names
-    legacy = _user_field(user, "client_name")
-    if legacy:
-        return [legacy]
-    return []
-
-
-def primary_client_for_user(user):
-    from client_panel.db.user_configs import primary_client_name
-
-    if not user:
-        return ""
-    return primary_client_name(user["id"], _user_field(user, "client_name"))
-
-
-def statuses_for_user(user):
-    names = assigned_client_names_for_user(user)
-    rows = []
-    for name in names:
-        s = status_for_client(name)
-        if s:
-            rows.append(s)
-    return rows
 
 
 def can_request_status(s, action):

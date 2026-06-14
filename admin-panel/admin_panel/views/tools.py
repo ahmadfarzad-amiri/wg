@@ -41,14 +41,29 @@ def body(msg=""):
     infra = get_infrastructure_state()
     infra_summary = _infra_current_summary(infra)
 
-    audit_rows = recent_audit(10)
+    audit_rows = recent_audit(20)
     audit_html = ""
     if audit_rows:
         items = []
-        for action, detail, created_at in audit_rows:
+        for row in audit_rows:
+            # Support both old (3-col) and new (5-col) schema rows gracefully
+            if len(row) == 5:
+                actor, ip, action, detail, created_at = row
+            else:
+                actor, ip = "", ""
+                action, detail, created_at = row[0], row[1], row[2]
             when = time.strftime("%Y-%m-%d %H:%M", time.localtime(created_at))
+            actor_badge = (
+                f' <span class="audit-actor">{html.escape(actor)}</span>'
+                if actor else ""
+            )
+            ip_badge = (
+                f' <span class="audit-ip muted">{html.escape(ip)}</span>'
+                if ip else ""
+            )
             items.append(
-                f"<li><code>{html.escape(action)}</code> — {html.escape(detail or '')} "
+                f"<li><code>{html.escape(action)}</code> — {html.escape(detail or '')}"
+                f"{actor_badge}{ip_badge} "
                 f"<span class='muted'>({when})</span></li>"
             )
         audit_html = f"""

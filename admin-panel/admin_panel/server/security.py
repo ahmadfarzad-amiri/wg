@@ -14,6 +14,13 @@ from admin_panel.core.i18n import tf
 
 _TRUSTED_PROXIES = frozenset({"127.0.0.1", "::1", "localhost"})
 
+# Throttle session purge: only write to the session DB once per 60 seconds.
+# Without this, every single HTTP request triggers a DELETE on sessions, creating
+# a write-lock contention storm on shared SQLite under concurrent load.
+_last_purge: float = 0.0
+_purge_lock = __import__("threading").Lock()
+_PURGE_INTERVAL = 60.0
+
 
 def client_ip(handler):
     """Return the real client IP.
@@ -73,6 +80,12 @@ def _rate_db():
 
 
 def purge_expired_sessions():
+    global _last_purge
+    now = time.monotonic()
+    with _purge_lock:
+        if now - _last_purge < _PURGE_INTERVAL:
+            return
+        _last_purge = now
     con = _open_db(SESSION_FILE)
     con.execute("DELETE FROM sessions WHERE expires_at <= ?", (int(time.time()),))
     con.commit()

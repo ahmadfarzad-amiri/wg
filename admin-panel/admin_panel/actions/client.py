@@ -13,6 +13,59 @@ from admin_panel.core.wireguard import all_client_meta, find_client_status
 from admin_panel.db.panel_queries import detach_users_from_client
 
 
+def _audit(handler, action, detail=""):
+    from admin_panel.server import security, session
+    log_admin_action(action, detail, actor=session.admin_actor(), ip=security.client_ip(handler))
+
+
+def handle_bulk(handler, data):
+    """Create multiple clients from a newline-separated name list."""
+    raw = data.get("names", "")
+    names = [safe_name(n.strip()) for n in raw.replace(",", "\n").splitlines()]
+    names = [n for n in names if n]
+
+    if not names:
+        _render(handler, t("msg.bulk_names_required"))
+        return
+    if len(names) > 50:
+        _render(handler, t("msg.bulk_too_many"))
+        return
+
+    vpn_mode = (data.get("vpn_mode") or "twohop").strip().lower()
+    if vpn_mode not in ("direct", "twohop"):
+        vpn_mode = "twohop"
+
+    days = data.get("days") or DEFAULT_DAYS
+    limit = data.get("limit") or DEFAULT_LIMIT
+    single = data.get("single") or DEFAULT_SINGLE
+
+    created = []
+    skipped = []
+    failed = []
+
+    for name in names:
+        ok, was_new, out = ensure_client(
+            name, days=days, limit=limit, single=single, vpn_mode=vpn_mode
+        )
+        if ok and was_new:
+            created.append(name)
+            _audit(handler, "bulk_add_client", name)
+        elif ok and not was_new:
+            skipped.append(name)
+        else:
+            failed.append(name)
+
+    parts = []
+    if created:
+        parts.append(tf("msg.bulk_created", n=len(created), names=", ".join(created)))
+    if skipped:
+        parts.append(tf("msg.bulk_skipped", n=len(skipped), names=", ".join(skipped)))
+    if failed:
+        parts.append(tf("msg.bulk_failed", n=len(failed), names=", ".join(failed)))
+
+    _render(handler, " ".join(parts) or t("msg.bulk_nothing"))
+
+
 def handle(handler, data):
     action = data.get("action", "")
     client = safe_name(data.get("client", ""))
@@ -34,7 +87,7 @@ def handle(handler, data):
         if not ok:
             _render(handler, tail_message(out))
             return
-        log_admin_action("add_client", client)
+        _audit(handler, "add_client", client)
         _render(handler, tail_message(out or tf("msg.client_ready", name=client)))
         return
 
@@ -99,7 +152,7 @@ def handle(handler, data):
         if not messages:
             _render(handler, t("msg.update_nothing"))
             return
-        log_admin_action("update", client)
+        _audit(handler, "update", client)
         combined = "\n".join(m for m in messages if m)
         _render(handler, tail_message(combined))
         return
@@ -145,7 +198,7 @@ def handle(handler, data):
         _render(handler, tail_message(out))
         return
 
-    log_admin_action(action, client)
+    _audit(handler, action, client)
     _render(handler, tail_message(out))
 
 

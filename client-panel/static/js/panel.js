@@ -261,4 +261,57 @@
   if (window.location.search.indexOf("qr=1") !== -1) {
     openQrModal();
   }
+
+  // ── copy-target buttons (subscription link page) ────────────────────────
+  document.querySelectorAll("[data-copy-target]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var targetId = btn.getAttribute("data-copy-target");
+      var input = document.getElementById(targetId);
+      if (!input) return;
+      navigator.clipboard.writeText(input.value)
+        .then(function () { showToast(i18n.copyOk || "Copied", "success"); })
+        .catch(function () {
+          input.select();
+          document.execCommand("copy");
+        });
+    });
+  });
+
+  // ── connection test ──────────────────────────────────────────────────────
+  var connTestBtn = document.getElementById("conn-test-btn");
+  if (connTestBtn) {
+    connTestBtn.addEventListener("click", function () {
+      var url = connTestBtn.getAttribute("data-test-url") || "/connection-test";
+      var results = document.getElementById("conn-test-results");
+      setButtonLoading(connTestBtn, true);
+      if (results) { results.hidden = true; results.innerHTML = ""; }
+
+      fetch(url, { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (!results) return;
+          var labels = {
+            wg_interface: (i18n.connTest && i18n.connTest.wg_interface) || "WireGuard",
+            exit_ping:    (i18n.connTest && i18n.connTest.exit_ping)    || "Exit server",
+            dns:          (i18n.connTest && i18n.connTest.dns)          || "DNS",
+          };
+          var html = "";
+          Object.keys(data).forEach(function (key) {
+            var val = data[key];
+            var ok = val === "ok" || val === "up";
+            var cls = ok ? "ok" : "bad";
+            html += '<div class="item"><span class="badge ' + cls + '">' +
+              (labels[key] || key) + ': ' + val + '</span></div>';
+          });
+          results.innerHTML = html;
+          results.hidden = false;
+        })
+        .catch(function () {
+          showToast(i18n.connTestError || "Test failed", "error");
+        })
+        .finally(function () {
+          setButtonLoading(connTestBtn, false);
+        });
+    });
+  }
 })();

@@ -67,5 +67,13 @@ def body(user, rows, s=None):
     </div>
   </div>
 </section>
+
+<section class="card">
+  <h3>{html.escape(t("support.conn_test_title"))}</h3>
+  <p class="hint">{html.escape(t("support.conn_test_hint"))}</p>
+  <div id="conn-test-results" class="statrow" hidden></div>
+  <button type="button" class="btn btn-sm dark" id="conn-test-btn"
+    data-test-url="/connection-test">{html.escape(t("support.conn_test_btn"))}</button>
+</section>
 </div>
 """

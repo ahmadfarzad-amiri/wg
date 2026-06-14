@@ -293,6 +293,46 @@ def client_rows(clients, assigned_names=None, users_by_client_map=None):
     return "", ""
 
 
+def bulk_add_client_form():
+    vpn_tabs = _option_tabs(
+        "vpn_mode",
+        [("twohop", label_vpn_mode("twohop")), ("direct", label_vpn_mode("direct"))],
+        "twohop",
+        t("client.vpn_mode"),
+    )
+    return f"""
+<form method="post" action="{admin_url("/client-bulk")}" class="add-client-form">
+  <div class="add-client-fields">
+    <label class="field field-name" style="grid-column:1/-1">
+      <span class="field-label">{html.escape(t("clients.bulk_names_label"))}</span>
+      <textarea name="names" class="field-input" rows="5"
+        placeholder="{html.escape(t('clients.bulk_names_placeholder'), quote=True)}"
+        required autocomplete="off"></textarea>
+      <span class="field-hint">{html.escape(t("clients.bulk_names_hint"))}</span>
+    </label>
+    <div class="field field-vpn">
+      <span class="field-label">{html.escape(t("client.vpn_mode"))}</span>
+      {vpn_tabs}
+    </div>
+    <label class="field field-days">
+      <span class="field-label">{html.escape(t("client.days"))}</span>
+      <input name="days" class="field-input" value="{html.escape(DEFAULT_DAYS)}" inputmode="numeric">
+    </label>
+    <label class="field field-limit">
+      <span class="field-label">{html.escape(t("client.limit"))}</span>
+      <input name="limit" class="field-input" value="{html.escape(DEFAULT_LIMIT)}" placeholder="20G">
+    </label>
+    <div class="field field-submit">
+      <button type="submit" class="btn btn-sm add-client-submit"
+        data-confirm="{html.escape(t('clients.bulk_add_confirm'), quote=True)}">
+        {html.escape(t("clients.bulk_add_btn"))}
+      </button>
+    </div>
+  </div>
+</form>
+"""
+
+
 def add_client_form():
     single_opts = [
         ("--single-ip", label_single_mode("ip")),
