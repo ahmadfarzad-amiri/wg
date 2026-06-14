@@ -459,12 +459,13 @@ ENV
     log "UFW rules added for ports 443/tcp, 8388/tcp+udp"
   fi
 
-  # Check for port 443 conflict BEFORE starting the service
+  # Check for port 443 conflict BEFORE starting the service.
+  # Skip if xray itself holds 443 (upgrade/reinstall scenario — xray will be restarted).
   PORT443_HOLDER=""
   if ss -tlnp 2>/dev/null | grep -qE ':443\b'; then
     PORT443_HOLDER="$(ss -tlnp 2>/dev/null | grep -E ':443\b' | awk '{print $NF}' | head -1)"
   fi
-  if [[ -n "$PORT443_HOLDER" ]]; then
+  if [[ -n "$PORT443_HOLDER" ]] && ! echo "$PORT443_HOLDER" | grep -q '"xray"'; then
     warn "Port 443 is already in use by: ${PORT443_HOLDER}"
     warn "VLESS+Reality requires port 443. Options:"
     warn "  1. Disable SSL on nginx: remove the listen 443 block for your panel domain"
