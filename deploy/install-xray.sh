@@ -83,16 +83,41 @@ install_xray_binary() {
     *)       die "Unsupported architecture: $arch" ;;
   esac
 
-  local release_url="https://api.github.com/repos/XTLS/Xray-core/releases/latest"
-  local download_url
-  download_url="$(curl -fsSL "$release_url" \
-    | grep -o "\"browser_download_url\": \"[^\"]*Xray-linux-${arch}\\.zip\"" \
-    | head -1 \
-    | cut -d'"' -f4)"
+  local filename="Xray-linux-${arch}.zip"
 
-  [[ -n "$download_url" ]] || die "Could not find Xray download URL for arch $arch"
+  # Resolve the latest version tag — try GitHub API, then fall back to a pinned version.
+  local version=""
+  version="$(curl -fsSL --connect-timeout 8 \
+    "https://api.github.com/repos/XTLS/Xray-core/releases/latest" 2>/dev/null \
+    | grep '"tag_name"' | cut -d'"' -f4)"
+  if [[ -z "$version" ]]; then
+    # Pinned fallback — update this when a new LTS release is available
+    version="v25.3.6"
+    warn "GitHub API unreachable — falling back to pinned Xray version ${version}"
+  fi
 
-  curl -fsSL "$download_url" -o "$tmp_dir/xray.zip"
+  # Try multiple download sources in order; stop at the first that works.
+  # GitHub is often blocked in Iran; ghfast.top and ghproxy.com are CDN proxies.
+  local base_gh="https://github.com/XTLS/Xray-core/releases/download/${version}"
+  local downloaded=0
+  local src
+  for src in \
+    "${base_gh}/${filename}" \
+    "https://ghfast.top/${base_gh}/${filename}" \
+    "https://mirror.ghproxy.com/${base_gh}/${filename}" \
+    "https://gh-proxy.com/${base_gh}/${filename}"; do
+    log "Trying: $src"
+    if curl -fsSL --connect-timeout 12 --max-time 120 "$src" -o "$tmp_dir/xray.zip" 2>/dev/null; then
+      downloaded=1
+      break
+    fi
+  done
+
+  if [[ "$downloaded" -eq 0 ]]; then
+    rm -rf "$tmp_dir"
+    die "Could not download Xray ${version} for ${arch}. Set a reachable mirror with WG_XRAY_DOWNLOAD_MIRROR or download manually."
+  fi
+
   unzip -o "$tmp_dir/xray.zip" -d "$tmp_dir/xray" xray geoip.dat geosite.dat >/dev/null
   install -m 755 "$tmp_dir/xray/xray" "$XRAY_BIN"
   mkdir -p /usr/local/share/xray

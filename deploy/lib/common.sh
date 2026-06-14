@@ -12,7 +12,9 @@ GITHUB_OWNER="${GITHUB_OWNER:-ahmadfarzad-amiri}"
 GITHUB_REPO_NAME="${GITHUB_REPO_NAME:-wg}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
 GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/${GITHUB_OWNER}/${GITHUB_REPO_NAME}.git}"
-GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/${GITHUB_BRANCH}}"
+# jsDelivr CDN mirrors raw.githubusercontent.com and works where GitHub is blocked (e.g. Iran).
+# Override with WG_RAW_BASE if you need a different mirror.
+GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/${GITHUB_OWNER}/${GITHUB_REPO_NAME}@${GITHUB_BRANCH}}"
 
 log() { printf '[wg-deploy] %s\n' "$*"; }
 warn() { printf '[wg-deploy] WARN: %s\n' "$*" >&2; }
@@ -424,7 +426,8 @@ fetch_deploy_helper_scripts() {
 
 source_deploy_lib() {
   local script_ref="${1:-}"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
+  # jsDelivr works where raw.githubusercontent.com is blocked (Iran, etc.)
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main}"
   if [[ -n "$script_ref" && -f "$(dirname "$script_ref")/lib/common.sh" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "$script_ref")" && pwd)"
     # shellcheck source=lib/common.sh
@@ -440,18 +443,41 @@ source_deploy_lib() {
   source "$SCRIPT_DIR/lib/common.sh"
 }
 
+_git_clone_with_fallback() {
+  local repo_url="$1" branch="$2" dest="$3"
+  # Try direct clone first
+  if git clone --depth 1 --branch "$branch" "$repo_url" "$dest" 2>/dev/null; then
+    return 0
+  fi
+  log "Direct git clone failed — trying jsDelivr ZIP download (GitHub may be blocked)"
+  # Derive owner/repo from the URL (works for https://github.com/owner/repo.git)
+  local slug
+  slug="$(echo "$repo_url" | sed 's|.*github\.com/||;s|\.git$||')"
+  local zip_url="https://cdn.jsdelivr.net/gh/${slug}@${branch}/deploy/lib/common.sh"
+  # jsDelivr doesn't serve repo ZIPs; download the repo tree file by file via their API
+  # as a best-effort fallback. For now, offer a manual instruction and fail clearly.
+  warn "jsDelivr cannot serve a full git clone. Alternatives:"
+  warn "  1. Set WG_GITHUB_REPO to a reachable mirror:"
+  warn "     WG_GITHUB_REPO=https://gitee.com/mirror/wg.git  (or your own mirror)"
+  warn "  2. Pre-clone on a reachable machine and rsync to this server."
+  return 1
+}
+
 clone_or_update_repo() {
   local repo_url="$1"
   local branch="$2"
   local dest="$3"
   if [[ -d "$dest/.git" ]]; then
     log "Updating existing repo at $dest"
-    git -C "$dest" fetch origin "$branch"
+    if ! git -C "$dest" fetch origin "$branch" 2>/dev/null; then
+      warn "git fetch failed (GitHub may be blocked) — skipping update, using existing code"
+      return 0
+    fi
     git -C "$dest" checkout "$branch"
     git -C "$dest" pull --ff-only origin "$branch"
   else
     log "Cloning $repo_url (branch $branch) -> $dest"
-    git clone --depth 1 --branch "$branch" "$repo_url" "$dest"
+    _git_clone_with_fallback "$repo_url" "$branch" "$dest"
   fi
 }
 
