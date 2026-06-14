@@ -445,21 +445,33 @@ source_deploy_lib() {
 
 _git_clone_with_fallback() {
   local repo_url="$1" branch="$2" dest="$3"
+
   # Try direct clone first
   if git clone --depth 1 --branch "$branch" "$repo_url" "$dest" 2>/dev/null; then
     return 0
   fi
-  log "Direct git clone failed — trying jsDelivr ZIP download (GitHub may be blocked)"
-  # Derive owner/repo from the URL (works for https://github.com/owner/repo.git)
-  local slug
-  slug="$(echo "$repo_url" | sed 's|.*github\.com/||;s|\.git$||')"
-  local zip_url="https://cdn.jsdelivr.net/gh/${slug}@${branch}/deploy/lib/common.sh"
-  # jsDelivr doesn't serve repo ZIPs; download the repo tree file by file via their API
-  # as a best-effort fallback. For now, offer a manual instruction and fail clearly.
-  warn "jsDelivr cannot serve a full git clone. Alternatives:"
-  warn "  1. Set WG_GITHUB_REPO to a reachable mirror:"
-  warn "     WG_GITHUB_REPO=https://gitee.com/mirror/wg.git  (or your own mirror)"
-  warn "  2. Pre-clone on a reachable machine and rsync to this server."
+
+  # GitHub is blocked in some regions (e.g. Iran). Try known CDN proxy services that
+  # forward HTTPS git traffic. These are community-run and may change — order matters.
+  log "Direct git clone failed — trying GitHub proxy mirrors (GitHub may be blocked)"
+  local gh_path
+  gh_path="$(echo "$repo_url" | sed 's|.*github\.com/||')"
+  local proxy
+  for proxy in \
+    "https://ghfast.top/https://github.com/${gh_path}" \
+    "https://mirror.ghproxy.com/https://github.com/${gh_path}" \
+    "https://ghproxy.com/https://github.com/${gh_path}" \
+    "https://gh-proxy.com/https://github.com/${gh_path}"; do
+    log "Trying: $proxy"
+    if git clone --depth 1 --branch "$branch" "$proxy" "$dest" 2>/dev/null; then
+      log "Cloned via proxy: $proxy"
+      return 0
+    fi
+  done
+
+  warn "All git clone attempts failed. Options:"
+  warn "  Set WG_GITHUB_REPO to a reachable proxy:"
+  warn "    WG_GITHUB_REPO='https://ghfast.top/https://github.com/${gh_path}'"
   return 1
 }
 
