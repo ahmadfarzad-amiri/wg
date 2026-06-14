@@ -237,6 +237,13 @@ _STRINGS = {
         "setup.macos_steps": "WireGuard را از App Store نصب کنید|کانفیگ را دانلود کنید|فایل را روی اپ WireGuard بکشید|اتصال را روشن کنید",
         "setup.linux_apps": "لینوکس: WireGuard (بسته‌های سیستم)، Hiddify، v2rayA",
         "setup.linux_steps": "sudo apt install wireguard|کانفیگ را در /etc/wireguard/wg0.conf ذخیره کنید|sudo wg-quick up wg0|برای اتصال دائم: sudo systemctl enable wg-quick@wg0",
+        "dashboard.xray_title": "پروتکل‌های جایگزین (Xray)",
+        "dashboard.xray_hint": "اگر WireGuard در شبکه شما کند یا مسدود است، از لینک‌های زیر استفاده کنید.",
+        "dashboard.xray_apps_hint": "برنامه پیشنهادی: Hiddify (iOS، Android، Windows، macOS)",
+        "dashboard.xray_reality": "VLESS+Reality",
+        "dashboard.xray_ws": "VLESS+WebSocket",
+        "dashboard.xray_ss": "Shadowsocks",
+        "dashboard.xray_copy": "کپی",
     },
     "en": {
         "skip_link": "Skip to content",
@@ -459,6 +466,13 @@ _STRINGS = {
         "setup.macos_steps": "Install WireGuard from the App Store|Download the config file|Drag the file onto the WireGuard app|Toggle the connection on",
         "setup.linux_apps": "Linux: WireGuard (system packages), Hiddify, v2rayA",
         "setup.linux_steps": "sudo apt install wireguard|Save the config to /etc/wireguard/wg0.conf|sudo wg-quick up wg0|For auto-start: sudo systemctl enable wg-quick@wg0",
+        "dashboard.xray_title": "Alternative protocols (Xray)",
+        "dashboard.xray_hint": "If WireGuard is slow or blocked on your network, use one of these links instead.",
+        "dashboard.xray_apps_hint": "Recommended app: Hiddify (iOS, Android, Windows, macOS)",
+        "dashboard.xray_reality": "VLESS+Reality",
+        "dashboard.xray_ws": "VLESS+WebSocket",
+        "dashboard.xray_ss": "Shadowsocks",
+        "dashboard.xray_copy": "Copy",
     },
 }
 

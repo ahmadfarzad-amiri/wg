@@ -22,6 +22,7 @@ _TAB_PATHS = {
     "requests": "/requests",
     "active": "/active",
     "tools": "/tools",
+    "xray": "/xray",
     "settings": "/settings",
 }
 
@@ -61,6 +62,7 @@ def page(title, body, active="dashboard", auth=False, extra_head="", next_path="
         ("/requests", t("nav.requests"), "requests"),
         ("/active", t("nav.active"), "active"),
         ("/tools", t("nav.tools"), "tools"),
+        ("/xray", t("nav.xray"), "xray"),
         ("/settings", t("nav.settings"), "settings"),
     ]
 

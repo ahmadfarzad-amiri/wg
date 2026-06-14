@@ -26,6 +26,7 @@ This guide is for **administrators** who manage users, WireGuard clients, and su
 | **Users** | Panel accounts — approve, assign configs, reset passwords |
 | **Requests** | Support tickets submitted by users |
 | **Active** | Who is currently connected (live WireGuard status) |
+| **Xray** | Xray protocol status; add/delete VLESS+Reality, WebSocket, Shadowsocks clients |
 | **Tools** | Change entry/exit server IPs, view audit log |
 | **Settings** | Change admin password |
 
@@ -58,6 +59,8 @@ On mobile, use the bottom navigation bar. Filters appear below the header on lis
 
 4. Click **Add client**. The client appears in the list.
 
+> **Xray auto-create:** If Xray is installed on the entry server, an Xray profile with the same name is created automatically. The client's Xray links (VLESS+Reality, WebSocket, Shadowsocks) appear in the **Xray** tab and in the user's client panel dashboard.
+
 **Option B — Use an existing unassigned client**
 
 Skip to Step 3, using the name of an existing client that has no user assigned.
@@ -71,6 +74,8 @@ To add many clients at once:
 3. Enter one client name per line (max 50 names).
 4. Choose VPN mode, days, and limit (apply to all).
 5. Click **Create**. A summary shows how many were created, skipped (already exist), or failed.
+
+> Xray profiles are auto-created for each new client if Xray is installed.
 
 ### Step 3 — Approve and link
 
@@ -201,6 +206,50 @@ Also update your cloud firewall and any DNS records. Connected users must reconn
    ```
 
 See [Operations guide](OPERATIONS.md) for the full migration checklist.
+
+---
+
+## Xray protocols (VLESS+Reality, WebSocket, Shadowsocks 2022)
+
+Xray provides alternative connection protocols that work when WireGuard UDP is blocked or throttled — common on Iranian ISPs.
+
+### Prerequisites
+
+Xray must be installed on the entry server. The install is included in the entry server setup when `WG_XRAY_REALITY_SNI` is set. To install it separately:
+
+```bash
+sudo WG_XRAY_REALITY_SNI=www.microsoft.com bash /opt/wg/deploy/install-xray.sh
+```
+
+The **Xray** tab shows `installed` / `not installed` status. If not installed, the command above is shown.
+
+### Automatic client creation
+
+When you create a WireGuard client (single or bulk), an Xray profile with the **same name** is created automatically. The three protocol links appear in the **Xray** tab and in the user's dashboard under **Alternative protocols**.
+
+### Manual client management
+
+If you need to add an Xray client separately or re-sync after a failed auto-create:
+
+1. Open **Xray**.
+2. Under **Add Xray client**, enter the client name.
+3. Click **Create Xray client**.
+
+To delete: click **Delete** on the client card.
+
+### What users get
+
+Each Xray client has three links:
+
+| Protocol | Use when |
+|----------|----------|
+| **VLESS + Reality** | WireGuard is blocked; looks like HTTPS traffic |
+| **VLESS + WebSocket** | Behind Cloudflare CDN; only if `WG_XRAY_WS_DOMAIN` is set |
+| **Shadowsocks 2022** | Lightweight fallback; works on most obstructed networks |
+
+Users can copy these links from their dashboard and paste them into Xray/v2rayN/Hiddify apps.
+
+---
 
 ### Audit log
 

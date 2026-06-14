@@ -7,6 +7,7 @@ import re
 from http.server import BaseHTTPRequestHandler
 
 from admin_panel.actions import active_action, auth, client as client_action, password, request, tool, user
+from admin_panel.actions import xray_action
 from admin_panel.components.layout import page
 from admin_panel.config import CLIENT_DIR, admin_url, strip_admin_base
 from admin_panel.core import i18n
@@ -25,6 +26,7 @@ from admin_panel.views import (
     settings,
     tools,
     users,
+    xray as xray_view,
 )
 
 
@@ -127,6 +129,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html(
                 page(t("nav.tools"), tools.body(security.notice_from_query(self)), "tools")
             )
+        elif path == "/xray":
+            self.send_html(
+                page(t("nav.xray"), xray_view.body(security.notice_from_query(self)), "xray")
+            )
         elif path == "/settings":
             self.send_html(
                 page(t("nav.settings"), settings.body(security.notice_from_query(self)), "settings")
@@ -168,6 +174,8 @@ class Handler(BaseHTTPRequestHandler):
             request.handle(self, data)
         elif path == "/tool-action":
             tool.handle(self, data)
+        elif path == "/xray-action":
+            xray_action.handle(self, data)
         elif path == "/active-action":
             active_action.handle(self, data)
         elif path == "/settings/password":

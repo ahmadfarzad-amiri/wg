@@ -57,6 +57,7 @@ sudo WG_ENTRY_PUBLIC_IP=YOUR_ENTRY_IP \
   WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP \
   WG_EXIT_TUNNEL_PUB='PASTE_EXIT_TUNNEL_PUBKEY' \
   WG_ADMIN_PASS='choose-a-strong-password' \
+  WG_XRAY_REALITY_SNI=www.microsoft.com \
   bash /tmp/install-entry-server.sh
 ```
 
@@ -80,6 +81,11 @@ Installed layout:
 ├── wg-endpoint         # entry IP:51820 written into client configs
 ├── clients/            # WireGuard .conf files per client
 └── state/              # .meta files (limits, expiry, VPN mode)
+
+/etc/xray/             # only present if WG_XRAY_REALITY_SNI was set
+├── config.json         # Xray inbounds (Reality :443, WebSocket, Shadowsocks :8388)
+├── server-secrets.env  # XRAY_SERVER_IP, XRAY_REALITY_PUB, XRAY_SS_PASSWORD, …
+└── clients/            # one .env per client with CLIENT_UUID
 ```
 
 Full environment variable reference: [deploy/config.env.example](../deploy/config.env.example).

@@ -1489,3 +1489,8 @@ input[readonly]:not(.config-textarea){
 .setup-guide-card .hint{
   margin-bottom:4px;
 }
+
+/* Xray protocol links on dashboard */
+.xray-link-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.xray-link-label{font-size:12px;color:var(--muted);min-width:110px;flex-shrink:0}
+.xray-link-input{flex:1;min-width:0;font-size:12px;font-family:monospace}

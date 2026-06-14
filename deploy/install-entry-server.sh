@@ -80,6 +80,9 @@ ADMIN_PORT="${WG_ADMIN_PORT:-8090}"
 ADMIN_USER="${WG_ADMIN_USER:-admin}"
 ENABLE_SSL="${WG_ENABLE_SSL:-no}"
 CERTBOT_EMAIL="${WG_CERTBOT_EMAIL:-}"
+XRAY_REALITY_SNI="${WG_XRAY_REALITY_SNI:-}"
+XRAY_WS_DOMAIN="${WG_XRAY_WS_DOMAIN:-}"
+XRAY_SKIP="${WG_SKIP_XRAY:-0}"
 
 if should_prompt; then
   log "Interactive mode — press Enter to accept [defaults]."
@@ -97,6 +100,10 @@ if should_prompt; then
   prompt_yes_no ENABLE_SSL "Enable HTTPS with Let's Encrypt (certbot)?" "N"
   if [[ "$ENABLE_SSL" == "yes" ]]; then
     prompt CERTBOT_EMAIL "Email for Let's Encrypt certificate notifications" "$CERTBOT_EMAIL"
+  fi
+  prompt_optional XRAY_REALITY_SNI "Xray Reality SNI domain (blank to skip — e.g. www.microsoft.com)" "${XRAY_REALITY_SNI:-}"
+  if [[ -n "$XRAY_REALITY_SNI" ]]; then
+    prompt_optional XRAY_WS_DOMAIN "Xray WebSocket CDN domain (blank to skip)" "${XRAY_WS_DOMAIN:-}"
   fi
 else
   log "Entry public IP   : ${ENTRY_IP}"
@@ -370,6 +377,25 @@ else
   PANEL_URL_ADMIN="http://${ENTRY_IP}:${ADMIN_PORT}/admin/login"
 fi
 
+# --- Xray (VLESS+Reality + Shadowsocks 2022) ---
+XRAY_INSTALLED="no"
+if [[ "$XRAY_SKIP" == "1" ]]; then
+  log "Xray skipped (WG_SKIP_XRAY=1)"
+elif [[ -n "$XRAY_REALITY_SNI" ]]; then
+  log "Installing Xray (Reality SNI: ${XRAY_REALITY_SNI})..."
+  if WG_XRAY_SERVER_IP="$ENTRY_IP" \
+     WG_XRAY_REALITY_SNI="$XRAY_REALITY_SNI" \
+     WG_XRAY_WS_DOMAIN="$XRAY_WS_DOMAIN" \
+     bash "$SCRIPT_DIR/install-xray.sh"; then
+    XRAY_INSTALLED="yes"
+  else
+    warn "Xray install failed — run manually later:"
+    warn "  sudo WG_XRAY_REALITY_SNI=${XRAY_REALITY_SNI} bash deploy/install-xray.sh"
+  fi
+else
+  log "Xray skipped — set WG_XRAY_REALITY_SNI to install, or run: sudo bash deploy/install-xray.sh"
+fi
+
 cat <<EOF
 
 === ENTRY server ready ===
@@ -381,6 +407,7 @@ Web panels:
   ${PANEL_URL_CLIENT}
   ${PANEL_URL_ADMIN}
 Admin user                : ${ADMIN_USER}
+Xray protocols            : ${XRAY_INSTALLED}
 
 IMPORTANT — on the exit server, run:
   bash deploy/add-entry-peer.sh ${TUNNEL_PUB} ${ENTRY_IP}

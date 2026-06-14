@@ -47,8 +47,11 @@ sudo WG_ENTRY_PUBLIC_IP=YOUR_ENTRY_IP \
   WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP \
   WG_EXIT_TUNNEL_PUB='paste-exit-pubkey' \
   WG_ADMIN_PASS='your-password' \
+  WG_XRAY_REALITY_SNI=www.microsoft.com \
   bash /tmp/install-entry-server.sh
 ```
+
+`WG_XRAY_REALITY_SNI` installs VLESS+Reality, WebSocket, and Shadowsocks 2022 alongside WireGuard. Omit to skip Xray; install later with `sudo bash deploy/install-xray.sh`.
 
 Set `WG_ENTRY_PUBLIC_IP` when auto-detect picks a private address (common on VPS hosts: `172.16.x.x`). Use the **public** IP clients will connect to.
 

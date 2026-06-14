@@ -18,6 +18,20 @@ def _audit(handler, action, detail=""):
     log_admin_action(action, detail, actor=session.admin_actor(), ip=security.client_ip(handler))
 
 
+def _try_add_xray_client(name):
+    """Silently attempt to create an Xray client. No-op if Xray is not installed."""
+    try:
+        from admin_panel.core import xray as xcore
+        if not xcore.is_installed():
+            return
+        xcore.add_client(name)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning(
+            "xray auto-create failed for %s", name, exc_info=True
+        )
+
+
 def handle_bulk(handler, data):
     """Create multiple clients from a newline-separated name list."""
     raw = data.get("names", "")
@@ -50,6 +64,7 @@ def handle_bulk(handler, data):
         if ok and was_new:
             created.append(name)
             _audit(handler, "bulk_add_client", name)
+            _try_add_xray_client(name)
         elif ok and not was_new:
             skipped.append(name)
         else:
@@ -88,6 +103,7 @@ def handle(handler, data):
             _render(handler, tail_message(out))
             return
         _audit(handler, "add_client", client)
+        _try_add_xray_client(client)
         _render(handler, tail_message(out or tf("msg.client_ready", name=client)))
         return
 

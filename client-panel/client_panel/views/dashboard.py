@@ -2,6 +2,7 @@ import html
 
 from client_panel.components.status import client_status_section
 from client_panel.core.i18n import t
+from client_panel.core.xray import get_links_for_client
 
 
 def _text(val):
@@ -64,6 +65,48 @@ def _technical_details(s, show_all):
     return items
 
 
+_XRAY_PROTO_LABELS = {
+    "reality": "dashboard.xray_reality",
+    "ws": "dashboard.xray_ws",
+    "ss": "dashboard.xray_ss",
+}
+
+
+def xray_protocols_section(client_name):
+    """Return an Xray protocols card if the client has an Xray profile, else empty string."""
+    try:
+        links = get_links_for_client(client_name)
+    except Exception:
+        return ""
+    if not links:
+        return ""
+
+    rows = []
+    for key, label_key in _XRAY_PROTO_LABELS.items():
+        if key not in links:
+            continue
+        input_id = html.escape(f"xray-{key}", quote=True)
+        link_val = html.escape(links[key], quote=True)
+        rows.append(
+            f'<div class="xray-link-row">'
+            f'<span class="xray-link-label">{html.escape(t(label_key))}</span>'
+            f'<input class="field-input xray-link-input" type="text" id="{input_id}" '
+            f'value="{link_val}" readonly>'
+            f'<button type="button" class="btn btn-sm" data-copy-target="{input_id}">'
+            f'{html.escape(t("dashboard.xray_copy"))}</button>'
+            f'</div>'
+        )
+
+    return f"""
+<section class="card">
+  <h3>{html.escape(t("dashboard.xray_title"))}</h3>
+  <p class="hint">{html.escape(t("dashboard.xray_hint"))}</p>
+  {"".join(rows)}
+  <p class="hint">{html.escape(t("dashboard.xray_apps_hint"))}</p>
+</section>
+"""
+
+
 def body(user, primary, all_statuses):
     s = primary
     expiry_bar = 0 if s["days_left"] == t("unlimited") else s.get("expiry_percent", 0)
@@ -114,6 +157,8 @@ def body(user, primary, all_statuses):
 </section>
 
 {client_status_section(s)}
+
+{xray_protocols_section(s['client_name'])}
 
 <section class="card">
   <h3>{html.escape(t("dashboard.tools_title"))}</h3>

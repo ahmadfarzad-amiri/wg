@@ -33,6 +33,7 @@ sudo WG_ENTRY_PUBLIC_IP=YOUR_ENTRY_IP \
   WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP \
   WG_EXIT_TUNNEL_PUB='PASTE_EXIT_TUNNEL_PUBKEY' \
   WG_ADMIN_PASS='your-admin-password' \
+  WG_XRAY_REALITY_SNI=www.microsoft.com \
   bash /tmp/install-entry-server.sh
 ```
 
@@ -85,6 +86,7 @@ sudo bash /tmp/add-entry-peer.sh 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
 
 - **Approve users and assign configs** — single or bulk
 - **Bulk client creation** — create up to 50 clients at once from the Clients tab
+- **Xray protocol management** — VLESS+Reality, WebSocket, and Shadowsocks 2022 via the Xray tab; clients auto-created with WireGuard clients
 - **Audit log** — every admin action recorded with username, IP, and timestamp
 - **Server tools** — change entry/exit IP from the panel UI or CLI
 
