@@ -1,16 +1,19 @@
-# Admin guide (admin panel)
+# Admin guide — admin panel
 
-This guide is for **administrators** who manage users, WireGuard clients, and support requests on the entry server.
+This guide is for **administrators** who manage users, WireGuard clients, and support requests.
+
+> **First time deploying?** Start with [Operations guide](OPERATIONS.md). For end-user help, see [User guide](USER_GUIDE.md).
+
+---
 
 ## Access
 
 | Item | Default |
 |------|---------|
-| URL | `http://127.0.0.1:8090/admin/login` (local) or your nginx URL + `/admin` |
-| Credentials | Set at install (`WG_ADMIN_PASS`) or in **Settings** |
-| Language | Persian / English via header switcher |
-
-Log in with the admin username (default `admin` unless changed) and password.
+| URL | `http://ENTRY_IP:8090/admin/login` or your nginx domain + `/admin/login` |
+| Username | `admin` (unless changed) |
+| Password | Set at install via `WG_ADMIN_PASS`, changeable in **Settings** |
+| Language | Persian / English — use the switcher in the header |
 
 ---
 
@@ -18,219 +21,237 @@ Log in with the admin username (default `admin` unless changed) and password.
 
 | Tab | Use for |
 |-----|---------|
-| **Dashboard** | Quick stats, recent requests, system snapshot |
-| **Clients** | WireGuard peers: create, limits, enable/disable |
-| **Users** | Panel accounts: approve, assign configs, passwords |
-| **Requests** | User support tickets |
-| **Active** | Who is connected right now |
-| **Tools** | Change entry/exit IP, run infra scripts |
+| **Dashboard** | Quick stats, recent requests, system health |
+| **Clients** | WireGuard peers — create, bulk add, set limits, enable/disable |
+| **Users** | Panel accounts — approve, assign configs, reset passwords |
+| **Requests** | Support tickets submitted by users |
+| **Active** | Who is currently connected (live WireGuard status) |
+| **Tools** | Change entry/exit server IPs, view audit log |
 | **Settings** | Change admin password |
 
-On mobile, use the bottom bar; filters stick below the header on list pages.
+On mobile, use the bottom navigation bar. Filters appear below the header on list pages.
 
 ---
 
-## Daily workflow: new user registration
+## Daily workflow: approving a new user
 
-### Step 1 — Check pending users
+### Step 1 — Check for pending users
 
 1. Open **Users**.
-2. Filter: **pending** (default on first load).
-3. Find the new username and registration date.
+2. The **pending** filter is active by default — pending accounts appear at the top.
+3. Note the username and registration date.
 
-### Step 2 — Create or pick a WireGuard client
+### Step 2 — Create a WireGuard client
 
-**Option A — New client (most common)**
+**Option A — Create a new client (most common)**
 
 1. Open **Clients**.
-2. Expand **Add client** (bottom of page).
-3. Enter client name (e.g. `alice`), optional limit/expiry, VPN mode (`twohop` or `direct`).
-4. Submit → client appears in the list.
+2. Expand **Add client** at the bottom of the page.
+3. Fill in the fields:
 
-**Option B — Existing unassigned client**
+   | Field | Notes |
+   |-------|-------|
+   | Name | Required. Letters, numbers, hyphens. E.g. `alice` |
+   | Data limit | E.g. `20G` or leave blank for unlimited |
+   | Days | Subscription length; blank = unlimited |
+   | VPN mode | `twohop` (exit IP, default) or `direct` (entry IP, faster) |
 
-Use a client already in **Clients** with no user assigned.
+4. Click **Add client**. The client appears in the list.
+
+**Option B — Use an existing unassigned client**
+
+Skip to Step 3, using the name of an existing client that has no user assigned.
+
+**Option C — Bulk create clients**
+
+To add many clients at once:
+
+1. Open **Clients**.
+2. Expand **Add clients in bulk**.
+3. Enter one client name per line (max 50 names).
+4. Choose VPN mode, days, and limit (apply to all).
+5. Click **Create**. A summary shows how many were created, skipped (already exist), or failed.
 
 ### Step 3 — Approve and link
 
 1. Return to **Users**.
-2. On the pending user row, enter the **client name** in the approve form (if not pre-filled).
+2. Find the pending user and enter the **client name** in the approve form.
 3. Click **Approve**.
 
 What happens automatically:
+- The client config is created if it did not already exist.
+- The config is linked to the user in the database.
+- User status changes to **approved**.
 
-- Client is created if missing (`wg-client`).
-- Config is assigned to the user in `panel.db`.
-- User status → **approved**.
-
-Tell the user they can log in and download config from **Settings**.
-
-### Alternative actions on pending users
-
-| Action | Result |
-|--------|--------|
-| **Reject** | User stays rejected; no VPN access |
-| **Change password** | Set a new password (min 6 chars) without approving |
+Tell the user they can now log in and import their config.
 
 ---
 
-## Managing users (approved)
+## Managing approved users
 
-### Assign another config (multi-device / multi-tunnel)
+### Assign an additional config (multi-device)
 
-1. **Users** → find **approved** user.
-2. In **Assign config**, enter another client name.
-3. Submit.
+1. **Users** → find the approved user.
+2. In the **Assign config** field, enter another client name.
+3. Click **Assign**.
 
-User downloads all assigned configs as ZIP from the client panel.
+The user downloads all assigned configs as a single ZIP from **Settings** or **Dashboard → Tools**.
 
 ### Unassign a config
 
-1. Use **Unassign** next to a assigned config name.
-2. Primary client name on the user row updates automatically.
+1. Click **Unassign** next to the config name in the user row.
+2. The primary client name on the row updates automatically.
 
-If sync fails, an error message is shown (config assignment may still have changed — refresh and verify).
+### Disable or enable a user
 
-### Disable / enable panel login
+| Action | When to use | Effect |
+|--------|-------------|--------|
+| **Disable** | User should lose panel access | Panel login blocked; WireGuard may still pass traffic until the client is also disabled |
+| **Enable** | Restoring a disabled user | Status returns to approved; optionally re-enables the WireGuard client |
 
-| Action | When | Effect |
-|--------|------|--------|
-| **Disable** | User is approved | User cannot use panel; VPN may still work until client disabled |
-| **Enable** | User is disabled | Restores **approved** if configs exist; optionally re-enables WG client |
+### Reset a password
 
-### Re-approve rejected users
+1. Find the user in **Users**.
+2. Click **Change password**, enter a new password (min 6 chars), confirm, and submit.
 
-Use **Approve** with a client name, same as pending flow.
+### Re-approve a rejected user
+
+Use **Approve** with a client name, exactly like the initial approval flow.
 
 ---
 
 ## Managing clients
 
-### Client list columns (simplified)
+### Client list at a glance
 
-Shows name, status, usage/limit, expiry, assigned user(s), and primary actions.
+Each row shows: name, status (enabled/disabled), usage vs limit, expiry, assigned user(s), and action buttons.
 
-### Common actions
+### Actions on a client
 
-| Action | Purpose |
-|--------|---------|
-| **Enable / Disable** | Toggle WireGuard peer without deleting |
-| **Disconnect** | Drop live session (handshake reset) |
-| **Delete** | Remove client (confirm) — detaches from users |
-| **Edit subscription** | Open **details** row: change expiry, data limit, days |
+| Action | What it does |
+|--------|--------------|
+| **Enable / Disable** | Toggles the WireGuard peer without deleting it |
+| **Disconnect** | Drops the live session by resetting the handshake |
+| **Delete** | Removes the client permanently (requires confirmation) |
+| **Edit** | Opens the details row — change expiry, data limit, or days |
 
-### Add client form fields
+### CLI equivalents (SSH on entry server)
 
-| Field | Notes |
-|-------|-------|
-| Name | Required; safe characters only |
-| Limit | e.g. `20G` or empty for unlimited |
-| Days | Subscription length; empty = unlimited time |
-| VPN mode | `twohop` (exit IP) or `direct` (entry IP) |
-
-CLI equivalent: `sudo wg-client add NAME --vpn-mode twohop`
+```bash
+sudo wg-client add alice --vpn-mode twohop
+sudo wg-client set-mode alice direct
+sudo wg-client sync-vpn-modes
+sudo wg show wg-clients
+```
 
 ---
 
 ## Handling support requests
 
 1. Open **Requests**.
-2. Filter **pending** (default).
-3. Read **request type** (renew, enable, etc.) and user.
+2. The **pending** filter is active by default.
+3. Read the request type and the username.
 
 ### Typical responses
 
-| Request | Admin action |
-|---------|--------------|
-| Renew | **Clients** → extend expiry/limit; mark request done in Requests |
-| Enable | **Clients** → enable client; **Users** → enable if disabled |
-| Custom | Follow your policy; reject if invalid |
+| Request type | Admin action |
+|--------------|--------------|
+| Renew | **Clients** → extend expiry or data limit → mark request done |
+| Enable | **Clients** → enable client; **Users** → enable if the user was also disabled |
+| Custom | Follow your policy; reject if the request is invalid |
 
-Approve or reject from the request row actions. User sees updated status under client panel **Support**.
+Click **Approve** or **Reject** in the request row. The user sees the updated status in their **Support** tab.
 
 ---
 
 ## Active connections
 
-**Active** shows clients with a recent WireGuard handshake (~2 minutes).
+**Active** lists clients with a WireGuard handshake in the last ~2 minutes.
 
-- Use to verify someone is online.
-- No RX/TX columns (simplified view); open **Clients** for usage details.
+- Use it to confirm that a specific user is online.
+- For usage data (transfer totals), check the **Clients** tab.
 
-If the list is empty but clients should be connected, check `wg show wg-clients` on the server and the hint message on the page.
+If the list is empty when clients should be connected:
+```bash
+sudo wg show wg-clients
+```
+If that shows no output, the WireGuard interface may be down — check service status.
 
 ---
 
 ## Tools — server infrastructure
 
-Use when migrating to a new entry or exit VPS.
+### Change entry endpoint (client `.conf` files)
 
-### Change entry endpoint (all client `.conf` files)
+Use when the entry VPS IP or port changes.
 
-1. **Tools** → **Change entry**.
-2. Enter new `IP:51820` and optional old IP to replace in files.
-3. Confirm → runs `change-entry-server.sh`.
+1. **Tools → Change entry**.
+2. Enter the new `IP:51820` (and optionally the old IP to replace).
+3. Confirm — this rewrites all client `.conf` files on disk.
 
-Update DNS/firewall so UDP **51820** points to the new entry IP.
+Also update your cloud firewall and any DNS records. Connected users must reconnect.
 
 ### Change exit server
 
-1. **Tools** → **Change exit**.
-2. Enter new exit IP and tunnel public key.
-3. On the **new exit** server, run `add-entry-peer.sh` with this entry's tunnel key.
+1. **Tools → Change exit**.
+2. Enter the new exit server IP and its tunnel public key.
+3. Then on the **new exit** server, run:
+   ```bash
+   sudo bash /tmp/add-entry-peer.sh 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
+   ```
 
-See [Operations](OPERATIONS.md) for full migration checklist.
+See [Operations guide](OPERATIONS.md) for the full migration checklist.
 
-### Maintenance
+### Audit log
 
-Tools may expose backup hints and recent **audit log** entries (admin actions).
+Tools shows the **50 most recent admin actions** with:
+
+- **When** — timestamp of the action
+- **Who** — admin username that performed it
+- **From** — client IP address
+- **Action** and detail
+
+Use the audit log to track approvals, bulk operations, server changes, and other admin activity.
 
 ---
 
 ## Settings
 
 1. Open **Settings**.
-2. Enter current password, new password (min **8** chars for admin), confirmation.
-3. Submit.
+2. Enter your current password, a new password (minimum **8** characters for admin), and confirmation.
+3. Click **Save**.
 
-Admin password is stored in `/etc/wireguard/admin.json` (not in `panel.db`).
+Admin credentials are stored in `/etc/wireguard/admin.json` (not in `panel.db`).
 
 ---
 
-## Filters and search
+## Search and filters
 
-List pages (**Users**, **Clients**, **Requests**) support:
+List pages (**Users**, **Clients**, **Requests**) have:
 
-- **Search** box — filters visible rows client-side
-- **Status filter** — dropdown; page refreshes filter on load
+- **Search box** — filters the visible rows in real time (client-side)
+- **Status filter** — dropdown; reloads the page with the selected filter
 
-On small screens, tables become **cards** with the same actions in expandable sections.
+On small screens, tables become **cards** with the same action buttons in expandable sections.
 
 ---
 
 ## Best practices
 
-1. **Approve only after** creating/choosing a valid client name.
-2. Use **twohop** for privacy; use **direct** for speed-sensitive users (`wg-client set-mode NAME direct`). See [Performance guide](../docs/PERFORMANCE.md).
-3. **Disable** instead of delete when pausing service temporarily.
-4. Keep admin panel behind nginx + HTTPS; do not expose port 8090 publicly without a proxy.
-5. Run `deploy/backup.sh` before bulk changes (Tools or CLI).
+1. Always create or choose a valid client **before** approving a user.
+2. Use **twohop** for users who need privacy; use **direct** for speed-sensitive users.
+3. **Disable** rather than **delete** when suspending service temporarily — deletion cannot be undone.
+4. Keep the admin panel behind nginx + HTTPS. Do not expose port `8090` to the public internet directly.
+5. Run a backup before bulk operations:
+   ```bash
+   sudo bash deploy/backup.sh
+   ```
 
 ---
 
-## CLI equivalents (SSH on entry server)
+## Related guides
 
-| Task | Command |
-|------|---------|
-| Add client | `sudo wg-client add NAME` |
-| Set VPN mode | `sudo wg-client set-mode NAME twohop` |
-| Sync modes | `sudo wg-client sync-vpn-modes` |
-| Show status | `sudo wg show wg-clients` |
-
----
-
-## Related docs
-
-- [User guide](USER_GUIDE.md) — what your customers see
-- [Architecture](ARCHITECTURE.md) — two-hop design
-- [Operations](OPERATIONS.md) — install, backup, troubleshooting
+- [User guide](USER_GUIDE.md) — what your users see in the client panel
+- [Architecture](ARCHITECTURE.md) — two-hop design and data layout
+- [Operations guide](OPERATIONS.md) — install, backup, server migration
+- [Performance guide](PERFORMANCE.md) — VPN mode tuning and MTU

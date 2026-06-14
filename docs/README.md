@@ -1,42 +1,48 @@
 # WireGuard Access Panels — Documentation
 
-This folder is the main guide for **end users**, **administrators**, and **operators** who run the two-hop VPN stack.
+Guides for **end users**, **administrators**, and **operators** running the two-hop VPN stack.
 
 ## Who should read what
 
 | Guide | Audience | What it covers |
 |-------|----------|----------------|
-| [Architecture](ARCHITECTURE.md) | Everyone (optional) | How traffic flows, servers, panels, and data fit together |
-| [User guide](USER_GUIDE.md) | VPN customers | Register, login, connect, download configs, support requests |
-| [Admin guide](ADMIN_GUIDE.md) | Panel administrators | Approve users, manage clients, handle requests, daily operations |
-| [Operations](OPERATIONS.md) | Server operators / DevOps | Install, upgrade, backup, change servers, troubleshooting |
-| [Performance](PERFORMANCE.md) | Operators / admins | Speed tuning, VPN modes, MTU, BBR, server placement |
+| [Architecture](ARCHITECTURE.md) | Everyone (reference) | Traffic path, panels, database schema, security, and performance model |
+| [User guide](USER_GUIDE.md) | VPN users | Register, log in, connect, subscription links, connection test, support requests |
+| [Admin guide](ADMIN_GUIDE.md) | Panel administrators | Approve users, bulk create clients, handle requests, audit log, server tools |
+| [Operations guide](OPERATIONS.md) | Server operators | Install, upgrade, backup, migrate servers, troubleshoot |
+| [Performance guide](PERFORMANCE.md) | Operators / admins | VPN modes, MTU, BBR, application-level caching, DB indexes |
 
 ## Quick links
 
 - **Repository:** [github.com/ahmadfarzad-amiri/wg](https://github.com/ahmadfarzad-amiri/wg)
-- **Install (operators):** [deploy/README-DEPLOY.md](../deploy/README-DEPLOY.md)
+- **Server install:** [deploy/README-DEPLOY.md](../deploy/README-DEPLOY.md)
 - **Client panel code:** [client-panel/README.md](../client-panel/README.md)
 - **Admin panel code:** [admin-panel/README.md](../admin-panel/README.md)
 
-## Default URLs (entry server)
+## Default panel URLs (entry server)
 
-| Panel | Typical URL | Port |
+| Panel | Default URL | Port |
 |-------|-------------|------|
 | Client (users) | `http://ENTRY_IP:8088/login` | 8088 |
 | Admin | `http://ENTRY_IP:8090/admin/login` | 8090 |
 
-With nginx + HTTPS, use your domain instead (configured during install).
+With nginx + HTTPS, use your domain instead — configured automatically if `WG_DOMAIN` is set at install.
 
 ## Languages
 
-Both panels support **Persian (fa)** and **English (en)**. Use the language switcher in the header.
+Both panels support **Persian (fa)** and **English (en)**. Switch with the language selector in the header.
+The UI is fully RTL for Persian and LTR for English, including table alignment, form fields, and navigation.
 
-## Support flow (summary)
+## How a user goes from registration to connected
 
-1. User registers on the **client panel** → status **pending**
-2. Admin approves on **Users** → creates/links a WireGuard client → status **approved**
-3. User downloads config from **Settings** or scans QR on the dashboard
-4. User connects with WireGuard app; internet exits via **two-hop** (default) or **direct** path
+```
+1. User registers on the client panel  →  status: pending
+2. Admin approves in Users tab         →  assigns a WireGuard client config
+3. User logs in, downloads config      →  from Dashboard → Tools (ZIP) or Settings
+          or scans QR code             →  from the Dashboard when account is active
+          or uses subscription link    →  from Dashboard → Tools → Subscription link
+4. User imports config into WireGuard app and connects
+5. Internet exits via exit server      →  twohop (default) or direct (entry IP)
+```
 
 For step-by-step instructions, open the guide for your role above.

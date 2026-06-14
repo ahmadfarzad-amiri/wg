@@ -1,117 +1,143 @@
 # WireGuard Access Panels
 
-Client and admin web panels for a **two-hop VPN**:
+Client and admin web panels for a **two-hop VPN** stack:
 
-**devices → entry VPS → encrypted tunnel → exit VPS → internet**
+```
+devices  →  entry VPS (wg-clients + panels)  →  encrypted tunnel  →  exit VPS  →  internet
+```
 
-**Official repository:** [github.com/ahmadfarzad-amiri/wg](https://github.com/ahmadfarzad-amiri/wg)
+**Repository:** [github.com/ahmadfarzad-amiri/wg](https://github.com/ahmadfarzad-amiri/wg)
+
+---
 
 ## Install order
 
-### 1. Exit VPS (internet egress)
-
-Non-interactive by default (auto-detects public IP):
+### 1. Exit VPS first
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/install-exit-server.sh | sudo bash
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/install-exit-server.sh \
+  -o /tmp/install-exit-server.sh
+
+sudo WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP bash /tmp/install-exit-server.sh
 ```
 
-Or with env vars:
+Save the **tunnel public key** and **exit IP:51821** printed at the end.
+
+### 2. Entry VPS second
 
 ```bash
-WG_EXIT_PUBLIC_IP=203.0.113.50 WG_TUNNEL_PORT=51821 \
-  curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/install-exit-server.sh | sudo bash
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/install-entry-server.sh \
+  -o /tmp/install-entry-server.sh
+
+sudo WG_ENTRY_PUBLIC_IP=YOUR_ENTRY_IP \
+  WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP \
+  WG_EXIT_TUNNEL_PUB='PASTE_EXIT_TUNNEL_PUBKEY' \
+  WG_ADMIN_PASS='your-admin-password' \
+  bash /tmp/install-entry-server.sh
 ```
 
-Save the **tunnel public key** and **exit IP:port** printed at the end.
+Save the **entry tunnel public key** printed at the end.
 
-### 2. Entry VPS (clients + panels)
+> Interactive mode: add `WG_INSTALL_INTERACTIVE=1` before running. Full env var list: [deploy/config.env.example](deploy/config.env.example).
 
-Non-interactive (recommended for automation):
+### 3. Link the tunnel on the exit VPS
+
+Copy the entry tunnel public key from step 2, then on the **exit** server:
 
 ```bash
-WG_EXIT_PUBLIC_IP=203.0.113.50 \
-WG_EXIT_TUNNEL_PUB='paste-exit-tunnel-pubkey' \
-WG_ADMIN_PASS='your-admin-password' \
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/install-entry-server.sh | sudo bash
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/add-entry-peer.sh \
+  -o /tmp/add-entry-peer.sh
+
+sudo bash /tmp/add-entry-peer.sh 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
 ```
 
-Interactive prompts: `WG_INSTALL_INTERACTIVE=1 sudo bash install-entry-server.sh`
+---
 
-See [deploy/config.env.example](deploy/config.env.example) for all env vars.
+## After install
 
-### 3. Exit VPS — link the tunnel
+| Item | Value |
+|------|-------|
+| Client panel URL | `http://ENTRY_IP:8088/login` |
+| Admin panel URL | `http://ENTRY_IP:8090/admin/login` |
+| VPN endpoint for users | `ENTRY_IP:51820` |
+| Internet exit | Exit VPS (two-hop, default) or Entry VPS (direct mode) |
 
-Copy the **entry tunnel public key** from step 2, then on the exit server:
+### Cloud firewall
+
+| Server | Open |
+|--------|------|
+| Entry | UDP **51820** (all users share this port), TCP **80/443** (optional, for HTTPS) |
+| Exit | UDP **51821** — restrict to entry server egress IP when possible |
+
+---
+
+## What users get
+
+- **WireGuard config download** — as `.conf` file or ZIP (multiple configs)
+- **QR code** — scan with WireGuard mobile app directly from the dashboard
+- **Subscription link** — share a URL for automatic config imports in compatible apps
+- **Connection test** — checks WireGuard interface, exit server reachability, and DNS from the Support page
+- **Support requests** — submit renew or enable requests; admin handles them in the admin panel
+
+---
+
+## Admin features
+
+- **Approve users and assign configs** — single or bulk
+- **Bulk client creation** — create up to 50 clients at once from the Clients tab
+- **Audit log** — every admin action recorded with username, IP, and timestamp
+- **Server tools** — change entry/exit IP from the panel UI or CLI
+
+---
+
+## Common operations
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/add-entry-peer.sh | \
-  sudo bash -s -- ENTRY_TUNNEL_PUBLIC_KEY ENTRY_PUBLIC_IP
-```
-
-## What users connect to
-
-| Setting | Value |
-|---------|--------|
-| WireGuard Endpoint | **Entry server IP:51820** (not the exit server) |
-| Web panels | Your domain on the **entry** server |
-| Internet exit | **Exit** VPS (NAT) |
-
-## Cloud firewall
-
-| Server | Ports |
-|--------|--------|
-| Entry | UDP **51820** (clients), TCP **80/443** or panel ports |
-| Exit | UDP **51821** (tunnel — restrict to entry IP when possible) |
-
-## Test
-
-```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/test-connectivity.sh -o /tmp/test.sh
-sudo bash /tmp/test.sh --role exit   # on exit
-sudo bash /tmp/test.sh --role entry  # on entry
-```
-
-## Operations
-
-```bash
+# Backup
 sudo bash deploy/backup.sh
+
+# Restore
 sudo bash deploy/restore.sh /etc/wireguard/backups/TIMESTAMP-label
-sudo bash deploy/update-panels.sh   # entry server only
+
+# Update panels (entry server only)
+sudo bash deploy/update-panels.sh
+
+# Verify connectivity
+sudo bash deploy/test-connectivity.sh --role entry
+sudo bash deploy/test-connectivity.sh --role exit
+
+# Tune performance (entry and exit)
+sudo bash deploy/tune-vpn-performance.sh
 ```
 
 ### Change entry or exit server
 
 ```bash
-# New client endpoint (entry public IP:port) for all .conf files
-sudo bash deploy/change-entry-server.sh --new 198.51.100.10:51820
+# New entry IP — rewrites all client .conf files
+sudo bash deploy/change-entry-server.sh --new NEW_IP:51820
 
-# Point wg-tunnel at a new exit VPS (then run add-entry-peer.sh on the new exit)
-sudo WG_EXIT_PUBLIC_IP=203.0.113.50 WG_EXIT_TUNNEL_PUB='...' sudo bash deploy/change-exit-server.sh
+# New exit VPS (then run add-entry-peer.sh on the new exit)
+sudo WG_EXIT_PUBLIC_IP=NEW_EXIT_IP WG_EXIT_TUNNEL_PUB='...' bash deploy/change-exit-server.sh
 ```
 
-Admin panel: **Tools → Server infrastructure** (same scripts).
+Or use **Admin panel → Tools** for the same operations without SSH.
 
-### Per-client VPN path (on entry server)
+### Per-client VPN mode
 
-| Mode | Egress IP |
-|------|-----------|
-| `twohop` (default) | Exit VPS |
-| `direct` | Entry VPS |
+| Mode | Egress IP | Use when |
+|------|-----------|----------|
+| `twohop` (default) | Exit VPS | User needs privacy, separate egress IP |
+| `direct` | Entry VPS | User needs lower latency |
 
 ```bash
-sudo wg-client add alice --vpn-mode direct
+sudo wg-client set-mode alice direct
 sudo wg-client set-mode bob twohop
 sudo wg-client sync-vpn-modes
 ```
 
-Users can have **multiple configs** assigned in the admin panel; the client panel downloads all assigned configs as a **ZIP** from Settings.
-
-Full guide: **[deploy/README-DEPLOY.md](deploy/README-DEPLOY.md)**
+---
 
 ## Documentation
-
-Step-by-step guides for every role:
 
 | Guide | Audience |
 |-------|----------|
@@ -119,5 +145,6 @@ Step-by-step guides for every role:
 | **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** | VPN users (client panel) |
 | **[docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)** | Administrators (admin panel) |
 | **[docs/OPERATIONS.md](docs/OPERATIONS.md)** | Server install, backup, migration |
-| **[docs/PERFORMANCE.md](docs/PERFORMANCE.md)** | VPN speed tuning (MTU, BBR, direct vs twohop) |
+| **[docs/PERFORMANCE.md](docs/PERFORMANCE.md)** | Speed tuning — VPN mode, MTU, BBR, app caches |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | How the two-hop stack works |
+| **[deploy/README-DEPLOY.md](deploy/README-DEPLOY.md)** | Detailed script reference |

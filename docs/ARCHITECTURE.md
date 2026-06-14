@@ -1,106 +1,203 @@
 # Architecture
 
+How the two-hop WireGuard stack and web panels fit together.
+
+---
+
 ## Traffic path
 
-End-user devices never connect directly to the exit server. All client WireGuard traffic lands on the **entry** VPS; encrypted tunnel traffic carries it to the **exit** VPS for NAT to the internet.
+End-user devices connect only to the **entry** server. Traffic is then forwarded through an encrypted tunnel to the **exit** server, which performs NAT to the internet.
 
 ```
-┌─────────────┐   UDP 51820    ┌────────────────────┐  tunnel 51821  ┌──────────────┐
-│ User device │ ─────────────► │ Entry VPS          │ ─────────────► │ Exit VPS     │ ──► internet
-│ WireGuard   │   Endpoint     │ wg-clients + panels│   wg-tunnel    │ NAT + egress │
-└─────────────┘                └────────────────────┘                └──────────────┘
+┌──────────────┐   UDP 51820   ┌──────────────────────┐  tunnel 51821  ┌──────────────────┐
+│  User device │ ────────────► │  Entry VPS           │ ─────────────► │  Exit VPS        │ ──► internet
+│  WireGuard   │  Endpoint     │  wg-clients + panels │  wg-tunnel     │  NAT + egress    │
+└──────────────┘               └──────────────────────┘                └──────────────────┘
 ```
 
 | Server | Role | WireGuard interfaces | Who connects |
 |--------|------|----------------------|--------------|
 | Entry | Client endpoint + web panels | `wg-clients` (users), `wg-tunnel` (to exit) | All VPN users; admin UI |
-| Exit | Internet egress | `wg-tunnel` (from entry only) | Entry server only — not end users |
+| Exit | Internet egress only | `wg-tunnel` (from entry) | Entry server only — **not** end users directly |
 
-Default client subnet: `10.10.10.0/24` (override with `WG_CLIENT_CIDR` on both servers).
+Default client subnet: `10.10.10.0/24` (override with `WG_CLIENT_CIDR`).
+
+---
 
 ## VPN modes (per client)
 
-| Mode | Egress IP seen on the internet | When to use |
-|------|--------------------------------|-------------|
-| `twohop` (default) | Exit server public IP | Normal privacy path |
-| `direct` | Entry server public IP | Lower latency; entry IP visible |
+| Mode | Path | Egress IP seen by websites | When to use |
+|------|------|----------------------------|-------------|
+| `twohop` (default) | Device → entry → tunnel → exit → internet | Exit server IP | Privacy — hides entry server location |
+| `direct` | Device → entry → internet | Entry server IP | Lower latency, single crypto hop |
 
-Set when creating a client (admin **Clients** page or `wg-client add NAME --vpn-mode direct|twohop`).
+Set when creating a client in the admin panel **Clients** tab, or via CLI:
 
-Performance tuning: [docs/PERFORMANCE.md](PERFORMANCE.md) · `sudo bash deploy/tune-vpn-performance.sh`
+```bash
+sudo wg-client set-mode alice direct
+sudo wg-client sync-vpn-modes   # apply routing changes
+```
+
+---
 
 ## Web panels
 
 Both panels run on the **entry** server and share one SQLite database.
 
-| Panel | Path on server | Entry script | systemd unit |
-|-------|----------------|--------------|--------------|
-| Client | `/opt/wg/client-panel/` | `app.py` | `wg-panel.service` |
-| Admin | `/opt/wg/admin-panel/` | `app.py` | `wg-admin-panel.service` |
+| Panel | Path on server | systemd unit | Default port |
+|-------|----------------|--------------|-------------|
+| Client (users) | `/opt/wg/client-panel/` | `wg-panel.service` | 8088 |
+| Admin | `/opt/wg/admin-panel/` | `wg-admin-panel.service` | 8090 |
 
-`admin-panel/admin_app.py` is a **legacy alias** that calls the same code as `app.py`. Install scripts and systemd use `app.py`.
+> `admin-panel/admin_app.py` is a legacy alias for `app.py`. Install scripts use `app.py`.
 
-### Shared data
+### Shared data files
 
-| Resource | Location | Purpose |
-|----------|----------|---------|
-| User accounts | `/etc/wireguard/panel.db` | Registration, approval, config assignments |
-| Client configs | `/etc/wireguard/clients/*.conf` | WireGuard `.conf` files |
+| File | Location | Purpose |
+|------|----------|---------|
+| User accounts, sessions, configs | `/etc/wireguard/panel.db` | SQLite — registration, approvals, assignments |
+| WireGuard client configs | `/etc/wireguard/clients/*.conf` | `.conf` files delivered to users |
 | Client metadata | `/etc/wireguard/state/*.meta` | Limits, expiry, VPN mode, usage |
-| Admin credentials | `/etc/wireguard/admin.json` | Admin login (PBKDF2 hash) |
-| Endpoint | `/etc/wireguard/wg-endpoint` | `IP:51820` written into client configs |
+| Admin credentials | `/etc/wireguard/admin.json` | PBKDF2-SHA256 password hash |
+| Entry endpoint | `/etc/wireguard/wg-endpoint` | `IP:51820` written into every client config |
+| Audit log | `/etc/wireguard/audit.db` | Per-action log with actor, IP, and timestamp |
 
-Environment variables are loaded from `/etc/wireguard/entry-server.env` (see `deploy/config.env.example`).
+Environment variables: `/etc/wireguard/entry-server.env` — see `deploy/config.env.example`.
+
+---
+
+## Database schema highlights
+
+`panel.db` key tables:
+
+| Table | Notable columns |
+|-------|----------------|
+| `users` | `id`, `username`, `status`, `client_name`, `sub_token` |
+| `sessions` | `token`, `user_id`, `expires_at` ← indexed |
+| `requests` | `id`, `user_id`, `action`, `status` ← indexed |
+
+`audit.db`:
+
+| Table | Columns |
+|-------|---------|
+| `audit_log` | `id`, `actor`, `ip`, `action`, `detail`, `created_at` ← indexed |
+
+The `sub_token` column on `users` is a random 32-character URL-safe token used to generate unauthenticated subscription URLs (`/sub/TOKEN`). Rotating the token invalidates the old URL.
+
+---
 
 ## User lifecycle
 
 ```
-Register (pending) → Admin approve + assign client → approved → download config → connect
-                              ↓
-                    reject / disable / enable (admin)
+Register (pending)
+    │
+    ▼
+Admin approves + assigns a WireGuard client
+    │
+    ▼
+approved ──► user downloads config ──► connects
+    │
+    ▼  (admin can)
+disable / enable / assign more configs / reject
 ```
 
-- One panel user can have **multiple** WireGuard clients assigned.
-- Primary client name is stored on the user row; full list is in `panel.db` assignment tables.
-- Users download all assigned configs as a **ZIP** from Settings.
+- One user can have **multiple** WireGuard clients assigned (multi-device, multi-tunnel).
+- Primary client name is stored on the `users` row; full assignment list is in `panel.db`.
+- Users download all assigned configs as a **ZIP** from Dashboard → Tools or Settings.
 
-## Admin panel sections
+---
 
-| Tab | Purpose |
-|-----|---------|
-| Dashboard | Overview metrics, recent activity |
-| Clients | Create, enable/disable, limits, subscription edits |
-| Users | Approve registrations, assign configs, passwords |
-| Requests | Support tickets from users (renew, enable, etc.) |
-| Active | Currently connected clients (live `wg show`) |
-| Tools | Change entry/exit server, maintenance scripts |
-| Settings | Admin password, language |
+## Client panel — pages
 
-## Client panel sections
+| Page | What it does |
+|------|--------------|
+| **Dashboard** | Account status, setup steps, QR code (when approved), Tools card |
+| **Dashboard → Tools** | Download all configs as ZIP, generate or copy subscription link |
+| **Support** | Submit renew/enable requests; view request history; run connection test |
+| **Settings** | Change password, download configs |
 
-| Tab | Purpose |
-|-----|---------|
-| Dashboard | Account status, setup steps, QR when active |
-| Support | Submit renew/enable requests; view history |
-| Settings | Change password, download configs (ZIP) |
+### Subscription link (`/sub/TOKEN`)
 
-## Security notes
+An unauthenticated endpoint that returns the user's WireGuard config(s) as plain text. Used by WireGuard apps that support subscription URLs for automatic config updates.
 
-- Admin panel binds to `127.0.0.1` by default; expose via nginx reverse proxy, not directly to the internet.
-- Client panel may bind to `0.0.0.0:8088`; prefer HTTPS in production.
-- Passwords use PBKDF2-SHA256 (300k iterations for new hashes; legacy 250k still accepted on login).
-- CSRF tokens protect POST forms in both panels.
+- Token is stored per-user in `panel.db` (`sub_token` column).
+- Token can be rotated from Dashboard → Tools → Subscription link → **Rotate link**.
+- Old token becomes invalid immediately after rotation.
+
+### Connection test (`/connection-test`)
+
+A server-side check triggered from the Support page. Returns JSON with three fields:
+
+| Field | Checks |
+|-------|--------|
+| `wg_interface` | WireGuard interface is up and has peers |
+| `exit_ping` | Exit server is reachable via ICMP through the tunnel |
+| `dns` | Server can resolve external domain names |
+
+---
+
+## Admin panel — pages
+
+| Page | What it does |
+|------|--------------|
+| **Dashboard** | Key metrics, recent requests, system health |
+| **Clients** | Create (single or bulk), enable/disable, set limits, edit subscriptions |
+| **Users** | Approve registrations, assign/unassign configs, disable/enable, reset passwords |
+| **Requests** | Handle renew/enable/reject support tickets |
+| **Active** | Live WireGuard connections (recent handshake ≤ 2 min) |
+| **Tools** | Server infrastructure scripts, recent audit log (50 entries, with actor + IP) |
+| **Settings** | Change admin password |
+
+### Bulk client creation
+
+Admin **Clients → Add clients in bulk**: accepts up to 50 newline-separated names, applies a shared VPN mode / days / limit to all, and returns a per-name summary (created / skipped / failed).
+
+---
+
+## Security model
+
+| Area | Implementation |
+|------|----------------|
+| Passwords | PBKDF2-SHA256, 300 000 iterations, per-user salt (legacy 250 000 accepted on login) |
+| CSRF | Double-submit cookie pattern validated with `hmac.compare_digest` |
+| Sessions | Random token in `sessions` table; purged on expiry (max once per 60 s under load) |
+| X-Forwarded-For | Trusted only from `127.0.0.1` / `::1` / `localhost` |
+| Admin bind | `127.0.0.1` by default; expose via nginx reverse proxy, not directly |
+| Audit trail | Every admin action logged with actor username, source IP, and timestamp |
+
+---
+
+## Application performance
+
+Key optimizations in the Python server (`http.server.ThreadingHTTPServer`):
+
+| Area | Optimization |
+|------|-------------|
+| `wg show` calls | `wg_interface_up()` cached 5 s; per-map data cached 2 s with `threading.Lock` |
+| User status page | `statuses_for_user()` makes **3** `wg show` calls total (not 3 per client) |
+| Session purge | `DELETE FROM sessions` runs at most once per 60 s — not on every request |
+| DB schema check | `ensure_user_configs_schema()` runs once per process, not on every DB read |
+| SQLite | WAL mode + `busy_timeout=3000` on all databases including `audit.db` |
+| DB indexes | `sessions.expires_at`, `requests.user_id`, `requests.status`, `users.status`, `audit.created_at` |
+
+---
 
 ## Code layout (developers)
 
 ```
 wg/
-├── wg_common/             # Shared constants, passwords, client status logic
-├── client-panel/          # User-facing panel + wg-client CLI
-├── admin-panel/           # Administrator panel
-├── deploy/                # Install, backup, routing scripts
-├── tests/                 # Unit tests (wg_common)
-└── docs/                  # Documentation
+├── wg_common/          # Shared constants, password hashing, client status logic
+├── client-panel/       # User-facing panel (Python, no external framework)
+│   ├── app.py
+│   ├── client_panel/
+│   └── static/         # CSS, JS, QR, ZIP handlers
+├── admin-panel/        # Admin panel
+│   ├── app.py
+│   ├── admin_panel/
+│   └── static/
+├── deploy/             # Install, backup, routing, migration scripts
+├── tests/              # Unit tests (wg_common)
+└── docs/               # Documentation (you are here)
 ```
 
-Panels are plain Python (`http.server`) with no external web framework. Shared logic lives in **`wg_common/`** (status constants, password hashing, client status evaluation). Static assets live under each panel's `static/` folder.
+Both panels use `http.server.ThreadingHTTPServer` — one OS thread per connection, no external web framework. All shared logic lives in `wg_common/`.

@@ -1,181 +1,191 @@
-# User guide (client panel)
+# User guide — client panel
 
-This guide is for people who **use the VPN**, not for server administrators.
+This guide is for **VPN users**. It covers registration, connecting, downloading configs, and getting help.
 
-## Before you start
-
-You need:
-
-- A **username** and **password** (you create these when registering), or credentials from your provider
-- The **client panel URL** (often `http://YOUR_SERVER_IP:8088/login` or your provider's domain)
-- The **WireGuard app** on your phone or computer ([wireguard.com/install](https://www.wireguard.com/install/))
-
-Your VPN connects to the **entry server** address shown in the config — not a separate "exit" address.
+> **Not a user?** Server setup → [Operations guide](OPERATIONS.md). Admin tasks → [Admin guide](ADMIN_GUIDE.md).
 
 ---
 
-## Step 1 — Open the client panel
+## What you need before starting
 
-1. Open the panel URL in your browser.
-2. Choose **Persian** or **English** from the language switcher if needed.
-
----
-
-## Step 2 — Register (new users)
-
-1. Click **Register** (or go to `/register`).
-2. Enter a **username** (letters, numbers; no spaces).
-3. Enter a **password** (minimum 6 characters) and confirm it.
-4. Submit the form.
-5. You will see that your account is **pending** until an administrator approves it.
-
-You cannot download a VPN config until approval.
+- The **client panel URL** from your provider (e.g. `https://vpn.example.com/login` or `http://SERVER_IP:8088/login`)
+- The **WireGuard app** installed on your device — [wireguard.com/install](https://www.wireguard.com/install/)
+- A username and password (you create these during registration)
 
 ---
 
-## Step 3 — Log in
+## 1. Register
 
-1. Go to **Login** (`/login`).
+1. Open the panel URL and click **Register**.
+2. Choose a username (letters and numbers only, no spaces).
+3. Enter a password (minimum 6 characters) and confirm it.
+4. Click **Register**.
+
+Your account is now **pending**. An administrator must approve it before you can use the VPN.
+
+---
+
+## 2. Log in
+
+1. Go to the panel URL and click **Login**.
 2. Enter your username and password.
-3. After login you land on the **Dashboard**.
+3. You land on the **Dashboard**.
 
-If login fails, check username/password or contact your administrator.
+> Use the **language switcher** in the header to switch between Persian and English.
 
 ---
 
-## Step 4 — Wait for approval
+## 3. Wait for approval
 
-On the dashboard, status shows **pending** until an admin approves your account and assigns a VPN config.
+Your dashboard shows a **pending** badge until an admin approves your account.
 
 While pending:
+- You cannot download VPN configs.
+- The Support page shows a "waiting" message rather than action buttons.
 
-- You **cannot** download WireGuard configs.
-- **Support** shows a waiting message instead of action buttons.
-
-When approved, the dashboard updates to **approved** / active setup steps.
-
----
-
-## Step 5 — Install WireGuard and import your config
-
-After approval:
-
-### Option A — Download from Settings (recommended)
-
-1. Open **Settings** in the sidebar or bottom navigation.
-2. Click **Download configs** (or similar) to get a **ZIP** with all configs assigned to you.
-3. Unzip on your device.
-4. In the WireGuard app: **Import tunnel from file** and select the `.conf` file.
-
-### Option B — QR code (mobile)
-
-1. On the **Dashboard**, when your account is active, use the **QR code** section.
-2. In WireGuard on your phone: **Create from QR code** and scan.
-
-### Option C — Copy config page
-
-If your provider linked a setup page, follow the numbered steps shown there.
+When approved, the dashboard updates automatically — setup steps appear.
 
 ---
 
-## Step 6 — Connect
+## 4. Install WireGuard and import your config
 
-1. In WireGuard, turn the tunnel **On**.
-2. Wait a few seconds for the handshake.
-3. Test internet access (open a website or run `curl -4 https://api.ipify.org` on the device).
+After approval you have three options:
 
-**Expected behavior:** With default **two-hop** mode, websites see the **exit server** IP, not your home IP. **Direct** mode uses the entry server IP instead (your admin chooses this per client).
+### Option A — Download ZIP (recommended for desktop)
+
+1. Go to **Dashboard → Tools** and click **Download all configs**,  
+   or go to **Settings** and click **Download configs**.
+2. Unzip the downloaded file on your device.
+3. In WireGuard: **Import tunnel from file** → select the `.conf` file.
+
+### Option B — QR code (recommended for mobile)
+
+1. On the **Dashboard**, find the QR code section (visible when your account is active).
+2. In the WireGuard app on your phone: tap **Create from QR code** and scan.
+
+### Option C — Subscription link (automatic updates)
+
+Some WireGuard apps (e.g. WireGuard for Android, iOS) support a subscription URL that updates your config automatically.
+
+1. Go to **Dashboard → Tools** and click **Subscription link**.
+2. Copy the URL shown on the page.
+3. In your WireGuard app, paste the URL when adding a new tunnel via subscription or import URL.
+
+To get a new subscription URL (invalidates the old one):
+
+1. Go to **Dashboard → Tools → Subscription link**.
+2. Click **Rotate link** and copy the new URL.
+
+> Keep the subscription URL private — anyone with it can download your VPN config.
 
 ---
 
-## Dashboard overview
+## 5. Connect
 
-| Element | Meaning |
-|---------|---------|
-| Status badge | `pending`, `approved`, `disabled`, etc. |
-| Account info | Username, registration date |
-| Setup steps | Install app → import config → connect (when approved) |
+1. In the WireGuard app, toggle the tunnel **on**.
+2. Wait a few seconds for the handshake to complete.
+3. Test your connection:
+   ```bash
+   curl -4 https://api.ipify.org
+   ```
+   - **Two-hop** mode (default): the IP shown is the **exit server** IP.
+   - **Direct** mode: the IP shown is the **entry server** IP.
 
-Technical details (internal IPs, keys) are hidden when your connection is active to keep the page simple.
+Your admin chooses the mode per account; it is set in the config file and cannot be changed from the panel.
 
 ---
 
-## Support — requests and history
+## 6. Run a connection test
+
+If something feels wrong, use the built-in test from the panel.
+
+1. Open **Support** in the navigation.
+2. Scroll to **Connection test** and click **Test connection**.
+
+The panel checks three things server-side and shows results:
+
+| Check | What it means |
+|-------|---------------|
+| WireGuard interface | The VPN server interface is running |
+| Exit server ping | The tunnel to the exit server is reachable |
+| DNS | The server can resolve domain names |
+
+If any check fails, contact your admin with the results.
+
+---
+
+## 7. Support requests
 
 Open **Support** from the navigation.
 
-### Submit a request (approved users only)
+### Submit a request
 
-When your account is **approved** and you have an assigned config, you may see buttons such as:
+Available when your account is **approved** and has a config assigned.
 
-| Request type | Typical use |
+| Request type | When to use |
 |--------------|-------------|
-| Renew | Ask to extend subscription / data limit |
-| Enable | Ask to re-enable after disable |
-| Other | Provider-specific options |
+| **Renew** | Your subscription or data limit has expired |
+| **Enable** | Your account was disabled and you want it re-enabled |
 
-1. Choose the request type.
-2. Submit the form.
-3. Status starts as **pending** until an admin handles it in the admin panel **Requests** tab.
+1. Click the request button.
+2. Status starts as **pending** until an admin handles it.
 
-### Request history
+### View request history
 
-The table (or cards on mobile) lists your past requests with **ID**, **type**, **status**, and **date**.
-
-Statuses:
+The table (or cards on mobile) lists your past requests with ID, type, status, and date.
 
 | Status | Meaning |
 |--------|---------|
-| pending | Waiting for admin |
+| pending | Waiting for admin review |
 | approved / done | Admin completed the action |
 | rejected | Admin declined |
 
 ---
 
-## Settings
+## 8. Settings
 
-### Change password
+### Change your password
 
 1. Open **Settings**.
-2. Enter **current password**, **new password** (min 6 chars), and confirmation.
-3. Submit.
+2. Enter your **current password**, a **new password** (min 6 chars), and confirm it.
+3. Click **Save**.
 
 ### Download configs again
 
-Use the download button anytime while **approved** and configs are assigned. Useful after reinstalling WireGuard or adding a second device.
+Click **Download configs** in Settings anytime while approved. Use this when reinstalling WireGuard or setting up a second device.
 
 ---
 
-## Log out
+## 9. Log out
 
-Use **Log out** in the header menu. Your WireGuard tunnel stays active until you turn it off in the WireGuard app.
+Click **Log out** in the header. Your WireGuard tunnel stays active until you turn it off in the WireGuard app.
 
 ---
 
 ## Troubleshooting
 
-| Problem | What to try |
-|---------|-------------|
-| "Pending" forever | Contact admin — account not approved yet |
-| Cannot download config | Must be **approved**; admin must assign a client |
-| Connected but no internet | Contact admin — server routing issue |
-| Wrong password | Use **Settings → change password** if you remember the old one; otherwise ask admin |
-| Config expired / disabled | Submit a **Renew** or **Enable** request under **Support** |
+| Problem | What to do |
+|---------|------------|
+| Stuck on "pending" for a long time | Contact your admin — the account has not been approved yet |
+| Cannot download config | You must be **approved** and have a config assigned |
+| Connected but no internet | Open **Support → Connection test**; share results with your admin |
+| Forgot password | Ask your admin to reset it |
+| Config expired or disabled | Submit a **Renew** or **Enable** request under **Support** |
+| Subscription link stopped working | Go to Dashboard → Tools → Subscription link and get a new URL |
 
-Do **not** share your `.conf` file or QR code — anyone with it can use your VPN slot.
+> **Security:** Do not share your `.conf` file, QR code, or subscription URL — anyone with them can use your VPN slot.
 
 ---
 
 ## Mobile tips
 
-- Use the bottom navigation on small screens (Dashboard, Support, Settings).
-- Tables switch to **cards** automatically on narrow viewports.
-- Tap targets are sized for touch (44px minimum).
+- Use the **bottom navigation bar** on small screens (Dashboard, Support, Settings).
+- Tables switch to **cards** automatically on narrow screens — same information, card layout.
+- Tap targets are sized for touch (44 px minimum).
 
 ---
 
-## Related docs
+## Related guides
 
-- [Architecture](ARCHITECTURE.md) — how the VPN path works
+- [Architecture](ARCHITECTURE.md) — how the two-hop VPN path works
 - [Admin guide](ADMIN_GUIDE.md) — for whoever manages your account
-- [Operations](OPERATIONS.md) — for server owners
