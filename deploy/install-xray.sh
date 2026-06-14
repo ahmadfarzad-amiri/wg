@@ -358,7 +358,15 @@ main() {
   log "alongside your existing WireGuard setup."
   echo ""
 
-  SERVER_IP="${WG_XRAY_SERVER_IP:-$(detect_public_ip)}"
+  # Prefer the authoritative entry-server IP recorded during WireGuard install.
+  # /etc/wireguard/wg-endpoint contains "IP:PORT" — extract just the IP.
+  _wg_entry_ip() {
+    local ep
+    ep="$(cat /etc/wireguard/wg-endpoint 2>/dev/null || true)"
+    echo "${ep%%:*}"
+  }
+  SERVER_IP="${WG_XRAY_SERVER_IP:-$(_wg_entry_ip)}"
+  SERVER_IP="${SERVER_IP:-$(detect_public_ip)}"
   REALITY_SNI="${WG_XRAY_REALITY_SNI:-}"
   WS_DOMAIN="${WG_XRAY_WS_DOMAIN:-}"
   ENABLE_WS_TLS="${WG_XRAY_ENABLE_WS:-yes}"
