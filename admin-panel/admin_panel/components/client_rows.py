@@ -153,20 +153,27 @@ def _client_action_menu(c, assigned_users=None):
 
 
 def _client_toolbar(c, assigned_users=None):
+    name = c["name"]
     if c["has_config"]:
         download = (
-            f'<a class="btn btn-sm client-download" href="{admin_url("/config/" + c["name"])}">'
+            f'<a class="btn btn-sm client-download" href="{admin_url("/config/" + name)}">'
             f"{html.escape(t('client.download'))}</a>"
+        )
+        qr_btn = (
+            f'<a class="btn btn-sm dark client-qr" href="{admin_url("/config-qr/" + name)}" '
+            f'target="_blank" rel="noopener" title="QR">QR</a>'
         )
     else:
         download = (
             f'<span class="btn btn-sm client-download is-disabled" title="{html.escape(t("client.download_missing"), quote=True)}">'
             f"{html.escape(t('client.download'))}</span>"
         )
+        qr_btn = ""
 
     return f"""
 <div class="client-toolbar">
   {download}
+  {qr_btn}
   {_client_action_menu(c, assigned_users)}
 </div>
 """

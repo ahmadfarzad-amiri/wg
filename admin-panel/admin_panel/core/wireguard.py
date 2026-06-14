@@ -2,12 +2,23 @@
 import os
 import shlex
 import shutil
+import threading
 import time
 
 from admin_panel.config import CLIENT_DIR, STATE_DIR, WG_IF
 from admin_panel.core.i18n import human_duration, t, tf
 from admin_panel.core.shell import run
 from wg_common.client_status import evaluate_client_meta
+
+# ---------------------------------------------------------------------------
+# In-process cache for `wg show` output
+# Each wg show subcommand (transfer, endpoints, latest-handshakes) is a kernel
+# call that takes 20-200 ms depending on peer count.  Caching for 2 seconds
+# eliminates the cost for concurrent page loads without staling status data.
+# ---------------------------------------------------------------------------
+_WG_CACHE_TTL = 2  # seconds
+_wg_cache: dict = {}
+_wg_cache_lock = threading.Lock()
 
 
 def parse_meta_file(path):
@@ -56,15 +67,27 @@ def _wg_cmd(*args):
     return ["wg", *args]
 
 
-def wg_map(command):
-    if not wg_interface_up():
-        return {}
+def _wg_map_uncached(command):
     out = run(_wg_cmd("show", WG_IF, command))
     result = {}
     for line in out.splitlines():
         parts = line.split()
         if parts:
             result[parts[0]] = parts[1:]
+    return result
+
+
+def wg_map(command):
+    if not wg_interface_up():
+        return {}
+    now = time.monotonic()
+    with _wg_cache_lock:
+        entry = _wg_cache.get(command)
+        if entry and now - entry[0] < _WG_CACHE_TTL:
+            return entry[1]
+    result = _wg_map_uncached(command)
+    with _wg_cache_lock:
+        _wg_cache[command] = (time.monotonic(), result)
     return result
 
 

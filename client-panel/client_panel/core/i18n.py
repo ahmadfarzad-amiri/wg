@@ -2,12 +2,18 @@
 import html
 import json
 import os
+import threading
 import urllib.parse
 from http.cookies import SimpleCookie
 
-_LANG = "fa"
+_local = threading.local()   # per-thread language state — safe in ThreadingHTTPServer
 _DEFAULT = "fa"
 _SUPPORTED = frozenset({"fa", "en"})
+
+
+def _lang():
+    """Return the language for the current request thread."""
+    return getattr(_local, "lang", _DEFAULT)
 
 _STRINGS = {
     "fa": {
@@ -202,6 +208,17 @@ _STRINGS = {
         "js.qr_error": "خطا در ساخت QR",
         "js.qr_error_full": "خطا در ساخت QR کد",
         "js.toast_dismiss": "بستن",
+        "setup.title": "راهنمای نصب",
+        "setup.ios_apps": "اپ‌های iOS: Hiddify، Streisand، Shadowrocket، WireGuard (App Store)",
+        "setup.ios_steps": "اپ WireGuard را از App Store نصب کنید|در پنل، «دانلود کانفیگ» را بزنید|فایل را در WireGuard باز کنید|اتصال را روشن کنید",
+        "setup.android_apps": "اپ‌های Android: Hiddify، v2rayNG، WireGuard (Google Play)",
+        "setup.android_steps": "اپ WireGuard را از Google Play نصب کنید|کانفیگ را دانلود کنید|در WireGuard → Add → از فایل وارد کنید|اتصال را فعال کنید",
+        "setup.windows_apps": "ویندوز: Hiddify، WireGuard (wireguard.com)، v2rayN",
+        "setup.windows_steps": "WireGuard را از wireguard.com دانلود و نصب کنید|کانفیگ را از پنل دانلود کنید|در WireGuard → Import tunnel(s) from file|اتصال را فعال کنید",
+        "setup.macos_apps": "مک: Hiddify، WireGuard (App Store)، V2Box",
+        "setup.macos_steps": "WireGuard را از App Store نصب کنید|کانفیگ را دانلود کنید|فایل را روی اپ WireGuard بکشید|اتصال را روشن کنید",
+        "setup.linux_apps": "لینوکس: WireGuard (بسته‌های سیستم)، Hiddify، v2rayA",
+        "setup.linux_steps": "sudo apt install wireguard|کانفیگ را در /etc/wireguard/wg0.conf ذخیره کنید|sudo wg-quick up wg0|برای اتصال دائم: sudo systemctl enable wg-quick@wg0",
     },
     "en": {
         "skip_link": "Skip to content",
@@ -395,32 +412,42 @@ _STRINGS = {
         "js.qr_error": "Failed to generate QR",
         "js.qr_error_full": "Failed to generate QR code",
         "js.toast_dismiss": "Dismiss",
+        "setup.title": "Setup guide",
+        "setup.ios_apps": "iOS apps: Hiddify, Streisand, Shadowrocket, WireGuard (App Store)",
+        "setup.ios_steps": "Install WireGuard from the App Store|Tap Download config in the panel|Open the file with WireGuard|Toggle the connection on",
+        "setup.android_apps": "Android apps: Hiddify, v2rayNG, WireGuard (Google Play)",
+        "setup.android_steps": "Install WireGuard from Google Play|Download the config from the panel|In WireGuard → Add → Import from file|Enable the connection",
+        "setup.windows_apps": "Windows: Hiddify, WireGuard (wireguard.com), v2rayN",
+        "setup.windows_steps": "Download and install WireGuard from wireguard.com|Download the config file from the panel|In WireGuard → Import tunnel(s) from file|Toggle the connection on",
+        "setup.macos_apps": "macOS: Hiddify, WireGuard (App Store), V2Box",
+        "setup.macos_steps": "Install WireGuard from the App Store|Download the config file|Drag the file onto the WireGuard app|Toggle the connection on",
+        "setup.linux_apps": "Linux: WireGuard (system packages), Hiddify, v2rayA",
+        "setup.linux_steps": "sudo apt install wireguard|Save the config to /etc/wireguard/wg0.conf|sudo wg-quick up wg0|For auto-start: sudo systemctl enable wg-quick@wg0",
     },
 }
 
 
 def begin_request(handler):
-    global _LANG
     cookie = SimpleCookie(handler.headers.get("Cookie", ""))
     token = cookie.get("wg_lang")
     lang = token.value if token and token.value in _SUPPORTED else _DEFAULT
-    _LANG = lang
+    _local.lang = lang
 
 
 def current_lang():
-    return _LANG
+    return _lang()
 
 
 def html_lang():
-    return _LANG
+    return _lang()
 
 
 def html_dir():
-    return "rtl" if _LANG == "fa" else "ltr"
+    return "rtl" if _lang() == "fa" else "ltr"
 
 
 def t(key, default=None):
-    table = _STRINGS.get(_LANG, _STRINGS[_DEFAULT])
+    table = _STRINGS.get(_lang(), _STRINGS[_DEFAULT])
     if key in table:
         return table[key]
     fallback = _STRINGS[_DEFAULT]
@@ -448,7 +475,7 @@ def js_i18n_script():
         "qrErrorFull": t("js.qr_error_full"),
         "qrLoading": t("modal.qr_loading"),
         "toastDismiss": t("js.toast_dismiss"),
-        "locale": _LANG,
+        "locale": _lang(),
     }
     return f"<script>window.__I18N={json.dumps(data, ensure_ascii=False)};</script>"
 
@@ -465,7 +492,7 @@ def lang_set_href(lang, next_path="/"):
 
 
 def lang_toggle_href(next_path="/"):
-    other = "en" if _LANG == "fa" else "fa"
+    other = "en" if _lang() == "fa" else "fa"
     return lang_set_href(other, next_path)
 
 
@@ -473,7 +500,7 @@ def lang_toggle_html(next_path="/"):
     label = html.escape(t("lang_toggle_label"))
     parts = []
     for code, text in (("fa", "FA"), ("en", "EN")):
-        if _LANG == code:
+        if _lang() == code:
             parts.append(
                 f'<span class="lang-toggle-option active" aria-current="true">{text}</span>'
             )

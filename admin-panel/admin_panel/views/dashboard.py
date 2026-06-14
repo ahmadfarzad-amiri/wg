@@ -1,4 +1,7 @@
 import html
+import os
+import shutil
+import subprocess
 import time
 
 from admin_panel.config import admin_url
@@ -6,6 +9,48 @@ from admin_panel.core.i18n import t, tf
 from admin_panel.core.labels import badge_request_status, badge_user_status, label_action_short, label_request_status_short
 from admin_panel.core.statuses import UserStatus
 from admin_panel.core.wireguard import human_bytes
+
+
+def _wg_health_row():
+    """Return a compact server health status row for the dashboard."""
+    from admin_panel.config import WG_IF, DB_PATH
+
+    rows = []
+
+    # WireGuard interface
+    if shutil.which("wg"):
+        try:
+            out = subprocess.check_output(
+                ["wg", "show", WG_IF, "peers"],
+                text=True, stderr=subprocess.DEVNULL, timeout=5,
+            ).strip()
+            peer_count = len(out.splitlines()) if out else 0
+            rows.append(("ok",  f"wg-clients: up ({peer_count} peers)"))
+        except Exception:
+            rows.append(("bad", "wg-clients: down or unreachable"))
+    else:
+        rows.append(("warn", "WireGuard tools not installed"))
+
+    # Database
+    rows.append(("ok" if os.path.isfile(DB_PATH) else "bad",
+                 f"panel.db: {'present' if os.path.isfile(DB_PATH) else 'MISSING'}"))
+
+    # Xray (optional)
+    if shutil.which("xray") or os.path.exists("/usr/local/bin/xray"):
+        try:
+            subprocess.check_output(
+                ["systemctl", "is-active", "xray"],
+                text=True, stderr=subprocess.DEVNULL, timeout=3,
+            )
+            rows.append(("ok", "Xray: active"))
+        except Exception:
+            rows.append(("warn", "Xray: installed but not running"))
+
+    items = "".join(
+        f'<div class="item"><span class="badge {cls}">{html.escape(label)}</span></div>'
+        for cls, label in rows
+    )
+    return f'<div class="statrow health-statrow">{items}</div>'
 
 
 def _kpi(label, value, *, hint=""):
@@ -132,6 +177,7 @@ def body(metrics):
     <a class="btn dark" href="{admin_url('/requests')}">{html.escape(t("dashboard.review_requests"))}</a>
     <a class="btn dark" href="{admin_url('/tools')}">{html.escape(t("dashboard.tools"))}</a>
   </div>
+  {_wg_health_row()}
 </section>
 
 <div class="grid kpi-grid">

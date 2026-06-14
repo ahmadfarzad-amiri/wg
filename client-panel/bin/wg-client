@@ -22,7 +22,19 @@ read_default_endpoint() {
 DEFAULT_ENDPOINT="$(read_default_endpoint)"
 VPN_PREFIX="10.10.10"
 VPN_CIDR="10.10.10.0/24"
-DNS_SERVERS="1.1.1.1, 8.8.8.8"
+
+# DNS used in generated client configs. Override with WG_DNS in entry-server.env.
+# 1.1.1.1 and 8.8.8.8 are often blocked in Iran — operators should set WG_DNS
+# to the exit server IP (running a local resolver) or another reachable server.
+resolve_dns_servers() {
+  load_entry_env
+  if [[ -n "${WG_DNS:-}" ]]; then
+    echo "$WG_DNS"
+  else
+    echo "8.8.8.8, 8.8.4.4"
+  fi
+}
+DNS_SERVERS="$(resolve_dns_servers)"
 
 load_entry_env() {
   if [[ -f /etc/wireguard/entry-server.env ]]; then

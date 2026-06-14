@@ -12,11 +12,22 @@ from admin_panel.config import SESSION_FILE
 from admin_panel.core.i18n import tf
 
 
+_TRUSTED_PROXIES = frozenset({"127.0.0.1", "::1", "localhost"})
+
+
 def client_ip(handler):
-    forwarded = handler.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return handler.client_address[0]
+    """Return the real client IP.
+
+    Only trust X-Forwarded-For when the TCP connection comes from a known
+    local proxy (nginx on the same host). Forged XFF headers from untrusted
+    connections would otherwise let attackers bypass rate limiting.
+    """
+    peer = handler.client_address[0]
+    if peer in _TRUSTED_PROXIES:
+        forwarded = handler.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return peer
 
 
 def is_secure(handler):
@@ -40,8 +51,15 @@ def apply_security_headers(handler):
     )
 
 
+def _open_db(path):
+    con = sqlite3.connect(path)
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("PRAGMA busy_timeout=3000")
+    return con
+
+
 def _rate_db():
-    con = sqlite3.connect(SESSION_FILE)
+    con = _open_db(SESSION_FILE)
     con.execute(
         """
         CREATE TABLE IF NOT EXISTS login_attempts (
@@ -55,7 +73,7 @@ def _rate_db():
 
 
 def purge_expired_sessions():
-    con = sqlite3.connect(SESSION_FILE)
+    con = _open_db(SESSION_FILE)
     con.execute("DELETE FROM sessions WHERE expires_at <= ?", (int(time.time()),))
     con.commit()
     con.close()

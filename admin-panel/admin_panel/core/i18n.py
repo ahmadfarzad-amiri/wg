@@ -2,14 +2,20 @@
 import html
 import json
 import os
+import threading
 import urllib.parse
 from http.cookies import SimpleCookie
 
 from admin_panel.config import admin_url
 
-_LANG = "fa"
+_local = threading.local()   # per-thread language state — safe in ThreadingHTTPServer
 _DEFAULT = "fa"
 _SUPPORTED = frozenset({"fa", "en"})
+
+
+def _lang():
+    """Return the language for the current request thread."""
+    return getattr(_local, "lang", _DEFAULT)
 
 _STRINGS = {
     "fa": {
@@ -717,27 +723,26 @@ _STRINGS = {
 
 
 def begin_request(handler):
-    global _LANG
     cookie = SimpleCookie(handler.headers.get("Cookie", ""))
     token = cookie.get("wg_lang")
     lang = token.value if token and token.value in _SUPPORTED else _DEFAULT
-    _LANG = lang
+    _local.lang = lang
 
 
 def current_lang():
-    return _LANG
+    return _lang()
 
 
 def html_lang():
-    return _LANG
+    return _lang()
 
 
 def html_dir():
-    return "rtl" if _LANG == "fa" else "ltr"
+    return "rtl" if _lang() == "fa" else "ltr"
 
 
 def t(key, default=None):
-    table = _STRINGS.get(_LANG, _STRINGS[_DEFAULT])
+    table = _STRINGS.get(_lang(), _STRINGS[_DEFAULT])
     if key in table:
         return table[key]
     fallback = _STRINGS[_DEFAULT]
@@ -774,7 +779,7 @@ def lang_set_href(lang, next_path="/"):
 
 
 def lang_toggle_href(next_path="/"):
-    other = "en" if _LANG == "fa" else "fa"
+    other = "en" if _lang() == "fa" else "fa"
     return lang_set_href(other, next_path)
 
 
@@ -782,7 +787,7 @@ def lang_toggle_html(next_path="/"):
     label = html.escape(t("lang_toggle_label"))
     parts = []
     for code, text in (("fa", "FA"), ("en", "EN")):
-        if _LANG == code:
+        if _lang() == code:
             parts.append(
                 f'<span class="lang-toggle-option active" aria-current="true">{text}</span>'
             )
@@ -801,7 +806,7 @@ def js_i18n_script():
         "confirmDefault": t("js.confirm_default"),
         "pleaseWait": t("js.please_wait"),
         "listMeta": t("js.list_meta"),
-        "locale": _LANG,
+        "locale": _lang(),
         "toastDismiss": t("js.toast_dismiss"),
     }
     return f"<script>window.__I18N={json.dumps(data, ensure_ascii=False)};</script>"

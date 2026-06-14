@@ -133,6 +133,8 @@ class Handler(BaseHTTPRequestHandler):
             )
         elif path.startswith("/config/"):
             self._download_config(path.split("/config/", 1)[1])
+        elif path.startswith("/config-qr/"):
+            self._serve_config_qr(path.split("/config-qr/", 1)[1])
         else:
             self.send_html(page(t("page.not_found"), f"<h1>{html.escape(t('page.not_found'))}</h1>"), 404)
 
@@ -267,3 +269,57 @@ class Handler(BaseHTTPRequestHandler):
         with open(path, "rb") as f:
             raw = f.read()
         responses.send_config_file(self, client_name, raw)
+
+    def _serve_config_qr(self, client_name):
+        """Serve a QR code PNG for a client config — for admin QR button."""
+        import shutil
+        import subprocess
+        import tempfile
+
+        client_name = safe_name(client_name)
+        conf_path = os.path.join(CLIENT_DIR, f"{client_name}.conf")
+
+        if not os.path.exists(conf_path):
+            self.send_html(
+                page(
+                    t("page.config_not_found"),
+                    f"<h1>{html.escape(t('page.config_file_not_found'))}</h1>",
+                ),
+                404,
+            )
+            return
+
+        if not shutil.which("qrencode"):
+            self.send_html(
+                page("QR", "<h1>qrencode not installed on server.</h1><p>Install: <code>apt install qrencode</code></p>"),
+                503,
+            )
+            return
+
+        try:
+            with open(conf_path, "rb") as f:
+                conf_data = f.read()
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                tmp_path = tmp.name
+
+            subprocess.check_call(
+                ["qrencode", "-o", tmp_path, "-t", "PNG", "-s", "6", "--level=M"],
+                input=conf_data,
+                timeout=10,
+            )
+            with open(tmp_path, "rb") as f:
+                png_data = f.read()
+            os.unlink(tmp_path)
+
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(png_data)))
+            self.send_header("Cache-Control", "no-store")
+            security.apply_security_headers(self)
+            self.end_headers()
+            self.wfile.write(png_data)
+        except Exception as exc:
+            self.send_html(
+                page("QR Error", f"<h1>Failed to generate QR</h1><p>{html.escape(str(exc))}</p>"),
+                500,
+            )

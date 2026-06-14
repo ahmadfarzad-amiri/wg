@@ -1,0 +1,159 @@
+# Hardened nginx config for WG panels.
+# Placeholders replaced at install time:
+#   __PANEL_DOMAIN__  __CLIENT_PORT__  __ADMIN_PORT__
+#
+# Improvements over the basic template:
+#   - Rate limiting on login and registration endpoints
+#   - HSTS preload (1 year, after you confirm HTTPS works)
+#   - Referrer-Policy and Permissions-Policy headers
+#   - Hide nginx version
+#   - Gzip for panel responses
+#   - Larger timeouts for slow Iran uplinks
+#   - /health endpoint cached separately (no rate limit)
+#
+# Add to /etc/nginx/nginx.conf http{} block:
+#   limit_req_zone $binary_remote_addr zone=wg_login:10m rate=5r/m;
+#   limit_req_zone $binary_remote_addr zone=wg_api:10m   rate=60r/m;
+#   server_tokens off;
+
+# — HTTP → HTTPS redirect —
+server {
+    listen 80;
+    server_name __PANEL_DOMAIN__;
+    return 301 https://$host$request_uri;
+}
+
+# — HTTPS main server —
+server {
+    listen 443 ssl http2;
+    server_name __PANEL_DOMAIN__;
+
+    # TLS — populated by certbot or set manually
+    ssl_certificate     /etc/letsencrypt/live/__PANEL_DOMAIN__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__PANEL_DOMAIN__/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256;
+    ssl_prefer_server_ciphers off;
+    ssl_session_timeout 1d;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_tickets off;
+    ssl_stapling        on;
+    ssl_stapling_verify on;
+
+    client_max_body_size 5M;
+    keepalive_timeout    65;
+    send_timeout         60;
+    proxy_read_timeout   120;
+
+    # Security headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    add_header X-Frame-Options            "DENY" always;
+    add_header X-Content-Type-Options     "nosniff" always;
+    add_header Referrer-Policy            "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy         "camera=(), microphone=(), geolocation=()" always;
+    # CSP is set by the application layer; leave the override here only if needed:
+    # add_header Content-Security-Policy "default-src 'self'; ..." always;
+
+    # Gzip
+    gzip on;
+    gzip_types text/html text/css application/javascript application/json;
+    gzip_min_length 1024;
+
+    # Health endpoint — no rate limit, no auth
+    location = /health {
+        proxy_pass         http://127.0.0.1:__CLIENT_PORT__;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_buffering    off;
+        proxy_cache_valid  200 10s;
+    }
+
+    # Login / register — strict rate limit (5 req/min per IP)
+    location ~* ^/(login|register|set-lang)$ {
+        limit_req zone=wg_login burst=3 nodelay;
+        limit_req_status 429;
+
+        proxy_pass         http://127.0.0.1:__CLIENT_PORT__;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_buffering    off;
+    }
+
+    # Admin login — strict rate limit
+    location ~* ^/admin/(login|set-lang)$ {
+        limit_req zone=wg_login burst=3 nodelay;
+        limit_req_status 429;
+
+        proxy_pass         http://127.0.0.1:__ADMIN_PORT__/;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_redirect     off;
+        proxy_buffering    off;
+    }
+
+    # Admin panel — general rate limit
+    location = /admin {
+        return 301 /admin/;
+    }
+    location ^~ /admin/ {
+        limit_req zone=wg_api burst=20 nodelay;
+        limit_req_status 429;
+
+        proxy_pass         http://127.0.0.1:__ADMIN_PORT__/;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_redirect     off;
+        proxy_buffering    off;
+    }
+
+    # Client panel — general rate limit
+    location / {
+        limit_req zone=wg_api burst=30 nodelay;
+        limit_req_status 429;
+
+        proxy_pass         http://127.0.0.1:__CLIENT_PORT__;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_buffering    off;
+    }
+}
+
+# — Xray WebSocket+TLS reverse proxy (if Xray is installed) —
+# This block receives HTTPS traffic from Cloudflare and passes the WebSocket
+# upgrade to the local Xray VLESS+WebSocket inbound on port 8443.
+#
+# Enable by pointing your Cloudflare DNS record (proxied) to this server
+# and uncommenting this block. The /vless path is the WebSocket mount point.
+#
+# server {
+#     listen 443 ssl http2;
+#     server_name __PANEL_DOMAIN__;   # or a separate subdomain
+#     # ... (same TLS block as above)
+#
+#     location /vless {
+#         proxy_pass         http://127.0.0.1:8443;
+#         proxy_http_version 1.1;
+#         proxy_set_header   Upgrade    $http_upgrade;
+#         proxy_set_header   Connection "upgrade";
+#         proxy_set_header   Host       $host;
+#         proxy_set_header   X-Real-IP  $remote_addr;
+#         proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_read_timeout 86400;
+#         proxy_buffering    off;
+#     }
+# }

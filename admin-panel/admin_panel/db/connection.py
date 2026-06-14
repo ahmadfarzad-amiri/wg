@@ -4,8 +4,22 @@ import sqlite3
 from admin_panel.config import DB_PATH, SESSION_FILE
 
 
+def _configure(con, *, row_factory=False):
+    """Apply WAL journal mode and a busy timeout to a new connection.
+
+    WAL lets concurrent readers proceed while a write is in progress on the
+    shared panel.db (used by both the client panel and admin panel processes).
+    The busy_timeout prevents hard 'database is locked' crashes under load.
+    """
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("PRAGMA busy_timeout=3000")
+    if row_factory:
+        con.row_factory = sqlite3.Row
+    return con
+
+
 def session_db():
-    con = sqlite3.connect(SESSION_FILE)
+    con = _configure(sqlite3.connect(SESSION_FILE))
     con.execute(
         """
         CREATE TABLE IF NOT EXISTS sessions (
@@ -19,6 +33,4 @@ def session_db():
 
 
 def panel_db():
-    con = sqlite3.connect(DB_PATH)
-    con.row_factory = sqlite3.Row
-    return con
+    return _configure(sqlite3.connect(DB_PATH), row_factory=True)

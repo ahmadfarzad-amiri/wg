@@ -5,6 +5,43 @@ from client_panel.components.notice import notice
 from client_panel.core.i18n import t
 
 
+def _setup_guide():
+    """Render a per-platform WireGuard setup guide card."""
+    platforms = [
+        ("iOS", t("setup.ios_apps"),   t("setup.ios_steps")),
+        ("Android", t("setup.android_apps"), t("setup.android_steps")),
+        ("Windows", t("setup.windows_apps"), t("setup.windows_steps")),
+        ("macOS",   t("setup.macos_apps"),   t("setup.macos_steps")),
+        ("Linux",   t("setup.linux_apps"),   t("setup.linux_steps")),
+    ]
+    tabs = ""
+    panels = ""
+    for idx, (name, apps, steps) in enumerate(platforms):
+        checked = " checked" if idx == 0 else ""
+        tab_id = f"platform-{name.lower()}"
+        tabs += (
+            f'<input type="radio" id="{tab_id}" name="platform-tabs" class="platform-radio"{checked}>'
+            f'<label class="platform-tab" for="{tab_id}">{html.escape(name)}</label>'
+        )
+        panels += f"""
+<div class="platform-panel" id="panel-{html.escape(name.lower())}">
+  <p class="hint">{html.escape(apps)}</p>
+  <ol class="setup-steps">{
+    "".join(f"<li>{html.escape(s.strip())}</li>" for s in steps.split("|") if s.strip())
+  }</ol>
+</div>
+"""
+    return f"""
+<section class="card setup-guide-card">
+  <h3>{html.escape(t("setup.title"))}</h3>
+  <div class="platform-tabs">
+    {tabs}
+    <div class="platform-panels">{panels}</div>
+  </div>
+</section>
+"""
+
+
 def _vpn_config_card(config_count=1):
     zip_label = (
         t("settings.download_all_zip") if config_count > 1 else t("settings.download")
@@ -47,6 +84,8 @@ def body(msg="", show_config_actions=False, config_count=1, has_vpn_config=False
 
 <div class="page-stack">
 {config_actions}
+
+{_setup_guide()}
 
 <div class="settings-grid">
 <section class="card">
