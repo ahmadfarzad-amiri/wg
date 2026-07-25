@@ -18,7 +18,7 @@ sudo WG_ENTRY_PUBLIC_IP=... WG_EXIT_PUBLIC_IP=... WG_EXIT_TUNNEL_PUB='...' \
   WG_ADMIN_PASS='...' wg-ops install-entry
 ```
 
-See [../docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for full env var reference and [../docs/USER_GUIDE.md](../docs/USER_GUIDE.md) for end-user instructions.
+See [../docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) to install, [../docs/OPERATIONS.md](../docs/OPERATIONS.md) for day-2 ops, and [../docs/USER_GUIDE.md](../docs/USER_GUIDE.md) for end-user instructions.
 
 ---
 

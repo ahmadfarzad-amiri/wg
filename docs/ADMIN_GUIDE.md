@@ -2,7 +2,7 @@
 
 This guide is for **administrators** who manage users, WireGuard clients, and support requests.
 
-> **First time deploying?** Start with [Operations guide](OPERATIONS.md). For end-user help, see [User guide](USER_GUIDE.md).
+> **First time deploying?** Start with [Deployment](DEPLOYMENT.md). Day-2 tasks: [Operations](OPERATIONS.md). End-user help: [User guide](USER_GUIDE.md).
 
 ---
 
@@ -205,7 +205,7 @@ Also update your cloud firewall and any DNS records. Connected users must reconn
    sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
 ```
 
-See [Operations guide](OPERATIONS.md) for changing entry/exit servers and day-2 ops.
+See [Operations](OPERATIONS.md) for changing entry/exit servers and other day-2 tasks.
 
 ---
 
@@ -302,5 +302,5 @@ On small screens, tables become **cards** with the same action buttons in expand
 
 - [User guide](USER_GUIDE.md) — what your users see in the client panel
 - [Architecture](ARCHITECTURE.md) — two-hop design and data layout
-- [Operations guide](OPERATIONS.md) — install, backup, server changes
-- [Performance guide](PERFORMANCE.md) — two-hop throughput tuning and hop measurements
+- [Deployment](DEPLOYMENT.md) — first install  
+- [Operations](OPERATIONS.md) — backup, performance, server changes  

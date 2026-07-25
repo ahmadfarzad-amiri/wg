@@ -8,13 +8,13 @@ devices  →  entry VPS (wg-clients + panels)  →  encrypted tunnel  →  exit 
 
 **Repository:** [github.com/ahmadfarzad-amiri/wg](https://github.com/ahmadfarzad-amiri/wg)
 
-Fresh install on clean entry and exit servers.
+Fresh install on clean entry and exit servers. Full walkthrough: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
 
 ---
 
-## Install order
+## Install (short)
 
-On **each** server, install the operator CLI once:
+On **each** server:
 
 ```bash
 curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/wg-ops \
@@ -22,44 +22,11 @@ curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/wg-ops \
 sudo wg-ops pull
 ```
 
-### 1. Exit VPS first
+1. **Exit first:** `sudo WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP wg-ops install-exit` — save the tunnel public key  
+2. **Entry second:** set `WG_ENTRY_PUBLIC_IP`, `WG_EXIT_PUBLIC_IP`, `WG_EXIT_TUNNEL_PUB`, `WG_ADMIN_PASS`, then `wg-ops install-entry` — save the entry tunnel public key  
+3. **Link on exit:** `sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'`
 
-Interactive menu (clean server): `sudo wg-ops` → **Install exit server**
-
-Or non-interactive:
-
-```bash
-sudo WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP wg-ops install-exit
-```
-
-Save the **tunnel public key** and **exit IP:51821** printed at the end.
-
-### 2. Entry VPS second
-
-Interactive menu (clean server): `sudo wg-ops` → **Install entry server**
-
-Or non-interactive:
-
-```bash
-sudo WG_ENTRY_PUBLIC_IP=YOUR_ENTRY_IP \
-  WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP \
-  WG_EXIT_TUNNEL_PUB='PASTE_EXIT_TUNNEL_PUBKEY' \
-  WG_ADMIN_PASS='your-admin-password' \
-  WG_XRAY_REALITY_SNI=www.microsoft.com \
-  wg-ops install-entry
-```
-
-Save the **entry tunnel public key** printed at the end.
-
-> Full env var list: `/opt/wg-ops/config.env.example` (after `wg-ops pull`), or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/config.env.example
-
-### 3. Link the tunnel on the exit VPS
-
-```bash
-sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
-```
-
-Or on the **exit** host: `sudo wg-ops` → **Add entry peer**.
+Or use `sudo wg-ops` (role-aware menu) on each host.
 
 ---
 
@@ -148,10 +115,9 @@ sudo wg-ops uninstall
 
 | Guide | Audience |
 |-------|----------|
+| **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** | First-time install (step by step) |
+| **[docs/OPERATIONS.md](docs/OPERATIONS.md)** | Backup, update, troubleshoot, uninstall |
 | **[docs/README.md](docs/README.md)** | Documentation index |
 | **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** | VPN users (client panel) |
 | **[docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)** | Administrators (admin panel) |
-| **[docs/OPERATIONS.md](docs/OPERATIONS.md)** | Server install, ops, troubleshooting |
-| **[docs/PERFORMANCE.md](docs/PERFORMANCE.md)** | Two-hop throughput — MTU, BBR, hop measurements |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | How the two-hop stack works |
-| **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** | Deployment guide (install, validate, uninstall) |
