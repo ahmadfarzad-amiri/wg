@@ -12,7 +12,7 @@ set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.20}"
   _WG_INSTALLER="$(mktemp /tmp/wg-install-XXXXXX.sh)"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/install-exit-server.sh" -o "$_WG_INSTALLER"
   chmod 700 "$_WG_INSTALLER"
@@ -30,7 +30,7 @@ if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.20}"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"
@@ -94,7 +94,7 @@ Address = ${TUNNEL_LOCAL}
 ListenPort = ${TUNNEL_PORT}
 PrivateKey = ${TUNNEL_PRIV}
 MTU = ${WG_TUNNEL_MTU:-${WG_SERVER_MTU:-1420}}
-PostUp = iptables -t nat -C POSTROUTING -s ${CLIENT_CIDR} -o ${DEF_IF} -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s ${CLIENT_CIDR} -o ${DEF_IF} -j MASQUERADE; iptables -C FORWARD -i ${TUNNEL_IF} -j ACCEPT 2>/dev/null || iptables -A FORWARD -i ${TUNNEL_IF} -j ACCEPT; iptables -C FORWARD -o ${TUNNEL_IF} -j ACCEPT 2>/dev/null || iptables -A FORWARD -o ${TUNNEL_IF} -j ACCEPT; ip route replace ${CLIENT_CIDR} dev ${TUNNEL_IF}; ip route replace ${TUNNEL_PEER_IP} dev ${TUNNEL_IF}
+PostUp = iptables -t nat -C POSTROUTING -s ${CLIENT_CIDR} -o ${DEF_IF} -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s ${CLIENT_CIDR} -o ${DEF_IF} -j MASQUERADE; iptables -C FORWARD -i ${TUNNEL_IF} -j ACCEPT 2>/dev/null || iptables -A FORWARD -i ${TUNNEL_IF} -j ACCEPT; iptables -C FORWARD -o ${TUNNEL_IF} -j ACCEPT 2>/dev/null || iptables -A FORWARD -o ${TUNNEL_IF} -j ACCEPT; ip route replace ${CLIENT_CIDR} dev ${TUNNEL_IF} 2>/dev/null || true; ip route replace ${TUNNEL_PEER_IP} dev ${TUNNEL_IF} 2>/dev/null || true
 PostDown = iptables -t nat -D POSTROUTING -s ${CLIENT_CIDR} -o ${DEF_IF} -j MASQUERADE 2>/dev/null || true; iptables -D FORWARD -i ${TUNNEL_IF} -j ACCEPT 2>/dev/null || true; iptables -D FORWARD -o ${TUNNEL_IF} -j ACCEPT 2>/dev/null || true; ip route del ${CLIENT_CIDR} dev ${TUNNEL_IF} 2>/dev/null || true; ip route del ${TUNNEL_PEER_IP} dev ${TUNNEL_IF} 2>/dev/null || true
 EOF
 

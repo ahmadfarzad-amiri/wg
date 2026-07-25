@@ -11,7 +11,7 @@ fi
 GITHUB_OWNER="${GITHUB_OWNER:-ahmadfarzad-amiri}"
 GITHUB_REPO_NAME="${GITHUB_REPO_NAME:-wg}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
-GITHUB_CDN_REF="${GITHUB_CDN_REF:-v1.0.19}"
+GITHUB_CDN_REF="${GITHUB_CDN_REF:-v1.0.20}"
 GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/${GITHUB_OWNER}/${GITHUB_REPO_NAME}.git}"
 # jsDelivr CDN mirrors GitHub and works where raw.githubusercontent.com is blocked (e.g. Iran).
 # Pin GITHUB_CDN_REF to a semver tag (not @latest) — jsDelivr @latest purge is often throttled.
@@ -475,7 +475,7 @@ fetch_deploy_helper_scripts() {
 source_deploy_lib() {
   local script_ref="${1:-}"
   # jsDelivr works where raw.githubusercontent.com is blocked (Iran, etc.)
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.20}"
   if [[ -n "$script_ref" && -f "$(dirname "$script_ref")/lib/common.sh" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "$script_ref")" && pwd)"
     # shellcheck source=lib/common.sh
@@ -655,8 +655,43 @@ wg_exit_tunnel_routes_up() {
     warn "Exit routes skipped — $tunnel_if is not up"
     return 1
   fi
-  ip route replace "$client_cidr" dev "$tunnel_if"
-  ip route replace "$tunnel_peer_ip" dev "$tunnel_if"
+  # Peer /32 is often already covered by Address=/30; never fail the unit/route fix on that.
+  ip route replace "$client_cidr" dev "$tunnel_if" 2>/dev/null || true
+  ip route replace "$tunnel_peer_ip" dev "$tunnel_if" 2>/dev/null || true
+}
+
+# Make exit wg-tunnel PostUp route replaces non-fatal (orphan units after restart).
+ensure_exit_tunnel_postup_tolerant() {
+  local conf="${1:-/etc/wireguard/wg-tunnel.conf}"
+  [[ -f "$conf" ]] || return 0
+  if ! grep -qE 'ip route replace' "$conf" 2>/dev/null; then
+    return 0
+  fi
+  if grep -qE 'ip route replace [^;]*\|\| true' "$conf" 2>/dev/null; then
+    return 0
+  fi
+  # Soft-fail each route replace in PostUp/PreUp lines (Address=/30 often already covers peer).
+  awk '
+    /^(PostUp|PreUp)[[:space:]]*=/ {
+      while (match($0, /ip route replace [^;]+([[:space:]]*;|[[:space:]]*$)/)) {
+        piece = substr($0, RSTART, RLENGTH)
+        if (piece !~ /\|\| true/) {
+          if (piece ~ /;$/) {
+            sub(/;$/, " 2>/dev/null || true;", piece)
+          } else {
+            sub(/[[:space:]]*$/, " 2>/dev/null || true", piece)
+          }
+          $0 = substr($0, 1, RSTART - 1) piece substr($0, RSTART + RLENGTH)
+        } else {
+          break
+        }
+      }
+    }
+    { print }
+  ' "$conf" > "${conf}.tmp"
+  chmod 600 "${conf}.tmp"
+  mv "${conf}.tmp" "$conf"
+  log "Made exit tunnel PostUp route replaces tolerant in $conf"
 }
 
 wg_exit_route_to_client_ok() {
@@ -1312,6 +1347,7 @@ apply_exit_vpn_routing_fix() {
   def_if="$(default_route_iface)"
   def_if="${def_if:-eth0}"
 
+  ensure_exit_tunnel_postup_tolerant "/etc/wireguard/${tunnel_if}.conf"
   ensure_wg_quick_running "$tunnel_if"
 
   wg_apply_ip_forward

@@ -10,7 +10,7 @@ set -euo pipefail
 
 OPS_NAME="wg-ops"
 OPS_DIR="${WG_OPS_DIR:-/opt/wg-ops}"
-RAW_BASE="${WG_RAW_BASE:-${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19}}"
+RAW_BASE="${WG_RAW_BASE:-${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.20}}"
 BIN_PATH="${WG_OPS_BIN:-/usr/local/bin/wg-ops}"
 
 log() { printf '[%s] %s\n' "$OPS_NAME" "$*"; }
@@ -173,11 +173,28 @@ unit_state() {
   fi
 }
 
+# True when this entry host has a tunnel conf (twohop). Standalone has clients only.
+entry_has_tunnel_conf() {
+  [[ -f /etc/wireguard/wg-tunnel.conf ]]
+}
+
+load_server_env() {
+  # shellcheck disable=SC1091
+  [[ -f /etc/wireguard/entry-server.env ]] && source /etc/wireguard/entry-server.env 2>/dev/null || true
+  # shellcheck disable=SC1091
+  [[ -f /etc/wireguard/exit-server.env ]] && source /etc/wireguard/exit-server.env 2>/dev/null || true
+}
+
 # Start wg-quick@IF even when the interface already exists outside systemd.
 start_wg_quick_unit() {
   local ifname="$1"
   local unit="wg-quick@${ifname}"
+  local conf="/etc/wireguard/${ifname}.conf"
   local rc=0
+  if [[ ! -f "$conf" ]]; then
+    log "Skip ${unit} — missing ${conf}"
+    return 0
+  fi
   if systemctl is-active --quiet "$unit" 2>/dev/null; then
     return 0
   fi
@@ -197,10 +214,8 @@ start_wg_quick_unit() {
     fi
     warn "${ifname}: start failed — last journal lines:"
     journalctl -u "$unit" -n 20 --no-pager >&2 || true
-    if [[ -f "/etc/wireguard/${ifname}.conf" ]]; then
-      warn "${ifname} hooks:"
-      grep -E '^(Address|PreUp|PostUp|PreDown|PostDown)[[:space:]]*=' "/etc/wireguard/${ifname}.conf" >&2 || true
-    fi
+    warn "${ifname} hooks:"
+    grep -E '^(Address|PreUp|PostUp|PreDown|PostDown)[[:space:]]*=' "$conf" >&2 || true
     return "$rc"
   fi
   return 0
@@ -218,16 +233,24 @@ unit_enabled() {
 print_status_footer() {
   local role
   role="$(detect_role)"
+  load_server_env
   echo
   echo "Role detected: ${role}"
   case "$role" in
     entry|both)
       echo "wg-clients:     $(unit_state 'wg-quick@wg-clients')  (autostart: $(unit_enabled 'wg-quick@wg-clients'))"
-      echo "wg-tunnel:      $(unit_state 'wg-quick@wg-tunnel')  (autostart: $(unit_enabled 'wg-quick@wg-tunnel'))"
+      if entry_has_tunnel_conf; then
+        echo "wg-tunnel:      $(unit_state 'wg-quick@wg-tunnel')  (autostart: $(unit_enabled 'wg-quick@wg-tunnel'))"
+      else
+        echo "wg-tunnel:      n/a (standalone — no exit tunnel)"
+      fi
       echo "wg-panel:       $(unit_state wg-panel)  (autostart: $(unit_enabled wg-panel))"
       echo "wg-admin-panel: $(unit_state wg-admin-panel)  (autostart: $(unit_enabled wg-admin-panel))"
       if systemctl cat xray.service >/dev/null 2>&1; then
         echo "xray:           $(unit_state xray)  (autostart: $(unit_enabled xray))"
+      fi
+      if systemctl cat wg-mss-clamp.service >/dev/null 2>&1; then
+        echo "wg-mss-clamp:   $(unit_state wg-mss-clamp)  (autostart: $(unit_enabled wg-mss-clamp))"
       fi
       if [[ "$role" == "both" ]]; then
         echo "(also exit-server.env present — combined entry+exit host)"
@@ -235,6 +258,9 @@ print_status_footer() {
       ;;
     exit)
       echo "wg-tunnel:      $(unit_state 'wg-quick@wg-tunnel')  (autostart: $(unit_enabled 'wg-quick@wg-tunnel'))"
+      if systemctl cat wg-mss-clamp.service >/dev/null 2>&1; then
+        echo "wg-mss-clamp:   $(unit_state wg-mss-clamp)  (autostart: $(unit_enabled wg-mss-clamp))"
+      fi
       ;;
     *)
       echo "No install detected (clean server)."
@@ -420,7 +446,7 @@ Usage:
 
 CDN / source:
   Default script base: $RAW_BASE
-  Override: WG_RAW_BASE=https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19
+  Override: WG_RAW_BASE=https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.20
   Panel git clone still uses branch main (WG_GITHUB_BRANCH).
 
 Role detection (automatic):
@@ -594,6 +620,7 @@ run_uninstall_xray() {
 svc_start() {
   local role
   role="$(detect_role)"
+  load_server_env
   case "$role" in
     entry|both)
       # Tunnel first: clients PostUp must not depend on a missing wg-tunnel.
@@ -604,16 +631,30 @@ svc_start() {
           "${WG_CLIENT_CIDR:-10.10.10.0/24}" 2>/dev/null || true
         # Reinstall fixed rp_filter drop-ins (old ones fail the unit when peer iface is down).
         wg_install_rp_filter_systemd_hooks 2>/dev/null || true
+        if entry_has_tunnel_conf; then
+          ensure_exit_tunnel_postup_tolerant /etc/wireguard/wg-tunnel.conf 2>/dev/null || true
+        fi
       fi
-      start_wg_quick_unit wg-tunnel || warn "Failed to start wg-tunnel"
+      if entry_has_tunnel_conf; then
+        start_wg_quick_unit wg-tunnel || warn "Failed to start wg-tunnel"
+      fi
       start_wg_quick_unit wg-clients || warn "Failed to start wg-clients"
       systemctl start wg-panel wg-admin-panel 2>/dev/null || true
       systemctl start wg-mss-clamp.service 2>/dev/null || true
       systemctl start xray 2>/dev/null || true
+      if source_ops_common 2>/dev/null; then
+        apply_entry_vpn_routing_fix 2>/dev/null || warn "Entry routing re-apply failed — run: sudo wg-ops fix-routing"
+      fi
       ;;
     exit)
+      if source_ops_common 2>/dev/null; then
+        ensure_exit_tunnel_postup_tolerant /etc/wireguard/wg-tunnel.conf 2>/dev/null || true
+      fi
       start_wg_quick_unit wg-tunnel || warn "Failed to start wg-tunnel"
       systemctl start wg-mss-clamp.service 2>/dev/null || true
+      if source_ops_common 2>/dev/null; then
+        apply_exit_vpn_routing_fix 2>/dev/null || warn "Exit routing re-apply failed — run: sudo wg-ops fix-routing"
+      fi
       ;;
     *) die "No install detected on this host." ;;
   esac
@@ -624,10 +665,14 @@ svc_start() {
 svc_stop() {
   local role
   role="$(detect_role)"
+  load_server_env
   case "$role" in
     entry|both)
       systemctl stop wg-panel wg-admin-panel xray 2>/dev/null || true
-      systemctl stop 'wg-quick@wg-clients' 'wg-quick@wg-tunnel' 2>/dev/null || true
+      systemctl stop 'wg-quick@wg-clients' 2>/dev/null || true
+      if entry_has_tunnel_conf; then
+        systemctl stop 'wg-quick@wg-tunnel' 2>/dev/null || true
+      fi
       # Also tear down orphans so status does not stay "Orphan (iface up)".
       wg-quick down wg-clients 2>/dev/null || true
       wg-quick down wg-tunnel 2>/dev/null || true
@@ -648,6 +693,7 @@ svc_stop() {
 svc_restart() {
   local role
   role="$(detect_role)"
+  load_server_env
   case "$role" in
     entry|both)
       # Full down → up clears orphan "already exists" failures.
@@ -662,20 +708,34 @@ svc_restart() {
           "${WG_IF:-wg-clients}" \
           "${WG_CLIENT_CIDR:-10.10.10.0/24}" 2>/dev/null || true
         wg_install_rp_filter_systemd_hooks 2>/dev/null || true
+        if entry_has_tunnel_conf; then
+          ensure_exit_tunnel_postup_tolerant /etc/wireguard/wg-tunnel.conf 2>/dev/null || true
+        fi
       fi
       # Tunnel before clients (policy routing / FORWARD live on tunnel).
-      start_wg_quick_unit wg-tunnel || warn "Failed to start wg-tunnel"
+      if entry_has_tunnel_conf; then
+        start_wg_quick_unit wg-tunnel || warn "Failed to start wg-tunnel"
+      fi
       start_wg_quick_unit wg-clients || warn "Failed to start wg-clients"
       systemctl restart wg-panel wg-admin-panel 2>/dev/null || true
       systemctl restart wg-mss-clamp.service 2>/dev/null || true
       systemctl restart xray 2>/dev/null || true
+      if source_ops_common 2>/dev/null; then
+        apply_entry_vpn_routing_fix 2>/dev/null || warn "Entry routing re-apply failed — run: sudo wg-ops fix-routing"
+      fi
       ;;
     exit)
       wg-quick down wg-tunnel 2>/dev/null || true
       ip link del wg-tunnel 2>/dev/null || true
       systemctl reset-failed 'wg-quick@wg-tunnel' 2>/dev/null || true
+      if source_ops_common 2>/dev/null; then
+        ensure_exit_tunnel_postup_tolerant /etc/wireguard/wg-tunnel.conf 2>/dev/null || true
+      fi
       start_wg_quick_unit wg-tunnel || warn "Failed to start wg-tunnel"
       systemctl restart wg-mss-clamp.service 2>/dev/null || true
+      if source_ops_common 2>/dev/null; then
+        apply_exit_vpn_routing_fix 2>/dev/null || warn "Exit routing re-apply failed — run: sudo wg-ops fix-routing"
+      fi
       ;;
     *) die "No install detected on this host." ;;
   esac
@@ -700,9 +760,13 @@ svc_logs() {
 svc_enable() {
   local role
   role="$(detect_role)"
+  load_server_env
   case "$role" in
     entry|both)
-      systemctl enable 'wg-quick@wg-clients' 'wg-quick@wg-tunnel' wg-panel wg-admin-panel 2>/dev/null || true
+      systemctl enable 'wg-quick@wg-clients' wg-panel wg-admin-panel 2>/dev/null || true
+      if entry_has_tunnel_conf; then
+        systemctl enable 'wg-quick@wg-tunnel' 2>/dev/null || true
+      fi
       systemctl enable xray 2>/dev/null || true
       ;;
     exit)

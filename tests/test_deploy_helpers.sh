@@ -244,6 +244,19 @@ assert_fail "entry clients no broad FORWARD" \
   grep -q 'FORWARD -i ${CLIENT_IF} -j ACCEPT' "$ROOT/deploy/install-entry-server.sh"
 assert_ok "exit install idempotent NAT" \
   grep -q 'iptables -t nat -C POSTROUTING' "$ROOT/deploy/install-exit-server.sh"
+assert_ok "exit PostUp route replace is tolerant" \
+  grep -q 'ip route replace ${CLIENT_CIDR} dev ${TUNNEL_IF} 2>/dev/null || true' "$ROOT/deploy/install-exit-server.sh"
+
+_tmpdir="$(mktemp -d)"
+cat > "$_tmpdir/wg-tunnel.conf" <<'EOF'
+[Interface]
+Address = 10.200.0.1/30
+PostUp = iptables -A FORWARD -i wg-tunnel -j ACCEPT; ip route replace 10.10.10.0/24 dev wg-tunnel; ip route replace 10.200.0.2/32 dev wg-tunnel
+EOF
+ensure_exit_tunnel_postup_tolerant "$_tmpdir/wg-tunnel.conf"
+assert_ok "ensure_exit_tunnel_postup_tolerant softens routes" \
+  grep -q 'ip route replace 10.10.10.0/24 dev wg-tunnel 2>/dev/null || true' "$_tmpdir/wg-tunnel.conf"
+rm -rf "$_tmpdir"
 assert_ok "entry uses require_fresh_install" \
   grep -q 'require_fresh_install' "$ROOT/deploy/install-entry-server.sh"
 assert_ok "exit uses require_fresh_install" \

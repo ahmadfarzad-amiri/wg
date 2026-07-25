@@ -31,17 +31,17 @@ Native WireGuard CLI remains `wg` (example: `sudo wg show`).
 
 | What | Source | Notes |
 |------|--------|--------|
-| `wg-ops` bootstrap + `pull` / `update` scripts | jsDelivr **pinned tag** (e.g. `@v1.0.19`) | Avoid `@latest` — jsDelivr purge is often throttled and can stick on an old release |
+| `wg-ops` bootstrap + `pull` / `update` scripts | jsDelivr **pinned tag** (e.g. `@v1.0.20`) | Avoid `@latest` — jsDelivr purge is often throttled and can stick on an old release |
 | Panel code (`update-panels`, entry install) | Git branch `main` | Clone into `/opt/wg-src` (GitHub or `gh-proxy.com`) |
 
 Default CDN base (bump with each release in `deploy/repo.conf`):
 
-`https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19`
+`https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.20`
 
 If `wg-ops update` still shows an old version (stuck `@latest` cache), force one pull:
 
 ```bash
-sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19' wg-ops pull
+sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.20' wg-ops pull
 ```
 
 ---
@@ -241,6 +241,17 @@ Or: `sudo wg-ops restart` (clears orphans automatically on current `wg-ops`).
 
 `Address = 10.10.10.1/24` already installs the connected route. A clients `PostUp` that repeats `ip route replace 10.10.10.0/24 dev wg-clients` often fails and leaves an orphan. Remove those hooks (or run `sudo wg-ops fix-routing --role entry` / `sudo wg-ops restart` on v1.0.4+), then start again.
 
+### Exit `wg-tunnel` fails on `ip route replace 10.200.0.2/32`
+
+Exit `Address = 10.200.0.1/30` already covers the peer. An old PostUp that hard-fails on `ip route replace …` leaves the unit failed/orphan. Fix with:
+
+```bash
+# On exit:
+sudo wg-ops pull
+sudo wg-ops fix-routing --role exit
+sudo wg-ops restart
+```
+
 ### Unit fails after wg-quick succeeds (rp_filter drop-in)
 
 If the journal ends at `ip link set mtu … up` with no PostUp error, an old `ExecStartPost` in `/etc/systemd/system/wg-quick@*.service.d/rpfilter.conf` may be exiting 1 when the peer iface is not up yet. Fix:
@@ -333,7 +344,7 @@ Runtime file on entry: `/etc/wireguard/entry-server.env`
 | `WG_ENABLE_MSS_CLAMP` | `1` | MSS clamp service |
 
 Full list: `/opt/wg-ops/config.env.example`  
-or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19/deploy/config.env.example
+or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.20/deploy/config.env.example
 
 ---
 
@@ -343,19 +354,19 @@ Install and `wg-ops pull` / `update` use a **pinned** jsDelivr tag (see `GITHUB_
 
 For each release:
 
-1. Bump `GITHUB_CDN_REF` / `GITHUB_RAW_BASE` / docs URLs to the new tag (e.g. `v1.0.19`).
+1. Bump `GITHUB_CDN_REF` / `GITHUB_RAW_BASE` / docs URLs to the new tag (e.g. `v1.0.20`).
 2. Commit, then `git tag` / `git push` that same version.
 3. On servers still stuck on an old `@latest` cache, pull once with an explicit base:
 
 ```bash
-sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19' wg-ops pull
+sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.20' wg-ops pull
 sudo wg-ops update
 ```
 
 Optional purge (often throttled):
 
 ```bash
-curl 'https://purge.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19/deploy/wg-ops'
+curl 'https://purge.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.20/deploy/wg-ops'
 ```
 
 Or use the [jsDelivr purge tool](https://www.jsdelivr.com/tools/purge).
