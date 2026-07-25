@@ -14,11 +14,18 @@ from admin_panel.core import i18n
 from admin_panel.core.i18n import t, tf
 from admin_panel.core.shell import safe_name
 from admin_panel.core.analytics import dashboard_metrics
-from admin_panel.core.wireguard import active_list_hint, all_client_status, build_wg_snapshot
+from admin_panel.core.wireguard import (
+    active_list_hint,
+    all_client_status,
+    build_wg_snapshot,
+    find_client_status,
+)
 from admin_panel.db import panel_db
+from admin_panel.db.panel_queries import users_by_client
 from admin_panel.server import responses, security, session
 from admin_panel.views import (
     active,
+    client_detail,
     clients,
     dashboard,
     login,
@@ -40,8 +47,8 @@ class Handler(BaseHTTPRequestHandler):
         )
         responses.send_html(self, content, code)
 
-    def flash(self, path, message):
-        responses.flash_redirect(self, path, message)
+    def flash(self, path, message, variant="info"):
+        responses.flash_redirect(self, path, message, variant=variant)
 
     def redirect(self, path):
         responses.redirect(self, path)
@@ -49,10 +56,15 @@ class Handler(BaseHTTPRequestHandler):
     def post_data(self):
         return responses.post_data(self)
 
-    def render_login(self, msg=""):
+    def render_login(self, msg="", variant="info"):
         i18n.begin_request(self)
         self.send_html(
-            page(t("auth.login_title"), login.body(msg), auth=True, next_path="/login")
+            page(
+                t("auth.login_title"),
+                login.body(msg, variant=variant),
+                auth=True,
+                next_path="/login",
+            )
         )
 
     def _set_lang(self):
@@ -85,7 +97,8 @@ class Handler(BaseHTTPRequestHandler):
         i18n.begin_request(self)
 
         if path == "/login":
-            self.render_login(security.notice_from_query(self))
+            msg, variant = security.notice_payload_from_query(self)
+            self.render_login(msg, variant=variant)
             return
 
         if path == "/health":
@@ -99,11 +112,32 @@ class Handler(BaseHTTPRequestHandler):
             self._dashboard()
         elif path == "/clients":
             snap = build_wg_snapshot()
+            msg, variant = security.notice_payload_from_query(self)
             self.send_html(
                 page(
                     t("nav.clients"),
-                    clients.body(all_client_status(snap), security.notice_from_query(self)),
+                    clients.body(all_client_status(snap), msg, variant=variant),
                     "clients",
+                )
+            )
+        elif path.startswith("/clients/"):
+            name = safe_name(path.split("/clients/", 1)[1].strip("/"))
+            snap = build_wg_snapshot()
+            client = find_client_status(name, snap) if name else None
+            if not client:
+                self.send_html(
+                    page(t("page.not_found"), f"<h1>{html.escape(t('page.not_found'))}</h1>"),
+                    404,
+                )
+                return
+            msg, variant = security.notice_payload_from_query(self)
+            assigned = users_by_client().get(name, [])
+            self.send_html(
+                page(
+                    name,
+                    client_detail.body(client, msg, variant=variant, assigned_users=assigned),
+                    "clients",
+                    next_path=f"/clients/{name}",
                 )
             )
         elif path == "/users":
@@ -113,29 +147,34 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/active":
             snap = build_wg_snapshot()
             online = [c for c in all_client_status(snap) if c["active"]]
+            msg, variant = security.notice_payload_from_query(self)
             self.send_html(
                 page(
                     t("nav.active"),
                     active.body(
                         online,
-                        security.notice_from_query(self),
+                        msg,
                         wg_hint=active_list_hint(),
+                        variant=variant,
                     ),
                     "active",
                     extra_head='<meta http-equiv="refresh" content="45">',
                 )
             )
         elif path == "/tools":
+            msg, variant = security.notice_payload_from_query(self)
             self.send_html(
-                page(t("nav.tools"), tools.body(security.notice_from_query(self)), "tools")
+                page(t("nav.tools"), tools.body(msg, variant=variant), "tools")
             )
         elif path == "/xray":
+            msg, variant = security.notice_payload_from_query(self)
             self.send_html(
-                page(t("nav.xray"), xray_view.body(security.notice_from_query(self)), "xray")
+                page(t("nav.xray"), xray_view.body(msg, variant=variant), "xray")
             )
         elif path == "/settings":
+            msg, variant = security.notice_payload_from_query(self)
             self.send_html(
-                page(t("nav.settings"), settings.body(security.notice_from_query(self)), "settings")
+                page(t("nav.settings"), settings.body(msg, variant=variant), "settings")
             )
         elif path.startswith("/config/"):
             self._download_config(path.split("/config/", 1)[1])
@@ -224,24 +263,30 @@ class Handler(BaseHTTPRequestHandler):
         from admin_panel.actions.user import _fetch_users
         from admin_panel.config import DB_PATH
 
-        msg = security.notice_from_query(self)
+        msg, variant = security.notice_payload_from_query(self)
         users_data = []
         if not os.path.isfile(DB_PATH):
             msg = msg or t("error.db_not_found_users")
+            variant = "error"
         else:
             try:
                 users_data = _fetch_users()
             except Exception as exc:
                 msg = msg or tf("error.db_read", err=exc)
-        self.send_html(page(t("nav.users"), users.body(users_data, msg), "users"))
+                variant = "error"
+        self.send_html(
+            page(t("nav.users"), users.body(users_data, msg, variant=variant), "users")
+        )
 
     def _requests(self):
         from admin_panel.config import DB_PATH
 
         db_err = ""
         rows = []
+        msg, variant = security.notice_payload_from_query(self)
         if not os.path.isfile(DB_PATH):
             db_err = t("error.db_not_found_requests")
+            variant = "error"
         else:
             try:
                 con = panel_db()
@@ -256,10 +301,11 @@ class Handler(BaseHTTPRequestHandler):
                 con.close()
             except Exception as exc:
                 db_err = tf("error.db_read", err=exc)
+                variant = "error"
         self.send_html(
             page(
                 t("nav.requests"),
-                requests.body(rows, db_err or security.notice_from_query(self)),
+                requests.body(rows, db_err or msg, variant=variant),
                 "requests",
             )
         )
@@ -301,7 +347,11 @@ class Handler(BaseHTTPRequestHandler):
 
         if not shutil.which("qrencode"):
             self.send_html(
-                page("QR", "<h1>qrencode not installed on server.</h1><p>Install: <code>apt install qrencode</code></p>"),
+                page(
+                    t("page.qr"),
+                    f"<h1>{html.escape(t('page.qr_missing'))}</h1>"
+                    f"<p>{html.escape(t('page.qr_missing_hint'))}</p>",
+                ),
                 503,
             )
             return
@@ -330,7 +380,11 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(png_data)
         except Exception as exc:
             self.send_html(
-                page("QR Error", f"<h1>Failed to generate QR</h1><p>{html.escape(str(exc))}</p>"),
+                page(
+                    t("page.qr_error"),
+                    f"<h1>{html.escape(t('page.qr_failed'))}</h1>"
+                    f"<p>{html.escape(str(exc))}</p>",
+                ),
                 500,
             )
         finally:

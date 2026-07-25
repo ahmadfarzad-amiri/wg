@@ -17,7 +17,7 @@ def handle_register(handler, data):
     username = re.sub(r"[^A-Za-z0-9_.-]", "_", data.get("username", "").strip())
     password = data.get("password", "")
     if len(username) < 3 or len(password) < 6:
-        handler.render_register(t("auth.register_invalid"))
+        handler.render_register(t("auth.register_invalid"), variant="error")
         return
     ph, salt = hash_password(password)
     con = db()
@@ -29,10 +29,10 @@ def handle_register(handler, data):
         con.commit()
     except sqlite3.IntegrityError:
         con.close()
-        handler.render_register(t("auth.username_taken"))
+        handler.render_register(t("auth.username_taken"), variant="error")
         return
     con.close()
-    handler.render_login(t("auth.register_success"))
+    handler.flash("/login", t("auth.register_success"), variant="success")
 
 
 def handle_login(handler, data):
@@ -40,7 +40,7 @@ def handle_login(handler, data):
     try:
         blocked = security.check_login_rate_limit(handler, username)
         if blocked:
-            handler.render_login(blocked)
+            handler.render_login(blocked, variant="error")
             return
         con = db()
         user = con.execute(
@@ -52,13 +52,13 @@ def handle_login(handler, data):
             data.get("password", ""), user["password_hash"], user["salt"]
         ):
             security.record_login_failure(handler, username)
-            handler.render_login(t("auth.invalid_credentials"))
+            handler.render_login(t("auth.invalid_credentials"), variant="error")
             return
         security.clear_login_attempts(handler, username)
         handler.set_session(user["id"])
     except Exception:
         log.exception("Login failed for user %r", username)
-        handler.render_login(t("auth.invalid_credentials"))
+        handler.render_login(t("auth.invalid_credentials"), variant="error")
 
 
 def handle_logout(handler):

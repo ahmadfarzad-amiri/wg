@@ -20,29 +20,29 @@ def handle(handler, data):
     if action == "add-client":
         name = (data.get("name") or "").strip()
         if not name:
-            handler.flash("/xray", t("xray.name_required"))
+            handler.flash("/xray", t("xray.name_required"), variant="error")
             return
         safe = xcore._safe_name(name)
         ok, result = xcore.add_client(safe)
         if ok:
             _audit(handler, "xray_add_client", safe)
-            handler.flash("/xray", tf("xray.added_ok", name=safe))
+            handler.flash("/xray", tf("xray.added_ok", name=safe), variant="success")
         else:
             log.error("Failed to add Xray client %s: %s", safe, result)
-            handler.flash("/xray", f"{t('xray.add_failed')}: {result}")
+            handler.flash("/xray", f"{t('xray.add_failed')}: {result}", variant="error")
 
     elif action == "delete-client":
         name = (data.get("name") or "").strip()
         safe = xcore._safe_name(name) if name else ""
         if not safe:
-            handler.flash("/xray", t("xray.name_required"))
+            handler.flash("/xray", t("xray.name_required"), variant="error")
             return
         ok = xcore.delete_client(safe)
         if ok:
             _audit(handler, "xray_delete_client", safe)
-            handler.flash("/xray", tf("xray.deleted_ok", name=safe))
+            handler.flash("/xray", tf("xray.deleted_ok", name=safe), variant="success")
         else:
-            handler.flash("/xray", t("xray.delete_failed"))
+            handler.flash("/xray", t("xray.delete_failed"), variant="error")
 
     else:
-        handler.flash("/xray", t("msg.unknown_action"))
+        handler.flash("/xray", t("msg.unknown_action"), variant="error")

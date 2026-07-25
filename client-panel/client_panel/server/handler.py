@@ -83,8 +83,8 @@ class Handler(BaseHTTPRequestHandler):
         )
         responses.send_html(self, content, code)
 
-    def flash(self, path, message):
-        security.flash_redirect(self, path, message)
+    def flash(self, path, message, variant="info"):
+        security.flash_redirect(self, path, message, variant=variant)
 
     def send_plain(self, content, filename=None):
         responses.send_plain(self, content, filename)
@@ -104,21 +104,35 @@ class Handler(BaseHTTPRequestHandler):
     def set_session(self, user_id):
         session.set_session(self, user_id)
 
-    def render_login(self, msg=""):
-        i18n.begin_request(self)
-        self.send_html(page(t("auth.welcome"), login.body(msg), auth=True, next_path="/login"))
-
-    def render_register(self, msg=""):
+    def render_login(self, msg="", variant="info"):
         i18n.begin_request(self)
         self.send_html(
-            page(t("auth.register_title"), register.body(msg), auth=True, next_path="/register")
+            page(
+                t("auth.welcome"),
+                login.body(msg, variant=variant),
+                auth=True,
+                next_path="/login",
+            )
         )
 
-    def render_settings(self, msg="", show_config_actions=False):
+    def render_register(self, msg="", variant="error"):
+        i18n.begin_request(self)
+        self.send_html(
+            page(
+                t("auth.register_title"),
+                register.body(msg, variant=variant),
+                auth=True,
+                next_path="/register",
+            )
+        )
+
+    def render_settings(self, msg="", show_config_actions=False, variant="info"):
         i18n.begin_request(self)
         user = self.current_user()
         n_configs = len(assigned_client_names_for_user(user)) if user else 0
         has_vpn = bool(user and user.get("status") == UserStatus.APPROVED and n_configs > 0)
+        if show_config_actions and msg:
+            variant = "warn"
         self.send_html(
             page(
                 t("page.settings"),
@@ -127,6 +141,7 @@ class Handler(BaseHTTPRequestHandler):
                     show_config_actions,
                     config_count=max(1, n_configs),
                     has_vpn_config=has_vpn,
+                    variant=variant,
                 ),
                 user,
                 "settings",
@@ -160,13 +175,18 @@ class Handler(BaseHTTPRequestHandler):
         i18n.begin_request(self)
         user = self.current_user()
         if path_only == "/login":
-            self.render_login(security.notice_from_query(self))
+            msg, variant = security.notice_payload_from_query(self)
+            self.render_login(msg, variant=variant or "info")
             return
         if path_only == "/register":
             self.render_register()
             return
         if path_only == "/health":
             self._health()
+            return
+        # Unauthenticated subscription endpoint for app imports
+        if path_only.startswith("/sub/"):
+            self._serve_subscription(path_only[5:])
             return
         if not user:
             self.redirect("/login")
@@ -217,8 +237,15 @@ class Handler(BaseHTTPRequestHandler):
             con.close()
             primary = primary_client_for_user(user)
             s = status_for_client(primary) if primary else None
+            msg, variant = security.notice_payload_from_query(self)
             self.send_html(
-                page(t("page.support"), support.body(user, rows, s), user, "support", next_path="/support")
+                page(
+                    t("page.support"),
+                    support.body(user, rows, s, msg=msg, variant=variant),
+                    user,
+                    "support",
+                    next_path="/support",
+                )
             )
             return
 
@@ -226,7 +253,8 @@ class Handler(BaseHTTPRequestHandler):
             parsed = urllib.parse.urlparse(self.path)
             params = urllib.parse.parse_qs(parsed.query)
             show_cfg = "newconfig" in params
-            self.render_settings(security.notice_from_query(self), show_config_actions=show_cfg)
+            msg, variant = security.notice_payload_from_query(self)
+            self.render_settings(msg, show_config_actions=show_cfg, variant=variant)
             return
 
         if path_only == "/configs.zip":
@@ -261,7 +289,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path_only == "/config-qr.svg":
-            qr, err = responses.build_qr_svg(user)
+            params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            client_q = (params.get("client") or [None])[0]
+            qr, err = responses.build_qr_svg(user, client_name=client_q)
             if err:
                 self.send_response(403)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -333,11 +363,6 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(raw)))
             self.end_headers()
             self.wfile.write(raw)
-            return
-
-        # /sub/<token> — unauthenticated subscription endpoint
-        if path_only.startswith("/sub/"):
-            self._serve_subscription(path_only[5:])
             return
 
         self.send_html(page(t("page.not_found"), f"<h1>{html.escape(t('page.not_found'))}</h1>", user), 404)

@@ -124,7 +124,7 @@ disable / enable / assign more configs / reject
 
 - One user can have **multiple** WireGuard clients assigned (multi-device, multi-tunnel).
 - Primary client name is stored on the `users` row; full assignment list is in `panel.db`.
-- Users download all assigned configs as a **ZIP** from Dashboard → Tools or Settings.
+- Users download all assigned configs as a **ZIP** from Dashboard → Import link or Settings.
 
 ---
 
@@ -132,22 +132,22 @@ disable / enable / assign more configs / reject
 
 | Page | What it does |
 |------|--------------|
-| **Dashboard** | Account status, setup steps, QR code (when approved), Tools card |
-| **Dashboard → Tools** | Download all configs as ZIP, generate or copy subscription link |
-| **Support** | Submit renew/enable requests; view request history; run connection test |
-| **Settings** | Change password, download configs |
+| **Dashboard** | Connect-first status, QR/download/copy, usage, Import link (when approved) |
+| **Dashboard → Import link** | Subscription URL and download all configs as ZIP |
+| **Support** | Submit renew/enable requests; view request history; check Server status |
+| **Settings** | Change password, download configs, log out |
 
 ### Subscription link (`/sub/TOKEN`)
 
 An unauthenticated endpoint that returns the user's WireGuard config(s) as plain text. Used by WireGuard apps that support subscription URLs for automatic config updates.
 
 - Token is stored per-user in `panel.db` (`sub_token` column).
-- Token can be rotated from Dashboard → Tools → Subscription link → **Rotate link**.
+- Token can be rotated from Dashboard → Import link → **Rotate link**.
 - Old token becomes invalid immediately after rotation.
 
-### Connection test (`/connection-test`)
+### Server status (`/connection-test`)
 
-A server-side check triggered from the Support page. Returns JSON with three fields:
+A server-side check triggered from the Support page (labeled **Server status**). Returns JSON with three fields:
 
 | Field | Checks |
 |-------|--------|

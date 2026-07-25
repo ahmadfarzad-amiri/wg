@@ -1,13 +1,14 @@
 import html
 
 from client_panel.components.forms import request_controls
+from client_panel.components.notice import notice
 from client_panel.core.i18n import t
-from client_panel.core.statuses import ClientState, UserStatus
+from client_panel.core.statuses import UserStatus
 from client_panel.core.labels import badge_request_status, label_action, label_request_status
 from client_panel.core.wireguard import human_time, primary_client_for_user
 
 
-def body(user, rows, s=None):
+def body(user, rows, s=None, msg="", variant="info"):
     tr = ""
     cards = ""
     for r in rows:
@@ -42,6 +43,7 @@ def body(user, rows, s=None):
     return f"""
 <h1>{html.escape(t("page.support"))}</h1>
 <p class="subtitle">{html.escape(t("support.subtitle"))}</p>
+{notice(msg, variant=variant)}
 <div class="page-stack">
 <section class="card support-panel">
   <div class="support-actions-block">
@@ -72,7 +74,7 @@ def body(user, rows, s=None):
   <h3>{html.escape(t("support.conn_test_title"))}</h3>
   <p class="hint">{html.escape(t("support.conn_test_hint"))}</p>
   <div id="conn-test-results" class="statrow" hidden></div>
-  <button type="button" class="btn btn-sm dark" id="conn-test-btn"
+  <button type="button" class="btn dark" id="conn-test-btn"
     data-test-url="/connection-test">{html.escape(t("support.conn_test_btn"))}</button>
 </section>
 </div>

@@ -152,7 +152,7 @@ def _add_client_section():
 """
 
 
-def body(msg=""):
+def body(msg="", variant="info"):
     from admin_panel.core import xray as xcore
 
     installed = xcore.is_installed()
@@ -167,7 +167,8 @@ def body(msg=""):
     return f"""
 <h1>{html.escape(t("xray.title"))}</h1>
 <p class="subtitle">{html.escape(t("xray.subtitle"))}</p>
-{notice(msg, role="alert")}
+<p class="hint page-glossary">{html.escape(t("xray.glossary"))}</p>
+{notice(msg, variant=variant)}
 
 <div class="page-stack">
 {status_html}

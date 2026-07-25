@@ -59,6 +59,13 @@ ICONS = {
         '<path d="m9 12 2 2 4-4"/>'
         "</svg>"
     ),
+    "more": (
+        f"<svg {_SVG}>"
+        '<circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/>'
+        '<circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/>'
+        '<circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/>'
+        "</svg>"
+    ),
 }
 
 

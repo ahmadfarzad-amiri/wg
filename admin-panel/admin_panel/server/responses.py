@@ -79,8 +79,8 @@ def redirect(handler, path):
     handler.end_headers()
 
 
-def flash_redirect(handler, path, message):
-    security.flash_redirect(handler, admin_url(path), message)
+def flash_redirect(handler, path, message, variant="info"):
+    security.flash_redirect(handler, admin_url(path), message, variant=variant)
 
 
 def send_config_file(handler, client_name, raw):

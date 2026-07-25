@@ -72,7 +72,7 @@ def _option_tabs(name, options, selected_value, group_label):
     )
 
 
-def _client_update_form(c):
+def client_update_form(c):
     name = html.escape(c["name"])
     vpn_mode = c.get("vpn_mode", "twohop")
     single = c.get("single", "off")
@@ -96,36 +96,43 @@ def _client_update_form(c):
     )
 
     return f"""
-<form class="inline-form client-update-form" method="post" action="{admin_url("/client-action")}">
+<form class="form-stack client-update-form" method="post" action="{admin_url("/client-action")}">
   <input type="hidden" name="client" value="{name}">
   <input type="hidden" name="action" value="update">
-  <div class="client-subscription-grid">
-    <label class="client-update-field">
-      <span class="client-update-label">{html.escape(t("client.days"))}</span>
-      <input name="days" class="field-input input-compact" value="{days_val}" inputmode="numeric" autocomplete="off">
-    </label>
-    <label class="client-update-field">
-      <span class="client-update-label">{html.escape(t("client.limit"))}</span>
-      <input name="limit" class="field-input input-compact" value="{limit_val}" autocomplete="off">
-    </label>
-    <div class="client-update-field client-update-field--vpn">
-      <span class="client-update-label">{html.escape(t("client.vpn_mode"))}</span>
-      {vpn_tabs}
+  <div class="form-grid">
+    <div class="field">
+      <label class="field-label" for="days-{name}">{html.escape(t("client.days"))}</label>
+      <input id="days-{name}" name="days" class="field-input" value="{days_val}" inputmode="numeric" autocomplete="off">
     </div>
-    <div class="client-update-field client-update-field--full">
-      <span class="client-update-label">{html.escape(t("client.device_limit"))}</span>
+    <div class="field">
+      <label class="field-label" for="limit-{name}">{html.escape(t("client.limit"))}</label>
+      <input id="limit-{name}" name="limit" class="field-input" value="{limit_val}" autocomplete="off">
+    </div>
+    <div class="field field--full">
+      <span class="field-label">{html.escape(t("client.vpn_mode"))}</span>
+      {vpn_tabs}
+      <p class="field-hint field-hint--warn">{html.escape(t("client.vpn_direct_hint"))}</p>
+    </div>
+    <div class="field field--full">
+      <span class="field-label">{html.escape(t("client.device_limit"))}</span>
       {single_tabs}
     </div>
-    <label class="client-reset-usage">
-      <input type="checkbox" name="reset_usage" value="1">
-      <span>{html.escape(t("client.reset_usage"))}</span>
+    <label class="field field--full client-reset-usage">
+      <span class="field-label">
+        <input type="checkbox" name="reset_usage" value="1">
+        {html.escape(t("client.reset_usage"))}
+      </span>
     </label>
-    <div class="client-update-actions client-update-actions--full">
-      <button type="submit" class="btn btn-sm">{html.escape(t("client.update"))}</button>
+    <div class="field field--full">
+      <button type="submit" class="btn">{html.escape(t("client.save_changes"))}</button>
     </div>
   </div>
 </form>
 """
+
+
+def _client_update_form(c):
+    return client_update_form(c)
 
 
 def _client_action_menu(c, assigned_users=None):
@@ -150,8 +157,14 @@ def _client_action_menu(c, assigned_users=None):
     )
 
 
-def _client_toolbar(c, assigned_users=None):
+def _client_toolbar(c, assigned_users=None, *, include_edit=True):
     name = c["name"]
+    edit = ""
+    if include_edit:
+        edit = (
+            f'<a class="btn btn-sm dark" href="{admin_url("/clients/" + name)}">'
+            f"{html.escape(t('client.edit'))}</a>"
+        )
     if c["has_config"]:
         download = (
             f'<a class="btn btn-sm client-download" href="{admin_url("/config/" + name)}">'
@@ -159,7 +172,7 @@ def _client_toolbar(c, assigned_users=None):
         )
         qr_btn = (
             f'<a class="btn btn-sm dark client-qr" href="{admin_url("/config-qr/" + name)}" '
-            f'target="_blank" rel="noopener" title="QR">QR</a>'
+            f'target="_blank" rel="noopener">{html.escape(t("client.qr"))}</a>'
         )
     else:
         download = (
@@ -170,6 +183,7 @@ def _client_toolbar(c, assigned_users=None):
 
     return f"""
 <div class="client-toolbar">
+  {edit}
   {download}
   {qr_btn}
   {_client_action_menu(c, assigned_users)}
@@ -177,11 +191,14 @@ def _client_toolbar(c, assigned_users=None):
 """
 
 
+def client_detail_actions(c, assigned_users=None):
+    return _client_toolbar(c, assigned_users, include_edit=False)
+
+
 def _client_item(c, assigned_names, users_by_client_map):
     badge = _badge_class(c["state_key"])
     status = label_client_status(c["state_key"])
     assigned_users = users_by_client_map.get(c["name"], [])
-    update_form = _client_update_form(c)
     toolbar = _client_toolbar(c, assigned_users)
     usage_bar = _usage_bar(c)
     vpn_label = html.escape(label_vpn_mode(c.get("vpn_mode", "twohop")))
@@ -244,12 +261,6 @@ def _client_item(c, assigned_names, users_by_client_map):
   <div class="client-field client-field-actions" data-label="{html.escape(t("col.actions"))}">
     {toolbar}
   </div>
-  <details class="client-subscription panel-expand">
-    <summary>{html.escape(t("client.edit_subscription"))}</summary>
-    <div class="panel-expand-body client-subscription-body">
-      {update_form}
-    </div>
-  </details>
 </div>
 """
 
@@ -261,7 +272,10 @@ def client_list(clients, assigned_names=None, users_by_client_map=None):
     if not clients:
         return f"""
 <div class="client-list" data-list-items data-list-kind="clients">
-  <div class="client-list-empty" data-list-static-empty>{html.escape(t("empty.no_clients"))}</div>
+  <div class="client-list-empty" data-list-static-empty>
+    <p>{html.escape(t("empty.no_clients"))}</p>
+    <p class="hint">{html.escape(t("empty.no_clients_cta"))}</p>
+  </div>
 </div>
 """
 

@@ -10,6 +10,7 @@ def _text(val):
 
 
 def _config_item_row(s):
+    name = html.escape(s["client_name"], quote=True)
     return f"""
 <article class="config-item card-inset">
   <div class="config-item__head">
@@ -21,8 +22,9 @@ def _config_item_row(s):
     <div class="item"><div class="label">{html.escape(t("dashboard.usage_pct"))}</div><div class="value">{_text(s['percent'])}%</div></div>
     <div class="item"><div class="label">{html.escape(t("dashboard.remaining"))}</div><div class="value">{_text(s['remaining'])}</div></div>
   </div>
-  <div class="config-item__actions">
-    <a class="btn btn-sm" href="/config?client={html.escape(s['client_name'], quote=True)}">{html.escape(t("dashboard.download_one"))}</a>
+  <div class="config-item__actions btn-pair">
+    <a class="btn btn-sm" href="/config?client={name}">{html.escape(t("dashboard.download_one"))}</a>
+    <button type="button" class="btn btn-sm dark" data-qr-open data-qr-client="{name}">{html.escape(t("settings.show_qr"))}</button>
   </div>
 </article>
 """
@@ -90,11 +92,11 @@ def xray_protocols_section(client_name):
         rows.append(
             f'<div class="xray-link-row">'
             f'<span class="xray-link-label">{html.escape(t(label_key))}</span>'
-            f'<input class="field-input xray-link-input" type="text" id="{input_id}" '
+            f'<input class="field-input xray-link-input ltr-value" type="text" id="{input_id}" '
             f'value="{link_val}" readonly>'
-            f'<button type="button" class="btn btn-sm" data-copy-target="{input_id}">'
+            f'<button type="button" class="btn btn-sm dark" data-copy-target="{input_id}">'
             f'{html.escape(t("dashboard.xray_copy"))}</button>'
-            f'</div>'
+            f"</div>"
         )
 
     return f"""
@@ -118,6 +120,17 @@ def body(user, primary, all_statuses):
 <p class="subtitle">{html.escape(t("dashboard.subtitle"))}</p>
 
 <div class="page-stack">
+{client_status_section(s, multi=multi)}
+
+<section class="card">
+  <h3>{html.escape(t("dashboard.import_link_title"))}</h3>
+  <p class="hint">{html.escape(t("dashboard.import_link_hint"))}</p>
+  <div class="dashboard-tools-grid btn-pair">
+    <a class="btn dark" href="/sub-link">{html.escape(t("dashboard.sub_link"))}</a>
+    <a class="btn dark" href="/configs.zip">{html.escape(t("dashboard.download_zip"))}</a>
+  </div>
+</section>
+
 <div class="dashboard-metrics">
   <section class="card">
     <h3>{html.escape(t("dashboard.data_usage"))}</h3>
@@ -134,7 +147,7 @@ def body(user, primary, all_statuses):
   </section>
 
   <section class="card">
-    <h3>{html.escape(t("dashboard.subscription_period"))}</h3>
+    <h3>{html.escape(t("dashboard.plan_period"))}</h3>
     <div class="label">{html.escape(t("dashboard.time_remaining"))}</div>
     <div class="progress" role="progressbar" aria-valuenow="{expiry_bar}" aria-valuemin="0" aria-valuemax="100">
       <div class="bar bar-cyan" style="width:{expiry_bar}%"></div>
@@ -156,17 +169,7 @@ def body(user, primary, all_statuses):
   </div>
 </section>
 
-{client_status_section(s)}
-
 {xray_protocols_section(s['client_name'])}
-
-<section class="card">
-  <h3>{html.escape(t("dashboard.tools_title"))}</h3>
-  <div class="dashboard-tools-grid">
-    <a class="btn btn-sm dark" href="/configs.zip">{html.escape(t("dashboard.download_zip"))}</a>
-    <a class="btn btn-sm dark" href="/sub-link">{html.escape(t("dashboard.sub_link"))}</a>
-  </div>
-</section>
 </div>
 """
 
@@ -175,8 +178,13 @@ def body_pending():
     return f"""
 <h1>{html.escape(t("page.dashboard"))}</h1>
 <p class="subtitle">{html.escape(t("dashboard.pending_sub"))}</p>
-<div class="notice notice-wait">{html.escape(t("dashboard.pending"))}</div>
-<p class="hint">{html.escape(t("dashboard.pending_hint"))}</p>
+<div class="page-stack">
+  <div class="notice notice-wait" role="status">{html.escape(t("dashboard.pending"))}</div>
+  <p class="hint">{html.escape(t("dashboard.pending_hint"))}</p>
+  <div class="actions">
+    <a class="btn dark" href="/support">{html.escape(t("dashboard.pending_cta"))}</a>
+  </div>
+</div>
 """
 
 
@@ -184,7 +192,13 @@ def body_inactive():
     return f"""
 <h1>{html.escape(t('page.dashboard'))}</h1>
 <p class="subtitle">{html.escape(t('dashboard.inactive_sub'))}</p>
-<div class="notice">{html.escape(t('dashboard.inactive'))}</div>
+<div class="page-stack">
+  <div class="notice" role="status">{html.escape(t('dashboard.inactive'))}</div>
+  <p class="hint">{html.escape(t('dashboard.inactive_hint'))}</p>
+  <div class="actions">
+    <a class="btn" href="/support">{html.escape(t('dashboard.inactive_cta'))}</a>
+  </div>
+</div>
 """
 
 
@@ -192,5 +206,11 @@ def body_no_config():
     return f"""
 <h1>{html.escape(t('page.dashboard'))}</h1>
 <p class="subtitle">{html.escape(t('dashboard.no_config_sub'))}</p>
-<div class="notice">{html.escape(t('dashboard.no_config'))}</div>
+<div class="page-stack">
+  <div class="notice" role="status">{html.escape(t('dashboard.no_config'))}</div>
+  <p class="hint">{html.escape(t('dashboard.no_config_hint'))}</p>
+  <div class="actions">
+    <a class="btn dark" href="/support">{html.escape(t('dashboard.no_config_cta'))}</a>
+  </div>
+</div>
 """

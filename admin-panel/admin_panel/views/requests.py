@@ -4,13 +4,13 @@ from admin_panel.components.request_rows import request_list
 from admin_panel.core.i18n import t
 
 
-def body(items, msg=""):
+def body(items, msg="", variant="info"):
     listing = request_list(items)
     return f"""
 <h1>{t("requests.title")}</h1>
 <p class="subtitle">{t("requests.subtitle")}</p>
 <p class="hint page-glossary">{t("glossary.requests")}</p>
-{notice(msg, role="alert")}
+{notice(msg, variant=variant)}
 
 <div class="page-stack">
 <section class="card card-requests list-filterable">

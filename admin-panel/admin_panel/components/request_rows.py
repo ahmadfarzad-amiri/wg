@@ -104,8 +104,12 @@ def request_list(items):
 
     if not rows:
         empty = html.escape(t("empty.no_requests"))
-        rows = f'<div class="request-list-empty" data-list-static-empty>{empty}</div>'
-        cards = f'<div class="rowcard empty-card">{empty}</div>'
+        empty_cta = (
+            f'<p>{empty}</p>'
+            f'<p class="hint">{html.escape(t("empty.no_requests_cta"))}</p>'
+        )
+        rows = f'<div class="request-list-empty" data-list-static-empty>{empty_cta}</div>'
+        cards = f'<div class="rowcard empty-card">{empty_cta}</div>'
 
     return f"""
 <div class="list-items-host" data-list-items data-list-kind="requests">

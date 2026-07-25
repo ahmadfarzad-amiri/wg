@@ -1,6 +1,5 @@
 import html
 
-from client_panel.components.locale_bar import locale_version_bar
 from client_panel.components.notice import notice
 from client_panel.core.i18n import t
 
@@ -59,15 +58,15 @@ def _vpn_config_card(config_count=1):
 """
 
 
-def body(msg="", show_config_actions=False, config_count=1, has_vpn_config=False):
-    toast_variant = "success" if msg and show_config_actions else "info"
+def body(msg="", show_config_actions=False, config_count=1, has_vpn_config=False, variant="info"):
+    toast_variant = variant or ("warn" if msg and show_config_actions else "info")
     config_actions = ""
     if show_config_actions:
         config_actions = f"""
 <section class="card config-download-card">
   <h3>{html.escape(t("settings.new_config"))}</h3>
   <p class="hint">{html.escape(t("settings.new_config_hint"))}</p>
-  <div class="settings-actions config-actions">
+  <div class="settings-actions config-actions btn-pair">
     <a class="btn" href="{'/configs.zip' if config_count > 1 else '/config'}">{html.escape(t("settings.download_all_zip") if config_count > 1 else t("settings.download"))}</a>
     <button type="button" class="btn dark" data-qr-open>{html.escape(t("settings.show_qr"))}</button>
   </div>
@@ -80,8 +79,6 @@ def body(msg="", show_config_actions=False, config_count=1, has_vpn_config=False
 <h1>{html.escape(t("settings.title"))}</h1>
 <p class="subtitle">{html.escape(t("settings.subtitle"))}</p>
 
-{locale_version_bar("/settings")}
-
 <div class="page-stack">
 {config_actions}
 
@@ -93,14 +90,20 @@ def body(msg="", show_config_actions=False, config_count=1, has_vpn_config=False
   <p class="hint">{html.escape(t("settings.change_hint"))}</p>
   {notice(msg, variant=toast_variant)}
   <form method="post" action="/settings/password" class="form-stack">
-    <label for="old_password">{html.escape(t("settings.old_password"))}</label>
-    <input id="old_password" name="old_password" type="password" autocomplete="current-password" required>
-    <label for="new_password">{html.escape(t("settings.new_password"))}</label>
-    <input id="new_password" name="new_password" type="password" autocomplete="new-password" required minlength="6">
-    <label for="confirm_password">{html.escape(t("settings.confirm_password"))}</label>
-    <input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" required>
-    <p class="hint">{html.escape(t("settings.submit_hint"))}</p>
-    <button type="submit" class="btn-block">{html.escape(t("settings.submit"))}</button>
+    <div class="field">
+      <label class="field-label" for="old_password">{html.escape(t("settings.old_password"))}</label>
+      <input class="field-input" id="old_password" name="old_password" type="password" autocomplete="current-password" required>
+    </div>
+    <div class="field">
+      <label class="field-label" for="new_password">{html.escape(t("settings.new_password"))}</label>
+      <input class="field-input" id="new_password" name="new_password" type="password" autocomplete="new-password" required minlength="6">
+    </div>
+    <div class="field">
+      <label class="field-label" for="confirm_password">{html.escape(t("settings.confirm_password"))}</label>
+      <input class="field-input" id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" required>
+    </div>
+    <p class="field-hint">{html.escape(t("settings.submit_hint"))}</p>
+    <button type="submit" class="btn btn-block">{html.escape(t("settings.submit"))}</button>
   </form>
 </section>
 
@@ -108,7 +111,7 @@ def body(msg="", show_config_actions=False, config_count=1, has_vpn_config=False
   <h3>{html.escape(t("settings.account"))}</h3>
   <p class="hint">{html.escape(t("settings.logout_hint"))}</p>
   <form method="post" action="/logout" class="form-stack">
-    <button type="submit" class="bad btn-block">{html.escape(t("settings.logout"))}</button>
+    <button type="submit" class="btn bad btn-block">{html.escape(t("settings.logout"))}</button>
   </form>
 </section>
 </div>

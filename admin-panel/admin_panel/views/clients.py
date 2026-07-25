@@ -7,13 +7,13 @@ from admin_panel.core.i18n import t
 from admin_panel.db.panel_queries import assigned_client_names, users_by_client
 
 
-def body(clients, msg=""):
+def body(clients, msg="", variant="info"):
     table = client_list(clients, assigned_client_names(), users_by_client())
     return f"""
 <h1>{html.escape(t("clients.title"))}</h1>
 <p class="subtitle">{html.escape(t("clients.subtitle"))}</p>
 <p class="hint page-glossary">{html.escape(t("glossary.clients"))}</p>
-{notice(msg, role="alert")}
+{notice(msg, variant=variant)}
 
 <div class="page-stack">
 <section class="card card-clients list-filterable">

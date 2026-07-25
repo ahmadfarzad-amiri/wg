@@ -95,7 +95,7 @@ def handle(handler, data):
     rid = data.get("id", "")
 
     if not rid.isdigit():
-        handler.flash("/requests", t("msg.invalid_request_id"))
+        handler.flash("/requests", t("msg.invalid_request_id"), variant="error")
         return
 
     try:
@@ -106,25 +106,35 @@ def handle(handler, data):
         row = None
 
     if not row:
-        handler.flash("/requests", t("msg.request_not_found"))
+        handler.flash("/requests", t("msg.request_not_found"), variant="error")
         return
 
     if row["status"] != RequestStatus.PENDING:
-        handler.flash("/requests", t("msg.request_already_processed"))
+        handler.flash("/requests", t("msg.request_already_processed"), variant="info")
         return
 
     if action == "approve":
         out = _approve_request(rid)
+        variant = "error" if _looks_failed(out) else "success"
     elif action == "reject":
         try:
             if not _mark_request(rid, RequestStatus.REJECTED):
                 out = t("msg.request_not_found")
+                variant = "error"
             else:
                 log_admin_action("reject_request", f"#{rid}")
                 out = tf("msg.request_rejected", id=rid)
+                variant = "success"
         except Exception as e:
             out = tf("msg.reject_request_error", err=e)
+            variant = "error"
     else:
         out = t("msg.unknown_action")
+        variant = "error"
 
-    handler.flash("/requests", tail_message(out))
+    handler.flash("/requests", tail_message(out), variant=variant)
+
+
+def _looks_failed(out):
+    lower = (out or "").lower()
+    return any(x in lower for x in ("error", "fail", "failed", "not found", "invalid"))

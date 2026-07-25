@@ -18,7 +18,7 @@ This guide is for **VPN users**. It covers registration, connecting, downloading
 
 1. Open the panel URL and click **Register**.
 2. Choose a username (letters and numbers only, no spaces).
-3. Enter a password (minimum 6 characters) and confirm it.
+3. Enter a password (minimum 6 characters).
 4. Click **Register**.
 
 Your account is now **pending**. An administrator must approve it before you can use the VPN.
@@ -31,52 +31,50 @@ Your account is now **pending**. An administrator must approve it before you can
 2. Enter your username and password.
 3. You land on the **Dashboard**.
 
-> Use the **language switcher** in the header to switch between Persian and English.
+> Use the **language switcher** on the login screen or in the header to switch between Persian and English.
 
 ---
 
 ## 3. Wait for approval
 
-Your dashboard shows a **pending** badge until an admin approves your account.
+Your dashboard shows a clear **pending** message until an admin approves your account. You can open **Support** while you wait.
 
 While pending:
 - You cannot download VPN configs.
 - The Support page shows a "waiting" message rather than action buttons.
 
-When approved, the dashboard updates automatically — setup steps appear.
+When approved, the dashboard updates — **connect** steps appear first (download / QR / copy).
 
 ---
 
 ## 4. Install WireGuard and import your config
 
-After approval you have three options:
+After approval, start on the **Dashboard** connect card:
 
-### Option A — Download ZIP (recommended for desktop)
+### Option A — Download config (desktop)
 
-1. Go to **Dashboard → Tools** and click **Download all configs**,  
-   or go to **Settings** and click **Download configs**.
-2. Unzip the downloaded file on your device.
-3. In WireGuard: **Import tunnel from file** → select the `.conf` file.
+1. Tap **Download config** on the Dashboard (or **Settings**).
+2. In WireGuard: **Import tunnel from file** → select the `.conf` file.
+3. If you have multiple configs, use **Download all configs** (ZIP) from the Import link section.
 
-### Option B — QR code (recommended for mobile)
+### Option B — QR code (mobile)
 
-1. On the **Dashboard**, find the QR code section (visible when your account is active).
-2. In the WireGuard app on your phone: tap **Create from QR code** and scan.
+1. On the **Dashboard**, tap **Show QR**.
+2. In the WireGuard app: **Create from QR code** and scan.
 
-### Option C — Subscription link (automatic updates)
+### Option C — Import link (subscription URL)
 
-Some WireGuard apps (e.g. WireGuard for Android, iOS) support a subscription URL that updates your config automatically.
+Some apps support a URL that imports your WireGuard config.
 
-1. Go to **Dashboard → Tools** and click **Subscription link**.
-2. Copy the URL shown on the page.
-3. In your WireGuard app, paste the URL when adding a new tunnel via subscription or import URL.
+1. On the Dashboard, open **Import link** / **Subscription link**.
+2. Copy the URL and paste it in a compatible app.
+3. Use **Rotate link** if the old URL should stop working.
 
-To get a new subscription URL (invalidates the old one):
+> Keep the import URL private — anyone with it can download your VPN config.
 
-1. Go to **Dashboard → Tools → Subscription link**.
-2. Click **Rotate link** and copy the new URL.
+### Optional — Alternative protocols (Xray)
 
-> Keep the subscription URL private — anyone with it can download your VPN config.
+If your admin enabled Xray and your account has links, the Dashboard shows **Alternative protocols** (VLESS+Reality, WebSocket, Shadowsocks). Copy those into Hiddify / v2rayNG — not the WireGuard app. WireGuard setup steps in **Settings** are only for the WireGuard app.
 
 ---
 
@@ -95,14 +93,12 @@ Your admin chooses the mode per account; it is set in the config file and cannot
 
 ---
 
-## 6. Run a connection test
+## 6. Check server status
 
-If something feels wrong, use the built-in test from the panel.
+If something feels wrong, check **server** health from the panel (this does **not** test whether your phone is online).
 
 1. Open **Support** in the navigation.
-2. Scroll to **Connection test** and click **Test connection**.
-
-The panel checks three things server-side and shows results:
+2. Scroll to **Server status** and click **Check server status**.
 
 | Check | What it means |
 |-------|---------------|
@@ -110,7 +106,7 @@ The panel checks three things server-side and shows results:
 | Exit server ping | The tunnel to the exit server is reachable |
 | DNS | The server can resolve domain names |
 
-If any check fails, contact your admin with the results.
+If any check fails, contact your admin with the results. If the server looks healthy but your device still cannot browse, re-import the config or ask Support for help.
 
 ---
 
@@ -158,7 +154,7 @@ Click **Download configs** in Settings anytime while approved. Use this when rei
 
 ## 9. Log out
 
-Click **Log out** in the header. Your WireGuard tunnel stays active until you turn it off in the WireGuard app.
+Open **Settings** and click **Log out**. Your WireGuard tunnel stays active until you turn it off in the WireGuard app.
 
 ---
 
@@ -168,10 +164,10 @@ Click **Log out** in the header. Your WireGuard tunnel stays active until you tu
 |---------|------------|
 | Stuck on "pending" for a long time | Contact your admin — the account has not been approved yet |
 | Cannot download config | You must be **approved** and have a config assigned |
-| Connected but no internet | Open **Support → Connection test**; share results with your admin |
+| Connected but no internet | Open **Support → Server status**; share results with your admin |
 | Forgot password | Ask your admin to reset it |
 | Config expired or disabled | Submit a **Renew** or **Enable** request under **Support** |
-| Subscription link stopped working | Go to Dashboard → Tools → Subscription link and get a new URL |
+| Subscription link stopped working | Dashboard → **Import link** and rotate or copy a fresh URL |
 
 > **Security:** Do not share your `.conf` file, QR code, or subscription URL — anyone with them can use your VPN slot.
 

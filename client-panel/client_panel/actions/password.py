@@ -16,17 +16,17 @@ def handle_change_password(handler, user, data):
     confp = data.get("confirm_password", "")
 
     if not verify_password(oldp, user["password_hash"], user["salt"]):
-        handler.render_settings(t("password.wrong_old"))
+        handler.render_settings(t("password.wrong_old"), variant="error")
         return
     if len(newp) < 6:
-        handler.render_settings(t("password.too_short"))
+        handler.render_settings(t("password.too_short"), variant="error")
         return
     if newp != confp:
-        handler.render_settings(t("password.mismatch"))
+        handler.render_settings(t("password.mismatch"), variant="error")
         return
     client_name = primary_client_for_user(user)
     if user["status"] != UserStatus.APPROVED or not client_name:
-        handler.render_settings(t("password.not_ready"))
+        handler.render_settings(t("password.not_ready"), variant="error")
         return
 
     result = subprocess.run(
@@ -36,7 +36,9 @@ def handle_change_password(handler, user, data):
     )
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "").strip()
-        handler.render_settings(tf("password.rotate_failed", detail=detail).strip())
+        handler.render_settings(
+            tf("password.rotate_failed", detail=detail).strip(), variant="error"
+        )
         return
 
     ph, salt = hash_password(newp)
@@ -56,4 +58,4 @@ def handle_change_password(handler, user, data):
     con.commit()
     con.close()
 
-    handler.flash("/settings?newconfig=1", t("password.success"))
+    handler.flash("/settings?newconfig=1", t("password.success"), variant="warn")

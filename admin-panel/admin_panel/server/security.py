@@ -169,18 +169,29 @@ def validate_csrf(handler, data):
     return hmac.compare_digest(form_token, cookie_token.value)
 
 
-def flash_redirect(handler, path, message):
+def flash_redirect(handler, path, message, variant="info"):
     notice = urllib.parse.quote(message or "")
+    safe_variant = urllib.parse.quote((variant or "info").strip() or "info")
     sep = "&" if "?" in path else "?"
     handler.send_response(302)
-    handler.send_header("Location", f"{path}{sep}notice={notice}")
+    handler.send_header(
+        "Location", f"{path}{sep}notice={notice}&notice_v={safe_variant}"
+    )
     handler.end_headers()
 
 
-def notice_from_query(handler):
+def notice_payload_from_query(handler):
+    """Return (message, variant) from flash query params."""
     parsed = urllib.parse.urlparse(handler.path)
     params = urllib.parse.parse_qs(parsed.query)
     values = params.get("notice", [])
     if not values:
-        return ""
-    return urllib.parse.unquote(values[0])
+        return "", "info"
+    variant = (params.get("notice_v") or ["info"])[0]
+    if variant not in ("success", "error", "info", "warn"):
+        variant = "info"
+    return urllib.parse.unquote(values[0]), variant
+
+
+def notice_from_query(handler):
+    return notice_payload_from_query(handler)[0]

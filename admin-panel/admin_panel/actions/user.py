@@ -1,4 +1,3 @@
-from admin_panel.components.layout import page
 from admin_panel.core.client_ops import ensure_client, run_client_action
 from admin_panel.core.i18n import t, tf
 from admin_panel.core.shell import safe_name, tail_message
@@ -6,7 +5,6 @@ from admin_panel.core.statuses import UserStatus
 from admin_panel.core.wireguard import find_client_status
 from admin_panel.db.connection import panel_db
 from admin_panel.db.panel_queries import configs_for_user_id
-from admin_panel.views import users
 
 
 def _fetch_users():
@@ -205,8 +203,8 @@ def _change_password(username, new_password):
     return tf("msg.password_changed", user=username)
 
 
-def _users_page(msg):
-    return page(t("nav.users"), users.body(_fetch_users(), msg), "users")
+def _flash(handler, msg, variant="info"):
+    handler.flash("/users", msg, variant=variant)
 
 
 def handle(handler, data):
@@ -217,7 +215,7 @@ def handle(handler, data):
     client = safe_name(data.get("client", ""))
 
     if not username:
-        handler.send_html(_users_page(t("msg.username_required")))
+        _flash(handler, t("msg.username_required"), "error")
         return
 
     try:
@@ -228,7 +226,7 @@ def handle(handler, data):
         row = None
 
     if not row:
-        handler.send_html(_users_page(t("msg.user_not_found")))
+        _flash(handler, t("msg.user_not_found"), "error")
         return
 
     status = row["status"]
@@ -238,22 +236,22 @@ def handle(handler, data):
 
     if action == "assign-config":
         if status != UserStatus.APPROVED:
-            handler.send_html(_users_page(t("msg.only_approved_assign_config")))
+            _flash(handler, t("msg.only_approved_assign_config"), "error")
             return
         if not client:
-            handler.send_html(_users_page(t("msg.client_required_for_assign")))
+            _flash(handler, t("msg.client_required_for_assign"), "error")
             return
         other = user_configs.username_for_client(client)
         if other and other != username:
-            handler.send_html(
-                _users_page(
-                    tf("msg.client_already_assigned", client=client, user=other)
-                )
+            _flash(
+                handler,
+                tf("msg.client_already_assigned", client=client, user=other),
+                "error",
             )
             return
         ok, err = user_configs.assign_config(user_id, client)
         if not ok:
-            handler.send_html(_users_page(t("msg.assign_config_failed")))
+            _flash(handler, t("msg.assign_config_failed"), "error")
             return
         try:
             con = panel_db()
@@ -264,18 +262,14 @@ def handle(handler, data):
             con.commit()
             con.close()
         except Exception as exc:
-            handler.send_html(
-                _users_page(tf("msg.user_record_sync_error", err=exc))
-            )
+            _flash(handler, tf("msg.user_record_sync_error", err=exc), "error")
             return
-        handler.send_html(
-            _users_page(tf("msg.config_assigned", client=client, user=username))
-        )
+        _flash(handler, tf("msg.config_assigned", client=client, user=username), "success")
         return
 
     if action == "unassign-config":
         if not client:
-            handler.send_html(_users_page(t("msg.client_name_required")))
+            _flash(handler, t("msg.client_name_required"), "error")
             return
         user_configs.unassign_config(user_id, client)
         try:
@@ -288,13 +282,9 @@ def handle(handler, data):
             con.commit()
             con.close()
         except Exception as exc:
-            handler.send_html(
-                _users_page(tf("msg.user_record_sync_error", err=exc))
-            )
+            _flash(handler, tf("msg.user_record_sync_error", err=exc), "error")
             return
-        handler.send_html(
-            _users_page(tf("msg.config_unassigned", client=client, user=username))
-        )
+        _flash(handler, tf("msg.config_unassigned", client=client, user=username), "success")
         return
 
     if action == "approve":
@@ -302,56 +292,72 @@ def handle(handler, data):
             if not client:
                 client = row["client_name"]
             if not client:
-                handler.send_html(_users_page(t("msg.client_required_for_approve")))
+                _flash(handler, t("msg.client_required_for_approve"), "error")
                 return
             out = _approve_user(username, client)
         elif status == UserStatus.DISABLED and not has_configs:
             if not client:
-                handler.send_html(_users_page(t("msg.client_required_for_assign")))
+                _flash(handler, t("msg.client_required_for_assign"), "error")
                 return
             out = _approve_user(username, client, reassigned=True)
         elif status == UserStatus.REJECTED:
             if not client:
                 client = row["client_name"]
             if not client:
-                handler.send_html(_users_page(t("msg.client_required_for_approve")))
+                _flash(handler, t("msg.client_required_for_approve"), "error")
                 return
             out = _approve_user(username, client)
         elif status == UserStatus.APPROVED:
-            handler.send_html(_users_page(t("msg.user_already_approved")))
+            _flash(handler, t("msg.user_already_approved"), "info")
             return
         elif status == UserStatus.DISABLED:
-            handler.send_html(_users_page(t("msg.use_enable_button")))
+            _flash(handler, t("msg.use_enable_button"), "info")
             return
         else:
-            handler.send_html(_users_page(t("msg.action_not_allowed")))
+            _flash(handler, t("msg.action_not_allowed"), "error")
             return
+        variant = "error" if _msg_failed(out) else "success"
+        _flash(handler, tail_message(out), variant)
+        return
 
-    elif action == "reject":
+    if action == "reject":
         if status != UserStatus.PENDING:
-            handler.send_html(_users_page(t("msg.only_pending_reject")))
+            _flash(handler, t("msg.only_pending_reject"), "error")
             return
         out = _reject_user(username)
+        _flash(handler, tail_message(out), "error" if _msg_failed(out) else "success")
+        return
 
-    elif action == "disable":
+    if action == "disable":
         if status != UserStatus.APPROVED:
-            handler.send_html(_users_page(t("msg.only_approved_disable")))
+            _flash(handler, t("msg.only_approved_disable"), "error")
             return
         out = _disable_user(username)
+        _flash(handler, tail_message(out), "error" if _msg_failed(out) else "success")
+        return
 
-    elif action == "enable":
+    if action == "enable":
         if status != UserStatus.DISABLED:
-            handler.send_html(_users_page(t("msg.only_disabled_enable")))
+            _flash(handler, t("msg.only_disabled_enable"), "error")
             return
         if not has_configs:
-            handler.send_html(_users_page(t("msg.assign_client_first")))
+            _flash(handler, t("msg.assign_client_first"), "error")
             return
         out = _enable_user(username)
+        _flash(handler, tail_message(out), "error" if _msg_failed(out) else "success")
+        return
 
-    elif action == "change-password":
+    if action == "change-password":
         out = _change_password(username, data.get("new_password", ""))
+        _flash(handler, tail_message(out), "error" if _msg_failed(out) else "success")
+        return
 
-    else:
-        out = t("msg.unknown_action")
+    _flash(handler, t("msg.unknown_action"), "error")
 
-    handler.send_html(_users_page(tail_message(out)))
+
+def _msg_failed(out):
+    lower = (out or "").lower()
+    return any(
+        x in lower
+        for x in ("error", "fail", "failed", "not found", "invalid", "required", "wrong")
+    )

@@ -9,18 +9,18 @@ def handle_change_password(handler, data):
     confirm = data.get("confirm_password", "")
 
     if new != confirm:
-        handler.flash("/settings", t("msg.password_mismatch"))
+        handler.flash("/settings", t("msg.password_mismatch"), variant="error")
         return
 
     username = admin_username()
     if not verify_admin(username, old):
-        handler.flash("/settings", t("msg.old_password_wrong"))
+        handler.flash("/settings", t("msg.old_password_wrong"), variant="error")
         return
 
     try:
         set_admin_password(username, new)
     except ValueError as e:
-        handler.flash("/settings", str(e))
+        handler.flash("/settings", str(e), variant="error")
         return
 
-    handler.flash("/settings", t("msg.admin_password_changed"))
+    handler.flash("/settings", t("msg.admin_password_changed"), variant="success")
