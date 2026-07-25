@@ -140,6 +140,24 @@ local_checks_entry() {
   log "Tunnel peer + transfer:"
   wg show wg-tunnel 2>/dev/null || warn "wg-tunnel down"
   echo
+
+  # Detect one-way tunnel: entry sends handshake bytes, exit never answers.
+  local rx tx
+  rx="$(wg show wg-tunnel transfer 2>/dev/null | awk 'NF>=3 {r+=$2} END{print r+0}')"
+  tx="$(wg show wg-tunnel transfer 2>/dev/null | awk 'NF>=3 {t+=$3} END{print t+0}')"
+  if [[ "${tx:-0}" -gt 0 && "${rx:-0}" -eq 0 ]]; then
+    warn "ONE-WAY TUNNEL: sent ${tx} B, received 0 B (underlay may still ping)."
+    warn "WireGuard UDP replies are not coming back. Fix in this order:"
+    warn "  1) On NEW exit: sudo cat /etc/wireguard/tunnel-server.pub"
+    warn "     must match entry peer PublicKey in: sudo wg show wg-tunnel"
+    warn "  2) On NEW exit: sudo wg-ops add-peer \"\$(ssh ENTRY cat /etc/wireguard/tunnel-entry.pub)\" ENTRY_IP"
+    warn "     Exit must list that peer: sudo wg show wg-tunnel"
+    warn "  3) Exit cloud firewall: allow UDP ${WG_EXIT_TUNNEL_PORT:-51821} from entry IP"
+    warn "  4) Entry cloud firewall: allow UDP ${WG_TUNNEL_LISTEN_PORT:-51822} (return path)"
+  elif ! tunnel_handshake_recent 180 2>/dev/null; then
+    warn "No recent tunnel handshake — run: sudo wg-ops diagnose --role entry"
+  fi
+
   if [[ -n "${WG_EXIT_IP:-}" ]]; then
     log "Ping exit ${WG_EXIT_IP}:"
     ping -c 5 -W 2 "${WG_EXIT_IP}" 2>/dev/null || warn "exit ping failed"

@@ -277,6 +277,14 @@ diag_entry() {
     status HEALTHY "Tunnel handshake to exit ≤180s"
   else
     status FAILED "Tunnel handshake stale/missing — check exit peer + UDP ${WG_EXIT_TUNNEL_PORT:-51821}"
+    local rx tx
+    rx="$(wg show wg-tunnel transfer 2>/dev/null | awk 'NF>=3 {r+=$2} END{print r+0}')"
+    tx="$(wg show wg-tunnel transfer 2>/dev/null | awk 'NF>=3 {t+=$3} END{print t+0}')"
+    if [[ "${tx:-0}" -gt 0 && "${rx:-0}" -eq 0 ]]; then
+      status FAILED "ONE-WAY tunnel (tx=${tx} rx=0): exit not answering WireGuard UDP"
+      status INFO "On exit run: wg-ops add-peer \$(cat entry:/etc/wireguard/tunnel-entry.pub) ENTRY_IP"
+      status INFO "Open UDP ${WG_EXIT_TUNNEL_PORT:-51821} on exit and UDP ${WG_TUNNEL_LISTEN_PORT:-51822} on entry"
+    fi
   fi
   if ping -c 2 -W 2 10.200.0.1 >/dev/null 2>&1; then
     status HEALTHY "Ping exit tunnel IP 10.200.0.1"
