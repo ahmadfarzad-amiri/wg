@@ -95,6 +95,24 @@ assert_ok "keeps Address" \
 rm -rf "$_tmpdir"
 
 echo
+echo "=== rp_filter systemd hooks ==="
+_tmpdir="$(mktemp -d)"
+# Render drop-in content the same way as wg_install_rp_filter_systemd_hooks (no root needed).
+cat > "$_tmpdir/rpfilter.conf" <<'EOF'
+[Service]
+ExecStartPost=-/bin/sh -c 'echo 0 > /proc/sys/net/ipv4/conf/wg-clients/rp_filter 2>/dev/null || true'
+ExecStartPost=-/bin/sh -c 'echo 0 > /proc/sys/net/ipv4/conf/wg-tunnel/rp_filter 2>/dev/null || true'
+EOF
+assert_ok "rpfilter drop-in ignores failures (- prefix)" \
+  grep -q 'ExecStartPost=-/bin/sh' "$_tmpdir/rpfilter.conf"
+assert_fail "rpfilter drop-in no brittle && -e" \
+  grep -qE '\[ -e .*rp_filter \].*&&' "$_tmpdir/rpfilter.conf"
+assert_ok "common.sh installs tolerant ExecStartPost" \
+  grep -q "ExecStartPost=-/bin/sh -c 'echo 0 > /proc/sys/net/ipv4/conf/wg-clients/rp_filter" \
+    "$ROOT/deploy/lib/common.sh"
+rm -rf "$_tmpdir"
+
+echo
 echo "=== fresh-install guards ==="
 assert_ok "require_fresh_install defined" type require_fresh_install
 assert_fail "no upgrade mode in entry installer" \

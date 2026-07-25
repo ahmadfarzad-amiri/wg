@@ -211,6 +211,20 @@ Or: `sudo wg-ops restart` (clears orphans automatically on current `wg-ops`).
 
 `Address = 10.10.10.1/24` already installs the connected route. A clients `PostUp` that repeats `ip route replace 10.10.10.0/24 dev wg-clients` often fails and leaves an orphan. Remove those hooks (or run `sudo wg-ops fix-routing --role entry` / `sudo wg-ops restart` on v1.0.4+), then start again.
 
+### Unit fails after wg-quick succeeds (rp_filter drop-in)
+
+If the journal ends at `ip link set mtu … up` with no PostUp error, an old `ExecStartPost` in `/etc/systemd/system/wg-quick@*.service.d/rpfilter.conf` may be exiting 1 when the peer iface is not up yet. Fix:
+
+```bash
+sudo tee /etc/systemd/system/wg-quick@wg-clients.service.d/rpfilter.conf /etc/systemd/system/wg-quick@wg-tunnel.service.d/rpfilter.conf >/dev/null <<'EOF'
+[Service]
+ExecStartPost=-/bin/sh -c 'echo 0 > /proc/sys/net/ipv4/conf/wg-clients/rp_filter 2>/dev/null || true'
+ExecStartPost=-/bin/sh -c 'echo 0 > /proc/sys/net/ipv4/conf/wg-tunnel/rp_filter 2>/dev/null || true'
+EOF
+sudo systemctl daemon-reload
+sudo wg-ops restart
+```
+
 ---
 
 ## Troubleshooting: connected but no internet

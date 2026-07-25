@@ -1033,14 +1033,14 @@ wg_set_wg_rp_filter_now() {
 
 wg_install_rp_filter_systemd_hooks() {
   # ExecStartPost runs as root outside wg-quick PostUp (works when PostUp /proc writes fail).
-  # Set rp_filter on both wg interfaces from each unit — no shell loop (systemd expands $i).
+  # Use "-" so a missing peer iface (start order) never fails the unit; ignore write errors.
   local dropin dir
   for dir in wg-clients wg-tunnel; do
     mkdir -p "/etc/systemd/system/wg-quick@${dir}.service.d"
     cat > "/etc/systemd/system/wg-quick@${dir}.service.d/rpfilter.conf" <<'EOF'
 [Service]
-ExecStartPost=/bin/sh -c '[ -e /proc/sys/net/ipv4/conf/wg-clients/rp_filter ] && echo 0 > /proc/sys/net/ipv4/conf/wg-clients/rp_filter'
-ExecStartPost=/bin/sh -c '[ -e /proc/sys/net/ipv4/conf/wg-tunnel/rp_filter ] && echo 0 > /proc/sys/net/ipv4/conf/wg-tunnel/rp_filter'
+ExecStartPost=-/bin/sh -c 'echo 0 > /proc/sys/net/ipv4/conf/wg-clients/rp_filter 2>/dev/null || true'
+ExecStartPost=-/bin/sh -c 'echo 0 > /proc/sys/net/ipv4/conf/wg-tunnel/rp_filter 2>/dev/null || true'
 EOF
   done
   systemctl daemon-reload 2>/dev/null || true
