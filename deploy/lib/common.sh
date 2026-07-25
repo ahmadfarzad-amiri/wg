@@ -11,7 +11,7 @@ fi
 GITHUB_OWNER="${GITHUB_OWNER:-ahmadfarzad-amiri}"
 GITHUB_REPO_NAME="${GITHUB_REPO_NAME:-wg}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
-GITHUB_CDN_REF="${GITHUB_CDN_REF:-v1.0.17}"
+GITHUB_CDN_REF="${GITHUB_CDN_REF:-v1.0.18}"
 GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/${GITHUB_OWNER}/${GITHUB_REPO_NAME}.git}"
 # jsDelivr CDN mirrors GitHub and works where raw.githubusercontent.com is blocked (e.g. Iran).
 # Pin GITHUB_CDN_REF to a semver tag (not @latest) — jsDelivr @latest purge is often throttled.
@@ -412,7 +412,7 @@ fetch_deploy_helper_scripts() {
 source_deploy_lib() {
   local script_ref="${1:-}"
   # jsDelivr works where raw.githubusercontent.com is blocked (Iran, etc.)
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.17}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18}"
   if [[ -n "$script_ref" && -f "$(dirname "$script_ref")/lib/common.sh" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "$script_ref")" && pwd)"
     # shellcheck source=lib/common.sh
@@ -827,6 +827,30 @@ EOF
   sysctl -p /etc/sysctl.d/99-wg-forward.conf >/dev/null 2>&1 || true
 }
 
+# Handshake packets hit INPUT on the exit host (not only FORWARD).
+wg_ensure_exit_tunnel_udp_input() {
+  local port="${WG_TUNNEL_PORT:-51821}"
+  local entry_ip="${1:-${WG_ENTRY_PUBLIC_IP:-}}"
+  wg_is_port "$port" || return 0
+
+  if ! iptables -C INPUT -p udp --dport "$port" -j ACCEPT 2>/dev/null; then
+    iptables -I INPUT 1 -p udp --dport "$port" -j ACCEPT
+    log "iptables INPUT ACCEPT udp/${port} (WireGuard tunnel)"
+  fi
+
+  if command -v ufw >/dev/null 2>&1; then
+    ufw allow "${port}/udp" comment 'wg-tunnel exit' 2>/dev/null \
+      || ufw allow "${port}/udp" || true
+    if [[ -n "$entry_ip" ]]; then
+      ufw allow from "$entry_ip" to any port "$port" proto udp comment 'wg-tunnel entry' 2>/dev/null || true
+    fi
+  fi
+}
+
+wg_strip_wg_key() {
+  printf '%s' "${1:-}" | tr -d '[:space:]'
+}
+
 wg_server_mtu() {
   # Server WG interface MTU (payload size on wg-clients / wg-tunnel).
   # Default 1420 = 1500 underlay − ~80 bytes headroom (WG ~60 + common VPS overhead).
@@ -1182,6 +1206,7 @@ apply_exit_vpn_routing_fix() {
   wg_iptables_delete_all FORWARD -o "$tunnel_if" -j ACCEPT
   iptables -A FORWARD -i "$tunnel_if" -j ACCEPT
   iptables -A FORWARD -o "$tunnel_if" -j ACCEPT
+  wg_ensure_exit_tunnel_udp_input
   wg_exit_tunnel_routes_up "$client_cidr" "$tunnel_peer_ip" "$tunnel_if" || true
   wg_apply_vpn_performance
   ensure_wg_conf_permissions

@@ -10,7 +10,7 @@ set -euo pipefail
 
 OPS_NAME="wg-ops"
 OPS_DIR="${WG_OPS_DIR:-/opt/wg-ops}"
-RAW_BASE="${WG_RAW_BASE:-${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.17}}"
+RAW_BASE="${WG_RAW_BASE:-${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18}}"
 BIN_PATH="${WG_OPS_BIN:-/usr/local/bin/wg-ops}"
 
 log() { printf '[%s] %s\n' "$OPS_NAME" "$*"; }
@@ -41,6 +41,7 @@ HELPER_SCRIPTS=(
   change-entry-server.sh
   change-exit-server.sh
   check-sync-panel-styles.sh
+  check-tunnel-handshake.sh
   diagnose-vpn.sh
   fix-client-endpoint.sh
   fix-panel-services.sh
@@ -398,7 +399,7 @@ Role:    $(detect_role)
 
 CLI commands:
   menu, list-menu, pull, update, update-panels, install-entry, install-exit,
-  uninstall, uninstall-xray, test, diagnose, tune, validate, fix-routing,
+  uninstall, uninstall-xray, test, diagnose, check-tunnel, tune, validate, fix-routing,
   measure, backup, open-ports, start, stop, restart, status, logs,
   change-entry, change-exit, add-peer, set-admin-pass, show-admin,
   install-xray, styles, fix-panels, run <script> [...]
@@ -419,7 +420,7 @@ Usage:
 
 CDN / source:
   Default script base: $RAW_BASE
-  Override: WG_RAW_BASE=https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.17
+  Override: WG_RAW_BASE=https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18
   Panel git clone still uses branch main (WG_GITHUB_BRANCH).
 
 Role detection (automatic):
@@ -433,7 +434,7 @@ Install / update / delete:
   install-entry, install-exit, install-xray
   uninstall, uninstall-xray
 
-Ops: test, diagnose, tune, validate, fix-routing, measure, backup,
+  Ops: test, diagnose, check-tunnel, tune, validate, fix-routing, measure, backup,
      open-ports, start, stop, restart, status, logs,
      change-entry, change-exit, add-peer, set-admin-pass, show-admin
 
@@ -445,6 +446,7 @@ script_for_command() {
   case "$1" in
     test) echo test-connectivity.sh ;;
     diagnose|diag) echo diagnose-vpn.sh ;;
+    check-tunnel|tunnel) echo check-tunnel-handshake.sh ;;
     tune) echo tune-vpn-performance.sh ;;
     validate|check) echo validate-config.sh ;;
     fix-routing|fix) echo fix-vpn-routing.sh ;;
@@ -785,6 +787,7 @@ build_menu() {
       menu_section "VPN ops [entry]"
       menu_add test "Test connectivity"
       menu_add diagnose "Diagnose VPN"
+      menu_add check-tunnel "Check tunnel handshake (UDP)"
       menu_add validate "Validate config"
       menu_add fix-routing "Fix routing"
       menu_add tune "Tune performance"
@@ -817,6 +820,7 @@ build_menu() {
       menu_section "VPN ops [exit]"
       menu_add test "Test connectivity"
       menu_add diagnose "Diagnose VPN"
+      menu_add check-tunnel "Check tunnel handshake (UDP)"
       menu_add validate "Validate config"
       menu_add fix-routing "Fix routing"
       menu_add tune "Tune performance"
@@ -843,6 +847,7 @@ build_menu() {
       menu_section "VPN ops [both]"
       menu_add test "Test connectivity"
       menu_add diagnose "Diagnose VPN"
+      menu_add check-tunnel "Check tunnel handshake (UDP)"
       menu_add validate "Validate config"
       menu_add fix-routing "Fix routing"
       menu_add tune "Tune performance"
@@ -966,6 +971,11 @@ run_menu_action() {
       require_root; ensure_ops_ready; require_role installed
       role="$(auto_script_role auto)"
       invoke_script diagnose-vpn.sh --role "$role"
+      ;;
+    check-tunnel|tunnel)
+      require_root; ensure_ops_ready; require_role installed
+      role="$(auto_script_role auto)"
+      invoke_script check-tunnel-handshake.sh --role "$role"
       ;;
     validate)
       require_root; ensure_ops_ready; require_role installed
