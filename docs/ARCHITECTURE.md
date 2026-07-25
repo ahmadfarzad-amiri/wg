@@ -83,7 +83,7 @@ Both panels run on the **entry** server and share one SQLite database.
 | Entry endpoint | `/etc/wireguard/wg-endpoint` | `IP:51820` written into every client config |
 | Audit log | `/etc/wireguard/audit.db` | Per-action log with actor, IP, and timestamp |
 
-Environment variables: `/etc/wireguard/entry-server.env` — see `/opt/wg-ops/config.env.example` or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.10/deploy/config.env.example
+Environment variables: `/etc/wireguard/entry-server.env` — see `/opt/wg-ops/config.env.example` or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.11/deploy/config.env.example
 
 ---
 
