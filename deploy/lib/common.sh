@@ -430,31 +430,30 @@ source_deploy_lib() {
 _git_clone_with_fallback() {
   local repo_url="$1" branch="$2" dest="$3"
   # Keep each attempt short — hung mirrors used to burn minutes during install.
-  local clone_timeout="${WG_GIT_CLONE_TIMEOUT:-15}"
+  local clone_timeout="${WG_GIT_CLONE_TIMEOUT:-5}"
 
   _git_clone_once() {
     local url="$1"
     if command -v timeout >/dev/null 2>&1; then
       GIT_TERMINAL_PROMPT=0 timeout "$clone_timeout" \
         git -c http.version=HTTP/1.1 \
-        -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=8 \
+        -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=3 \
         clone --depth 1 --branch "$branch" --single-branch "$url" "$dest" 2>/dev/null
     else
       GIT_TERMINAL_PROMPT=0 \
         git -c http.version=HTTP/1.1 \
-        -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=8 \
+        -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=3 \
         clone --depth 1 --branch "$branch" --single-branch "$url" "$dest" 2>/dev/null
     fi
   }
 
-  # Order: direct → gh-proxy (usually works when GitHub is blocked) → one backup.
+  # Order: direct → gh-proxy (when GitHub is blocked).
   local gh_path
   gh_path="$(echo "$repo_url" | sed 's|.*github\.com/||')"
   local url
   for url in \
     "$repo_url" \
-    "https://gh-proxy.com/https://github.com/${gh_path}" \
-    "https://ghfast.top/https://github.com/${gh_path}"; do
+    "https://gh-proxy.com/https://github.com/${gh_path}"; do
     if [[ "$url" == "$repo_url" ]]; then
       log "Trying direct clone (timeout ${clone_timeout}s)"
     else
