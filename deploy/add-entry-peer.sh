@@ -85,6 +85,16 @@ EOF
 }
 
 persist_entry_tunnel_peer "$ENTRY_PUB"
+
+# Replace any stale live peers so only this entry is configured.
+while read -r p; do
+  [[ -n "$p" ]] || continue
+  if [[ "$p" != "$ENTRY_PUB" ]]; then
+    log "Removing stale tunnel peer ${p:0:20}..."
+    wg set "$TUNNEL_IF" peer "$p" remove 2>/dev/null || true
+  fi
+done < <(wg show "$TUNNEL_IF" peers 2>/dev/null || true)
+
 wg set "$TUNNEL_IF" peer "$ENTRY_PUB" allowed-ips "${CLIENT_CIDR},${TUNNEL_PEER_IP}"
 wg_exit_tunnel_routes_up "$CLIENT_CIDR" "$TUNNEL_PEER_IP" "$TUNNEL_IF"
 printf '%s\n' "$ENTRY_PUB" > /etc/wireguard/tunnel-entry.pub
@@ -101,3 +111,14 @@ if [[ -f /etc/wireguard/exit-server.env ]]; then
 fi
 apply_exit_vpn_routing_fix
 wg show "$TUNNEL_IF"
+
+cat <<EOF
+
+=== Entry peer linked on exit ===
+Next: on the ENTRY server, confirm handshake:
+  sudo wg show wg-tunnel
+  ping -c 3 10.200.0.1
+
+If still no handshake, check cloud firewall: UDP ${WG_TUNNEL_PORT:-51821} from entry IP.
+
+EOF

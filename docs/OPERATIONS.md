@@ -144,11 +144,40 @@ On the **new exit**:
 sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
 ```
 
+Get `ENTRY_TUNNEL_PUBKEY` from entry: `sudo cat /etc/wireguard/tunnel-entry.pub`.
+
 On the **old exit** (if retiring it): remove the stale peer from `/etc/wireguard/wg-tunnel.conf`, then:
 
 ```bash
-sudo wg syncconf wg-tunnel /etc/wireguard/wg-tunnel.conf
+sudo wg syncconf wg-tunnel <(wg-quick strip /etc/wireguard/wg-tunnel.conf)
 ```
+
+### No handshake after changing exit
+
+Handshake needs **both** sides. `change-exit` only updates the entry; `add-peer` must run on the **new** exit.
+
+```bash
+# Entry — peer must show new exit IP + recent handshake
+sudo wg show wg-tunnel
+sudo grep -E '^(PublicKey|Endpoint)' /etc/wireguard/wg-tunnel.conf
+
+# New exit — must list entry tunnel pubkey as peer
+sudo wg show wg-tunnel
+sudo cat /etc/wireguard/tunnel-entry.pub   # compare with entry's tunnel-entry.pub
+
+# From entry — force traffic
+ping -c 3 10.200.0.1
+```
+
+Also verify cloud firewall: exit UDP `51821` from entry IP; entry UDP `51822` open for return path.
+
+If entry config looks right but handshake stays `(none)`, re-run on new exit:
+
+```bash
+sudo wg-ops add-peer "$(cat /path/to/entry-tunnel-entry.pub)" ENTRY_IP
+```
+
+Then on entry: `sudo wg-ops fix-routing --role entry` and `sudo wg show wg-tunnel`.
 
 ---
 
