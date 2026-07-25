@@ -144,11 +144,27 @@ write_env_file /etc/wireguard/exit-server.env \
   WG_ENABLE_BBR "${WG_ENABLE_BBR:-1}" \
   WG_ENABLE_MSS_CLAMP "${WG_ENABLE_MSS_CLAMP:-1}"
 
+ADD_PEER="no"
+ENTRY_TUNNEL_PUB="${WG_ENTRY_TUNNEL_PUB:-}"
+if [[ -n "$ENTRY_TUNNEL_PUB" ]]; then
+  bash "$SCRIPT_DIR/add-entry-peer.sh" "$ENTRY_TUNNEL_PUB" "${WG_ENTRY_PUBLIC_IP:-}"
+elif should_prompt; then
+  prompt_yes_no ADD_PEER "Entry tunnel public key already available?" "N"
+  if [[ "$ADD_PEER" == "yes" ]]; then
+    prompt ENTRY_TUNNEL_PUB "Entry server tunnel public key" ""
+    bash "$SCRIPT_DIR/add-entry-peer.sh" "$ENTRY_TUNNEL_PUB"
+  fi
+fi
+
+bash "$SCRIPT_DIR/test-connectivity.sh" --role exit || true
+
+# Print summary last so the public key is not scrolled away by connectivity checks.
 cat <<EOF
 
 === EXIT server ready ===
 Tunnel endpoint     : ${PUBLIC_IP}:${TUNNEL_PORT}
 Tunnel public key   : ${TUNNEL_PUB}
+  (saved: /etc/wireguard/tunnel-server.pub)
 Client subnet       : ${CLIENT_CIDR} (from entry server)
 
 Operator CLI:
@@ -163,18 +179,11 @@ After entry install, on THIS server:
 
 Cloud firewall: allow UDP ${TUNNEL_PORT} (ideally only from entry server IP).
 
+Copy the tunnel public key above — you need it for install-entry (WG_EXIT_TUNNEL_PUB).
+
 EOF
 
-ADD_PEER="no"
-ENTRY_TUNNEL_PUB="${WG_ENTRY_TUNNEL_PUB:-}"
-if [[ -n "$ENTRY_TUNNEL_PUB" ]]; then
-  bash "$SCRIPT_DIR/add-entry-peer.sh" "$ENTRY_TUNNEL_PUB" "${WG_ENTRY_PUBLIC_IP:-}"
-elif should_prompt; then
-  prompt_yes_no ADD_PEER "Entry tunnel public key already available?" "N"
-  if [[ "$ADD_PEER" == "yes" ]]; then
-    prompt ENTRY_TUNNEL_PUB "Entry server tunnel public key" ""
-    bash "$SCRIPT_DIR/add-entry-peer.sh" "$ENTRY_TUNNEL_PUB"
-  fi
+# Pause when run as a standalone CLI install (menu path pauses itself).
+if should_prompt && [[ "${WG_OPS_MENU:-0}" != "1" ]]; then
+  read -r -p "Press Enter after you have copied the tunnel public key..." _
 fi
-
-bash "$SCRIPT_DIR/test-connectivity.sh" --role exit || true
