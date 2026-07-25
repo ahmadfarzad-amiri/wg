@@ -46,6 +46,9 @@ curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/wg-ops
 sudo wg-ops pull
 ```
 
+`@latest` is the highest **semver Git tag** (for example `v1.0.0`), served by jsDelivr.  
+`wg-ops pull` downloads the full script set into `/opt/wg-ops` from that same CDN base.
+
 Then either:
 
 - Interactive: `sudo wg-ops` (menu shows only options for this server’s role), or  

@@ -20,6 +20,10 @@ sudo WG_ENTRY_PUBLIC_IP=... WG_EXIT_PUBLIC_IP=... WG_EXIT_TUNNEL_PUB='...' \
 
 See [../docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) to install, [../docs/OPERATIONS.md](../docs/OPERATIONS.md) for day-2 ops, and [../docs/USER_GUIDE.md](../docs/USER_GUIDE.md) for end-user instructions.
 
+```bash
+sudo wg-ops update          # CDN @latest scripts + panel refresh
+```
+
 ---
 
 ## Run locally (development)

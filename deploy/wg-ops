@@ -17,6 +17,13 @@ log() { printf '[%s] %s\n' "$OPS_NAME" "$*"; }
 warn() { printf '[%s] WARN: %s\n' "$OPS_NAME" "$*" >&2; }
 die() { printf '[%s] ERROR: %s\n' "$OPS_NAME" "$*" >&2; exit 1; }
 
+# Best-effort: report which semver jsDelivr @latest resolved to (empty if not CDN).
+cdn_resolved_version() {
+  local hdr=""
+  hdr="$(curl -fsSI "$RAW_BASE/deploy/wg-ops" 2>/dev/null | tr -d '\r' || true)"
+  printf '%s\n' "$hdr" | awk -F': ' 'tolower($1)=="x-jsd-version"{print $2; exit}'
+}
+
 require_root() {
   [[ "$(id -u)" -eq 0 ]] || die "Run as root: sudo $OPS_NAME $*"
 }
@@ -253,8 +260,14 @@ source_ops_common() {
 
 cmd_pull() {
   require_root pull
-  local rel
-  log "Fetching scripts into $OPS_DIR (base: $RAW_BASE)"
+  local rel ver=""
+  ver="$(cdn_resolved_version || true)"
+  if [[ -n "$ver" ]]; then
+    log "Fetching scripts into $OPS_DIR (CDN @latest → v${ver})"
+  else
+    log "Fetching scripts into $OPS_DIR (base: $RAW_BASE)"
+  fi
+  log "  $RAW_BASE"
   mkdir -p "$OPS_DIR/lib"
   for rel in "${CORE_FILES[@]}" "${HELPER_SCRIPTS[@]}"; do
     log "  $rel"
@@ -348,8 +361,14 @@ Usage:
   sudo $OPS_NAME                 Interactive menu (role-aware)
   sudo $OPS_NAME menu
   sudo $OPS_NAME list-menu       Print menu for current role (no prompts)
+  sudo $OPS_NAME pull            Refresh scripts from CDN (@latest)
   sudo $OPS_NAME update          Pull scripts + update panels/tools
   sudo $OPS_NAME <command> ...
+
+CDN / source:
+  Default script base: $RAW_BASE
+  Override: WG_RAW_BASE=https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest
+  Panel git clone still uses branch main (WG_GITHUB_BRANCH).
 
 Role detection (automatic):
   none   — clean server (install options)

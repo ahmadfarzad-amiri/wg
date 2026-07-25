@@ -4,8 +4,8 @@
 
 | Guide | Audience | Start here if you want to… |
 |-------|----------|----------------------------|
-| **[Deployment](DEPLOYMENT.md)** | Operators | Install entry + exit for the first time |
-| **[Operations](OPERATIONS.md)** | Operators | Backup, update, change servers, troubleshoot |
+| **[Deployment](DEPLOYMENT.md)** | Operators | Install entry + exit for the first time (`@latest` CDN) |
+| **[Operations](OPERATIONS.md)** | Operators | `pull` / `update`, backup, change servers, release/purge |
 | **[Architecture](ARCHITECTURE.md)** | Everyone | Understand the two-hop design |
 | **[Admin guide](ADMIN_GUIDE.md)** | Admins | Use the admin panel |
 | **[User guide](USER_GUIDE.md)** | VPN users | Use the client panel |

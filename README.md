@@ -22,6 +22,8 @@ curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/wg-ops
 sudo wg-ops pull
 ```
 
+`@latest` tracks the newest semver release tag on this repo (jsDelivr CDN).
+
 1. **Exit first:** `sudo WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP wg-ops install-exit` — save the tunnel public key  
 2. **Entry second:** set `WG_ENTRY_PUBLIC_IP`, `WG_EXIT_PUBLIC_IP`, `WG_EXIT_TUNNEL_PUB`, `WG_ADMIN_PASS`, then `wg-ops install-entry` — save the entry tunnel public key  
 3. **Link on exit:** `sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'`
@@ -72,13 +74,15 @@ Or use `sudo wg-ops` (role-aware menu) on each host.
 
 ```bash
 sudo wg-ops                 # interactive menu
-sudo wg-ops update          # scripts + panels + tools
+sudo wg-ops pull            # refresh scripts from CDN @latest
+sudo wg-ops update          # pull + panels/tools
 sudo wg-ops test --role entry
 sudo wg-ops uninstall       # full remove on this host
 sudo wg-ops status
 ```
 
 > WireGuard’s native tool remains `wg` (e.g. `sudo wg show`).
+> Day-2 update details: [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ### Change entry or exit server
 
