@@ -176,6 +176,7 @@ unit_state() {
 start_wg_quick_unit() {
   local ifname="$1"
   local unit="wg-quick@${ifname}"
+  local rc=0
   if systemctl is-active --quiet "$unit" 2>/dev/null; then
     return 0
   fi
@@ -185,7 +186,23 @@ start_wg_quick_unit() {
     ip link del "$ifname" 2>/dev/null || true
   fi
   systemctl reset-failed "$unit" 2>/dev/null || true
-  systemctl start "$unit"
+  if ! systemctl start "$unit"; then
+    rc=$?
+    # PostUp failures often leave the iface up while the unit is failed.
+    if iface_is_up "$ifname"; then
+      warn "${ifname}: unit failed but interface is up — tearing down orphan"
+      wg-quick down "$ifname" 2>/dev/null || true
+      ip link del "$ifname" 2>/dev/null || true
+    fi
+    warn "${ifname}: start failed — last journal lines:"
+    journalctl -u "$unit" -n 20 --no-pager >&2 || true
+    if [[ -f "/etc/wireguard/${ifname}.conf" ]]; then
+      warn "${ifname} hooks:"
+      grep -E '^(Address|PreUp|PostUp|PreDown|PostDown)[[:space:]]*=' "/etc/wireguard/${ifname}.conf" >&2 || true
+    fi
+    return "$rc"
+  fi
+  return 0
 }
 
 unit_enabled() {
@@ -571,8 +588,15 @@ svc_start() {
   role="$(detect_role)"
   case "$role" in
     entry|both)
-      start_wg_quick_unit wg-clients || warn "Failed to start wg-clients"
+      # Tunnel first: clients PostUp must not depend on a missing wg-tunnel.
+      if source_ops_common 2>/dev/null; then
+        ensure_entry_client_postup_in_conf \
+          /etc/wireguard/wg-clients.conf \
+          "${WG_IF:-wg-clients}" \
+          "${WG_CLIENT_CIDR:-10.10.10.0/24}" 2>/dev/null || true
+      fi
       start_wg_quick_unit wg-tunnel || warn "Failed to start wg-tunnel"
+      start_wg_quick_unit wg-clients || warn "Failed to start wg-clients"
       systemctl start wg-panel wg-admin-panel 2>/dev/null || true
       systemctl start wg-mss-clamp.service 2>/dev/null || true
       systemctl start xray 2>/dev/null || true
@@ -622,8 +646,15 @@ svc_restart() {
       ip link del wg-clients 2>/dev/null || true
       ip link del wg-tunnel 2>/dev/null || true
       systemctl reset-failed 'wg-quick@wg-clients' 'wg-quick@wg-tunnel' 2>/dev/null || true
-      start_wg_quick_unit wg-clients || warn "Failed to start wg-clients"
+      if source_ops_common 2>/dev/null; then
+        ensure_entry_client_postup_in_conf \
+          /etc/wireguard/wg-clients.conf \
+          "${WG_IF:-wg-clients}" \
+          "${WG_CLIENT_CIDR:-10.10.10.0/24}" 2>/dev/null || true
+      fi
+      # Tunnel before clients (policy routing / FORWARD live on tunnel).
       start_wg_quick_unit wg-tunnel || warn "Failed to start wg-tunnel"
+      start_wg_quick_unit wg-clients || warn "Failed to start wg-clients"
       systemctl restart wg-panel wg-admin-panel 2>/dev/null || true
       systemctl restart wg-mss-clamp.service 2>/dev/null || true
       systemctl restart xray 2>/dev/null || true
