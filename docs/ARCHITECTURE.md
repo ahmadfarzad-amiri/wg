@@ -8,6 +8,20 @@ How the two-hop WireGuard stack and web panels fit together.
 
 End-user devices connect only to the **entry** server. Traffic is then forwarded through an encrypted tunnel to the **exit** server, which performs NAT to the internet.
 
+```mermaid
+flowchart LR
+  subgraph client_hop [Client to entry]
+    C[Client device] -->|WireGuard UDP 51820| WC[wg-clients]
+  end
+  subgraph inter [Entry to exit]
+    WC -->|table 100| WT[wg-tunnel]
+    WT -->|WireGuard UDP 51821| XT[exit wg-tunnel]
+  end
+  subgraph egress [Exit NAT]
+    XT -->|MASQUERADE| WAN[Internet]
+  end
+```
+
 ```
 ┌──────────────┐   UDP 51820   ┌──────────────────────┐  tunnel 51821  ┌──────────────────┐
 │  User device │ ────────────► │  Entry VPS           │ ─────────────► │  Exit VPS        │ ──► internet
@@ -15,12 +29,21 @@ End-user devices connect only to the **entry** server. Traffic is then forwarded
 └──────────────┘               └──────────────────────┘                └──────────────────┘
 ```
 
+| Plane | Path | Notes |
+|-------|------|-------|
+| VPN user traffic | client → entry → exit → internet | Two WireGuard encryptions; NAT on exit only |
+| Management | SSH / HTTPS to entry (and SSH to exit) | Uses main routing table — not table 100 |
+| Control plane | Panels on entry | Not in the WG forward path |
+| Optional Xray | Client → entry :443/… | Separate from WG two-hop when enabled |
+
 | Server | Role | WireGuard interfaces | Who connects |
 |--------|------|----------------------|--------------|
 | Entry | Client endpoint + web panels | `wg-clients` (users), `wg-tunnel` (to exit) | All VPN users; admin UI |
 | Exit | Internet egress only | `wg-tunnel` (from entry) | Entry server only — **not** end users directly |
 
 Default client subnet: `10.10.10.0/24` (override with `WG_CLIENT_CIDR`).
+
+See [ASSESSMENT.md](ASSESSMENT.md) for packet-path detail and [FRESH_DEPLOYMENT.md](FRESH_DEPLOYMENT.md) for install steps.
 
 ---
 

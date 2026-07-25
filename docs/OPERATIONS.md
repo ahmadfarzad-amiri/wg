@@ -323,6 +323,24 @@ sudo WG_INSTALL_MODE=upgrade \
 
 Upgrade mode preserves existing WireGuard keys, `panel.db`, `audit.db`, client configs, and admin credentials.
 
+### Dataplane migration (existing servers)
+
+After pulling this release, migrate routing/firewall without rewriting keys:
+
+```bash
+# Dry-run first
+sudo bash deploy/migrate-vpn-stack.sh --role auto --dry-run
+
+# Apply (backs up under /etc/wireguard/backups/*-pre-migrate)
+sudo bash deploy/migrate-vpn-stack.sh --role entry   # on entry
+sudo bash deploy/migrate-vpn-stack.sh --role exit    # on exit
+
+sudo bash deploy/validate-config.sh --role runtime
+sudo bash deploy/diagnose-vpn.sh --role auto
+```
+
+Rollback: restore the `pre-migrate` backup directory over `/etc/wireguard`, then `fix-vpn-routing.sh`.
+
 ---
 
 ## Fix one-way traffic (TX up, no internet on client)
@@ -386,8 +404,11 @@ Main config file on the entry server: `/etc/wireguard/entry-server.env`
 | `WG_CLIENT_MTU` | `1380` | Fallback client config MTU |
 | `WG_CLIENT_MTU_TWOHOP` | `1380` | Twohop client MTU |
 | `WG_CLIENT_MTU_DIRECT` | `1420` | Diagnostic direct-mode client MTU |
-| `WG_SERVER_MTU` | `1420` | Server `wg-clients` / `wg-tunnel` MTU |
-| `WG_ENABLE_BBR` | `1` | Enable TCP BBR + large UDP buffers |
+| `WG_SERVER_MTU` | `1420` | Default server WG MTU |
+| `WG_CLIENTS_MTU` | `WG_SERVER_MTU` | Entry `wg-clients` MTU |
+| `WG_TUNNEL_MTU` | `WG_SERVER_MTU` | `wg-tunnel` MTU |
+| `WG_ENTRY_ANTILEAK` | `1` | DROP client→WAN on entry unless direct-mode |
+| `WG_ENABLE_BBR` | `1` | Enable TCP BBR (if available) + large max buffers |
 | `WG_ENABLE_MSS_CLAMP` | `1` | Persistent TCP MSS clamp (`wg-mss-clamp.service`) |
 
 Full list: `deploy/config.env.example`.

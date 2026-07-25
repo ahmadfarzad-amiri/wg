@@ -123,6 +123,12 @@ test_entry() {
   fi
   check "TCP MSS clamp rule" sh -c "iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu"
   check "TCP MSS clamp unit" sh -c "systemctl is-enabled wg-mss-clamp.service"
+  check "no broad clients FORWARD" sh -c '! iptables -C FORWARD -i wg-clients -j ACCEPT 2>/dev/null'
+  local def_if
+  def_if="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
+  if [[ -n "$def_if" && "${WG_ENTRY_ANTILEAK:-1}" != "0" ]]; then
+    check "anti-leak DROP client→WAN" sh -c "iptables -C FORWARD -i wg-clients -o ${def_if} -j DROP"
+  fi
   check "client panel health" curl -fsS "http://127.0.0.1:${WG_PANEL_PORT:-8088}/health"
   check "admin panel health" curl -fsS "http://127.0.0.1:${WG_ADMIN_PORT:-8090}/admin/health"
 }
