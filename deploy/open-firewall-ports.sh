@@ -7,8 +7,8 @@
 #   - spare ports if your provider only forwards a block
 #
 # Usage:
-#   sudo bash deploy/open-firewall-ports.sh --role entry
-#   sudo WG_UDP_PORT_RANGE=51820:51830 sudo bash deploy/open-firewall-ports.sh --role entry
+#   sudo wg-ops open-ports --role entry
+#   sudo WG_UDP_PORT_RANGE=51820:51830 sudo wg-ops open-ports --role entry
 set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then

@@ -2,8 +2,8 @@
 # Check client/admin panel UI files on the entry server and optionally sync from repo.
 #
 # Usage (on entry server):
-#   sudo bash deploy/check-sync-panel-styles.sh          # check only
-#   sudo bash deploy/check-sync-panel-styles.sh --fix    # check, sync panels, restart
+#   sudo wg-ops styles          # check only
+#   sudo wg-ops styles --fix    # check, sync panels, restart
 #
 # One-liner from GitHub:
 #   curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/check-sync-panel-styles.sh -o /tmp/check-panel-styles.sh
@@ -258,7 +258,7 @@ run_all_checks() {
       check_ok "repo matches installed client CSS"
     else
       check_warn "repo differs from installed client CSS"
-      log "    fix: sudo bash ${SCRIPT_DIR}/update-panels.sh"
+      log "    fix: sudo wg-ops update-panels"
     fi
   else
     check_warn "repo not found at ${REPO_DIR} (clone or set WG_REPO_DIR)"
@@ -281,7 +281,7 @@ if [[ "$DO_FIX" -eq 0 ]]; then
   log "To apply fixes from repo and restart panels:"
   log "  sudo bash ${SCRIPT_DIR}/check-sync-panel-styles.sh --fix"
   log "Or:"
-  log "  sudo bash ${SCRIPT_DIR}/update-panels.sh"
+  log "  sudo wg-ops update-panels"
   exit 1
 fi
 

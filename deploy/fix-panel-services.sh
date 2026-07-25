@@ -2,7 +2,7 @@
 # Repair panel systemd units and verify Python imports (run on entry server).
 #
 # Usage:
-#   sudo bash deploy/fix-panel-services.sh
+#   sudo wg-ops fix-panels
 set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then

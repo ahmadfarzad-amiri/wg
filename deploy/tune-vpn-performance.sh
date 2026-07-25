@@ -2,8 +2,8 @@
 # Apply VPN routing repair + performance tuning (MSS clamp, BBR, UDP buffers), then diagnose.
 #
 # Run on entry and exit servers before speed tests or after config changes:
-#   sudo bash deploy/tune-vpn-performance.sh
-#   sudo bash deploy/tune-vpn-performance.sh --role entry
+#   sudo wg-ops tune
+#   sudo wg-ops tune --role entry
 #
 # Disable BBR/MSS via env: WG_ENABLE_BBR=0 WG_ENABLE_MSS_CLAMP=0 sudo bash ...
 set -eo pipefail
@@ -45,7 +45,7 @@ if [[ "$ROLE" == "--role" ]]; then
 fi
 if [[ "$ROLE" == "auto" ]]; then
   ROLE="$(server_role)"
-  [[ "$ROLE" != "unknown" ]] || die "Could not detect role — use: sudo bash deploy/tune-vpn-performance.sh --role entry|exit"
+  [[ "$ROLE" != "unknown" ]] || die "Could not detect role — use: sudo wg-ops tune --role entry|exit"
 fi
 
 if [[ -f /etc/wireguard/entry-server.env ]]; then
@@ -69,4 +69,4 @@ echo ""
 bash "$SCRIPT_DIR/diagnose-vpn.sh" --role "$ROLE"
 
 log "Done. Confirm exit IP from a twohop client: curl -4 https://api.ipify.org"
-log "Hop bandwidth plan: sudo bash deploy/measure-vpn-bandwidth.sh --role guide"
+log "Hop bandwidth plan: sudo wg-ops measure --role guide"

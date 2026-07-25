@@ -129,7 +129,7 @@ Installed layout:
 └── clients/            # one .env per client with CLIENT_UUID
 ```
 
-Full environment variable reference: [deploy/config.env.example](../deploy/config.env.example).
+Full environment variable reference: `/opt/wg-ops/config.env.example` (after `wg-ops pull`), or [config.env.example](https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/config.env.example).
 
 ---
 
@@ -395,7 +395,7 @@ Main config file on the entry server: `/etc/wireguard/entry-server.env`
 | `WG_ENABLE_BBR` | `1` | Enable TCP BBR (if available) + large max buffers |
 | `WG_ENABLE_MSS_CLAMP` | `1` | Persistent TCP MSS clamp (`wg-mss-clamp.service`) |
 
-Full list: `deploy/config.env.example`.
+Full list: `/opt/wg-ops/config.env.example` or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/config.env.example
 
 ---
 

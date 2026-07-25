@@ -4,7 +4,7 @@
 # Does NOT change routing or firewall. Prints (and optionally runs) safe checks.
 #
 # Usage:
-#   sudo bash deploy/measure-vpn-bandwidth.sh --role entry|exit|guide
+#   sudo wg-ops measure --role entry|exit|guide
 #
 # Required architecture remains: device → entry → exit → internet.
 # A temporary direct-mode A/B is documented for diagnosis only — not production.
@@ -129,7 +129,7 @@ local_checks_entry() {
   if systemctl is-enabled wg-mss-clamp.service >/dev/null 2>&1; then
     log "MSS clamp unit: enabled"
   else
-    warn "MSS clamp unit not enabled — run: sudo bash deploy/tune-vpn-performance.sh --role entry"
+    warn "MSS clamp unit not enabled — run: sudo wg-ops tune --role entry"
   fi
   if iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null; then
     log "MSS clamp rule: present"
@@ -164,7 +164,7 @@ local_checks_exit() {
   if systemctl is-enabled wg-mss-clamp.service >/dev/null 2>&1; then
     log "MSS clamp unit: enabled"
   else
-    warn "MSS clamp unit not enabled — run: sudo bash deploy/tune-vpn-performance.sh --role exit"
+    warn "MSS clamp unit not enabled — run: sudo wg-ops tune --role exit"
   fi
   printf 'Public IP: '
   curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null || echo FAIL
@@ -179,6 +179,6 @@ case "$ROLE" in
   entry) local_checks_entry ;;
   exit) local_checks_exit ;;
   *)
-    die "Usage: sudo bash deploy/measure-vpn-bandwidth.sh --role entry|exit|guide"
+    die "Usage: sudo wg-ops measure --role entry|exit|guide"
     ;;
 esac

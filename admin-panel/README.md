@@ -45,7 +45,7 @@ journalctl -u wg-admin-panel -f
 
 ## Environment variables
 
-Set in `/etc/wireguard/entry-server.env` during install. See [../deploy/config.env.example](../deploy/config.env.example).
+Set in `/etc/wireguard/entry-server.env` during install. See `/opt/wg-ops/config.env.example` or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/config.env.example
 
 | Variable | Default | Purpose |
 |----------|---------|---------|

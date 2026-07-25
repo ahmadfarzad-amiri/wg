@@ -8,8 +8,8 @@
 #     WG_ADMIN_PASS='secretpass' \
 #     wg-ops install-entry
 #
-# Direct (repo checkout):
-#   WG_INSTALL_INTERACTIVE=1 sudo bash install-entry-server.sh
+# Direct path after wg-ops pull:
+#   WG_INSTALL_INTERACTIVE=1 sudo bash /opt/wg-ops/install-entry-server.sh
 # Fresh install only — existing installs must be uninstalled first.
 set -eo pipefail
 
