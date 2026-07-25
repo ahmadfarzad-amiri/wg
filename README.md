@@ -61,7 +61,7 @@ sudo bash /tmp/add-entry-peer.sh 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
 | Client panel URL | `http://ENTRY_IP:8088/login` |
 | Admin panel URL | `http://ENTRY_IP:8090/admin/login` |
 | VPN endpoint for users | `ENTRY_IP:51820` |
-| Internet exit | Exit VPS (two-hop, default) or Entry VPS (direct mode) |
+| Internet exit | Exit VPS (**twohop** production default) |
 
 ### Cloud firewall
 
@@ -147,6 +147,6 @@ sudo wg-client sync-vpn-modes
 | **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** | VPN users (client panel) |
 | **[docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)** | Administrators (admin panel) |
 | **[docs/OPERATIONS.md](docs/OPERATIONS.md)** | Server install, backup, migration |
-| **[docs/PERFORMANCE.md](docs/PERFORMANCE.md)** | Speed tuning — VPN mode, MTU, BBR, app caches |
+| **[docs/PERFORMANCE.md](docs/PERFORMANCE.md)** | Two-hop throughput — MTU, BBR, hop measurements |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | How the two-hop stack works |
 | **[deploy/README-DEPLOY.md](deploy/README-DEPLOY.md)** | Detailed script reference |

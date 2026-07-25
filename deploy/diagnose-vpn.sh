@@ -51,21 +51,36 @@ diag_performance() {
     # shellcheck disable=SC1091
     source /etc/wireguard/exit-server.env
   fi
-  log "WG_ENABLE_BBR=${WG_ENABLE_BBR:-1} WG_ENABLE_MSS_CLAMP=${WG_ENABLE_MSS_CLAMP:-1}"
+  log "WG_ENABLE_BBR=${WG_ENABLE_BBR:-1} WG_ENABLE_MSS_CLAMP=${WG_ENABLE_MSS_CLAMP:-1} WG_SERVER_MTU=${WG_SERVER_MTU:-1420}"
   if [[ -f /etc/sysctl.d/99-wg-performance.conf ]]; then
     log "Performance sysctl file: present"
-    grep -E 'bbr|qdisc|rmem|wmem' /etc/sysctl.d/99-wg-performance.conf 2>/dev/null || true
+    grep -E 'bbr|qdisc|rmem|wmem|netdev_max_backlog' /etc/sysctl.d/99-wg-performance.conf 2>/dev/null || true
   else
     warn "No /etc/sysctl.d/99-wg-performance.conf — run: sudo bash deploy/tune-vpn-performance.sh"
   fi
   log "TCP congestion: $(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo unknown)"
   log "Default qdisc: $(sysctl -n net.core.default_qdisc 2>/dev/null || echo unknown)"
   log "UDP rmem_max: $(sysctl -n net.core.rmem_max 2>/dev/null || echo unknown)"
-  if iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null; then
-    log "TCP MSS clamp: enabled"
-  else
-    warn "TCP MSS clamp missing — run: sudo bash deploy/tune-vpn-performance.sh"
+  local rmem
+  rmem="$(sysctl -n net.core.rmem_max 2>/dev/null || echo 0)"
+  if [[ "${rmem:-0}" -lt 16777216 ]]; then
+    warn "UDP rmem_max is low (${rmem}) — expect burst drops; run tune-vpn-performance.sh"
   fi
+  if systemctl is-enabled wg-mss-clamp.service >/dev/null 2>&1; then
+    log "TCP MSS clamp unit: enabled"
+  else
+    warn "TCP MSS clamp unit missing — run: sudo bash deploy/tune-vpn-performance.sh"
+  fi
+  if iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null; then
+    log "TCP MSS clamp rule: enabled"
+  else
+    warn "TCP MSS clamp rule missing — run: sudo bash deploy/tune-vpn-performance.sh"
+  fi
+  for iface in wg-clients wg-tunnel; do
+    if ip link show "$iface" >/dev/null 2>&1; then
+      log "${iface} MTU: $(ip -o link show "$iface" | awk '{for(i=1;i<=NF;i++) if($i=="mtu") print $(i+1)}')"
+    fi
+  done
   if [[ -d /etc/wireguard/clients ]]; then
     local sample
     sample="$(find /etc/wireguard/clients -name '*.conf' 2>/dev/null | head -1)"
@@ -74,7 +89,7 @@ diag_performance() {
     fi
   fi
   if [[ -f /etc/wireguard/entry-server.env ]]; then
-    log "Configured MTU defaults: WG_CLIENT_MTU=${WG_CLIENT_MTU:-1280} direct=${WG_CLIENT_MTU_DIRECT:-1420} twohop=${WG_CLIENT_MTU_TWOHOP:-1280}"
+    log "Configured MTU defaults: WG_CLIENT_MTU=${WG_CLIENT_MTU:-1380} direct=${WG_CLIENT_MTU_DIRECT:-1420} twohop=${WG_CLIENT_MTU_TWOHOP:-1380} server=${WG_SERVER_MTU:-1420}"
   fi
   echo
   log "Tunnel transfer counters (reset on reboot):"
@@ -82,6 +97,8 @@ diag_performance() {
   if wg show wg-clients >/dev/null 2>&1; then
     wg show wg-clients transfer 2>/dev/null | head -5 || true
   fi
+  echo
+  log "Hop bandwidth plan: sudo bash deploy/measure-vpn-bandwidth.sh --role guide"
 }
 
 diag_exit() {

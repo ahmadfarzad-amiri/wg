@@ -66,7 +66,8 @@ resolve_mtu() {
     echo "$WG_CLIENT_MTU"
     return 0
   fi
-  echo "1280"
+  # Prefer 1380 for twohop (fits double WG on typical 1500 underlay; safer than 1420 on PPPoE).
+  echo "1380"
 }
 
 usage() {
@@ -92,8 +93,8 @@ Options for add/renew/update:
   --days DAYS              Expire after X days. Example: --days 30
   --limit SIZE             Total data limit. Examples: 5G, 500M, 20GB
   --endpoint HOST:PORT     Default: from /etc/wireguard/wg-endpoint
-  --vpn-mode direct|twohop Default: twohop (direct = egress via entry server NAT)
-  --mtu SIZE               WireGuard MTU in client .conf (default: from entry-server.env)
+  --vpn-mode direct|twohop Default: twohop (production path; direct is diagnostic-only egress via entry)
+  --mtu SIZE               WireGuard MTU in client .conf (default: twohop 1380 / direct 1420 from env)
   --single-ip              Lock to first source IP
   --single-endpoint        Lock to first source IP:port, stricter but may break on mobile networks
   --no-single              Disable single-device protection
@@ -1079,7 +1080,6 @@ enforce_clients() {
 
     check_single_device_for_loaded_client
   done
-  sync_all_vpn_modes
 }
 
 qr_client() {

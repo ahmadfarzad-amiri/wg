@@ -68,4 +68,5 @@ fi
 echo ""
 bash "$SCRIPT_DIR/diagnose-vpn.sh" --role "$ROLE"
 
-log "Done. Test from a connected device: curl -4 https://api.ipify.org"
+log "Done. Confirm exit IP from a twohop client: curl -4 https://api.ipify.org"
+log "Hop bandwidth plan: sudo bash deploy/measure-vpn-bandwidth.sh --role guide"

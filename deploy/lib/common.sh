@@ -703,8 +703,13 @@ wg_apply_ip_forward() {
     || echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
 }
 
+wg_server_mtu() {
+  echo "${WG_SERVER_MTU:-1420}"
+}
+
 wg_apply_mss_clamp() {
   if [[ "${WG_ENABLE_MSS_CLAMP:-1}" == "0" ]]; then
+    iptables -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true
     return 0
   fi
   if iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null; then
@@ -714,6 +719,84 @@ wg_apply_mss_clamp() {
   log "TCP MSS clamp enabled on FORWARD chain"
 }
 
+wg_install_mss_clamp_systemd() {
+  # Persist MSS clamp across reboot (not only until next iptables flush).
+  if [[ "${WG_ENABLE_MSS_CLAMP:-1}" == "0" ]]; then
+    systemctl disable --now wg-mss-clamp.service 2>/dev/null || true
+    rm -f /etc/systemd/system/wg-mss-clamp.service 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
+    return 0
+  fi
+  cat > /etc/systemd/system/wg-mss-clamp.service <<'EOF'
+[Unit]
+Description=WireGuard TCP MSS clamp on FORWARD (PMTU)
+After=network-online.target wg-quick@wg-clients.service wg-quick@wg-tunnel.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu'
+ExecStop=/bin/sh -c 'iptables -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload 2>/dev/null || true
+  systemctl enable wg-mss-clamp.service 2>/dev/null || true
+  systemctl start wg-mss-clamp.service 2>/dev/null || true
+  log "MSS clamp systemd unit enabled (survives reboot)"
+}
+
+wg_ensure_mtu_in_conf() {
+  local conf="$1"
+  local mtu="${2:-$(wg_server_mtu)}"
+  [[ -f "$conf" ]] || return 0
+  if grep -qE '^[[:space:]]*MTU[[:space:]]*=' "$conf"; then
+    sed -i -E "s/^[[:space:]]*MTU[[:space:]]*=.*/MTU = ${mtu}/" "$conf"
+  else
+    # Insert MTU after Address= in the Interface section.
+    awk -v mtu="$mtu" '
+      BEGIN { done=0 }
+      /^\[Interface\]/ { in_iface=1 }
+      /^\[/ && $0 !~ /^\[Interface\]/ { in_iface=0 }
+      in_iface && /^Address[[:space:]]*=/ && !done {
+        print
+        print "MTU = " mtu
+        done=1
+        next
+      }
+      { print }
+      END {
+        if (!done) { }
+      }
+    ' "$conf" > "${conf}.tmp"
+    chmod 600 "${conf}.tmp"
+    mv "${conf}.tmp" "$conf"
+  fi
+}
+
+wg_set_live_mtu() {
+  local ifname="$1"
+  local mtu="${2:-$(wg_server_mtu)}"
+  if ip link show "$ifname" >/dev/null 2>&1; then
+    ip link set dev "$ifname" mtu "$mtu" 2>/dev/null || true
+  fi
+}
+
+wg_apply_server_mtus() {
+  local mtu
+  mtu="$(wg_server_mtu)"
+  local conf
+  for conf in /etc/wireguard/wg-clients.conf /etc/wireguard/wg-tunnel.conf; do
+    [[ -f "$conf" ]] || continue
+    wg_ensure_mtu_in_conf "$conf" "$mtu"
+  done
+  wg_set_live_mtu wg-clients "$mtu"
+  wg_set_live_mtu wg-tunnel "$mtu"
+  log "Server WireGuard MTU set to ${mtu}"
+}
+
 wg_apply_performance_sysctl() {
   if [[ "${WG_ENABLE_BBR:-1}" == "0" ]]; then
     log "Performance sysctl skipped (WG_ENABLE_BBR=0)"
@@ -721,21 +804,26 @@ wg_apply_performance_sysctl() {
   fi
   local sysctl_file="/etc/sysctl.d/99-wg-performance.conf"
   cat > "$sysctl_file" <<'EOF'
-# WireGuard VPN — TCP BBR and larger UDP buffers for tunnel throughput
+# WireGuard VPN — TCP BBR and large UDP buffers for two-hop tunnel throughput
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
-net.core.rmem_max = 2500000
-net.core.wmem_max = 2500000
-net.core.rmem_default = 212992
-net.core.wmem_default = 212992
+net.core.rmem_max = 67108864
+net.core.wmem_max = 67108864
+net.core.rmem_default = 16777216
+net.core.wmem_default = 16777216
+net.core.netdev_max_backlog = 5000
+net.ipv4.udp_rmem_min = 8192
+net.ipv4.udp_wmem_min = 8192
 EOF
   sysctl -p "$sysctl_file" 2>/dev/null || sysctl --system 2>/dev/null || true
-  log "Performance sysctl applied (BBR + UDP buffers)"
+  log "Performance sysctl applied (BBR + 64MB UDP buffers)"
 }
 
 wg_apply_vpn_performance() {
   wg_apply_mss_clamp
+  wg_install_mss_clamp_systemd
   wg_apply_performance_sysctl
+  wg_apply_server_mtus
 }
 
 wg_performance_enabled() {
@@ -1153,6 +1241,7 @@ uninstall_wg_systemd_units() {
   stop_systemd_unit wg-panel.service
   stop_systemd_unit wg-admin-panel.service
   stop_systemd_unit wg-docker-forward.service
+  stop_systemd_unit wg-mss-clamp.service
   stop_systemd_unit wg-client-enforce.timer
   stop_systemd_unit wg-client-enforce.service
   stop_systemd_unit "wg-quick@wg-clients.service"
@@ -1161,6 +1250,7 @@ uninstall_wg_systemd_units() {
   remove_systemd_unit_file /etc/systemd/system/wg-panel.service
   remove_systemd_unit_file /etc/systemd/system/wg-admin-panel.service
   remove_systemd_unit_file /etc/systemd/system/wg-docker-forward.service
+  remove_systemd_unit_file /etc/systemd/system/wg-mss-clamp.service
   remove_systemd_unit_file /etc/systemd/system/wg-client-enforce.service
   remove_systemd_unit_file /etc/systemd/system/wg-client-enforce.timer
 
@@ -1189,6 +1279,7 @@ uninstall_wg_stop_interfaces() {
       "${WG_TUNNEL_IF:-wg-tunnel}" \
       "${WG_TUNNEL_PEER_IP:-10.200.0.2/32}"
   fi
+  iptables -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true
 }
 
 uninstall_wg_nginx() {
@@ -1263,7 +1354,8 @@ uninstall_wg_data_dirs() {
     log "Removed /etc/wireguard"
   fi
   rm -f /etc/sysctl.d/99-z-wg-entry-vpn.conf /etc/sysctl.d/99-wg-entry-vpn.conf
-  rm -f /tmp/wg-install-*.sh /tmp/wg-fix-routing-*.sh /tmp/wg-uninstall-*.sh 2>/dev/null || true
+  rm -f /etc/sysctl.d/99-wg-performance.conf
+  rm -f /tmp/wg-install-*.sh /tmp/wg-fix-routing-*.sh /tmp/wg-uninstall-*.sh /tmp/wg-tune-perf-*.sh /tmp/wg-diagnose-*.sh 2>/dev/null || true
 }
 
 load_uninstall_env() {

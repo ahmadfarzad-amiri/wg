@@ -189,6 +189,7 @@ else
 Address = ${VPN_PREFIX}.1/24
 ListenPort = ${CLIENT_PORT_WG}
 PrivateKey = ${CLIENT_PRIV}
+MTU = ${WG_SERVER_MTU:-1420}
 PostUp = iptables -A FORWARD -i ${CLIENT_IF} -j ACCEPT; iptables -A FORWARD -o ${CLIENT_IF} -j ACCEPT; ip route replace ${CLIENT_CIDR} dev ${CLIENT_IF} scope link
 PostDown = iptables -D FORWARD -i ${CLIENT_IF} -j ACCEPT; iptables -D FORWARD -o ${CLIENT_IF} -j ACCEPT; ip route del ${CLIENT_CIDR} dev ${CLIENT_IF} scope link 2>/dev/null || true
 EOF
@@ -208,6 +209,7 @@ cat > "$TUNNEL_CONF" <<EOF
 Address = ${TUNNEL_LOCAL}
 ListenPort = ${TUNNEL_LISTEN_PORT}
 PrivateKey = ${TUNNEL_PRIV}
+MTU = ${WG_SERVER_MTU:-1420}
 Table = off
 PostUp = iptables -A FORWARD -i ${CLIENT_IF} -o ${TUNNEL_IF} -j ACCEPT; iptables -A FORWARD -i ${TUNNEL_IF} -o ${CLIENT_IF} -j ACCEPT; ip rule del from ${CLIENT_CIDR} lookup 100 priority 100 2>/dev/null || true; ip rule add from ${CLIENT_CIDR} lookup 100 priority 100; ip route del default dev ${TUNNEL_IF} table 100 2>/dev/null || true; ip route add default dev ${TUNNEL_IF} table 100
 PostDown = iptables -D FORWARD -i ${CLIENT_IF} -o ${TUNNEL_IF} -j ACCEPT; iptables -D FORWARD -i ${TUNNEL_IF} -o ${CLIENT_IF} -j ACCEPT; ip rule del from ${CLIENT_CIDR} lookup 100 priority 100 2>/dev/null || true; ip route del default dev ${TUNNEL_IF} table 100 2>/dev/null || true
@@ -266,9 +268,10 @@ write_env_file "$ENV_FILE" \
   WG_UDP_PORT_MIN "$UDP_PORT_MIN" \
   WG_UDP_PORT_MAX "$UDP_PORT_MAX" \
   WG_HTTPS "$([[ "$ENABLE_SSL" == "yes" ]] && echo 1 || echo 0)" \
-  WG_CLIENT_MTU "${WG_CLIENT_MTU:-1280}" \
+  WG_CLIENT_MTU "${WG_CLIENT_MTU:-1380}" \
   WG_CLIENT_MTU_DIRECT "${WG_CLIENT_MTU_DIRECT:-1420}" \
-  WG_CLIENT_MTU_TWOHOP "${WG_CLIENT_MTU_TWOHOP:-1280}" \
+  WG_CLIENT_MTU_TWOHOP "${WG_CLIENT_MTU_TWOHOP:-1380}" \
+  WG_SERVER_MTU "${WG_SERVER_MTU:-1420}" \
   WG_ENABLE_BBR "${WG_ENABLE_BBR:-1}" \
   WG_ENABLE_MSS_CLAMP "${WG_ENABLE_MSS_CLAMP:-1}" \
   WG_DNS "${WG_DNS:-8.8.8.8, 8.8.4.4}"

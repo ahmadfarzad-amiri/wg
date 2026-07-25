@@ -55,7 +55,7 @@ On mobile, use the bottom navigation bar. Filters appear below the header on lis
    | Name | Required. Letters, numbers, hyphens. E.g. `alice` |
    | Data limit | E.g. `20G` or leave blank for unlimited |
    | Days | Subscription length; blank = unlimited |
-   | VPN mode | `twohop` (exit IP, default) or `direct` (entry IP, faster) |
+   | VPN mode | `twohop` (exit IP — **production default**) or `direct` (entry IP — diagnostic only) |
 
 4. Click **Add client**. The client appears in the list.
 
@@ -288,7 +288,7 @@ On small screens, tables become **cards** with the same action buttons in expand
 ## Best practices
 
 1. Always create or choose a valid client **before** approving a user.
-2. Use **twohop** for users who need privacy; use **direct** for speed-sensitive users.
+2. Keep clients on **twohop** (exit IP). Use **direct** only for short hop-isolation tests — not as a production speed fix.
 3. **Disable** rather than **delete** when suspending service temporarily — deletion cannot be undone.
 4. Keep the admin panel behind nginx + HTTPS. Do not expose port `8090` to the public internet directly.
 5. Run a backup before bulk operations:
@@ -303,4 +303,4 @@ On small screens, tables become **cards** with the same action buttons in expand
 - [User guide](USER_GUIDE.md) — what your users see in the client panel
 - [Architecture](ARCHITECTURE.md) — two-hop design and data layout
 - [Operations guide](OPERATIONS.md) — install, backup, server migration
-- [Performance guide](PERFORMANCE.md) — VPN mode tuning and MTU
+- [Performance guide](PERFORMANCE.md) — two-hop throughput tuning and hop measurements

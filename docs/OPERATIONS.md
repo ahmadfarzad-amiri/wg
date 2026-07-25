@@ -383,9 +383,12 @@ Main config file on the entry server: `/etc/wireguard/entry-server.env`
 | `WG_ADMIN_PORT` | `8090` | Admin panel port |
 | `WG_ADMIN_BASE` | `/admin` | Admin URL prefix |
 | `WG_IF` | `wg-clients` | WireGuard client interface name |
-| `WG_CLIENT_MTU` | `1280` | Default client config MTU |
-| `WG_ENABLE_BBR` | `1` | Enable TCP BBR congestion control |
-| `WG_ENABLE_MSS_CLAMP` | `1` | Enable TCP MSS clamping |
+| `WG_CLIENT_MTU` | `1380` | Fallback client config MTU |
+| `WG_CLIENT_MTU_TWOHOP` | `1380` | Twohop client MTU |
+| `WG_CLIENT_MTU_DIRECT` | `1420` | Diagnostic direct-mode client MTU |
+| `WG_SERVER_MTU` | `1420` | Server `wg-clients` / `wg-tunnel` MTU |
+| `WG_ENABLE_BBR` | `1` | Enable TCP BBR + large UDP buffers |
+| `WG_ENABLE_MSS_CLAMP` | `1` | Persistent TCP MSS clamp (`wg-mss-clamp.service`) |
 
 Full list: `deploy/config.env.example`.
 

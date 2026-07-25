@@ -28,14 +28,14 @@ Default client subnet: `10.10.10.0/24` (override with `WG_CLIENT_CIDR`).
 
 | Mode | Path | Egress IP seen by websites | When to use |
 |------|------|----------------------------|-------------|
-| `twohop` (default) | Device → entry → tunnel → exit → internet | Exit server IP | Privacy — hides entry server location |
-| `direct` | Device → entry → internet | Entry server IP | Lower latency, single crypto hop |
+| `twohop` (default) | Device → entry → tunnel → exit → internet | Exit server IP | **Production** — required architecture |
+| `direct` | Device → entry → internet | Entry server IP | Diagnostic A/B only (not production) |
 
 Set when creating a client in the admin panel **Clients** tab, or via CLI:
 
 ```bash
-sudo wg-client set-mode alice direct
-sudo wg-client sync-vpn-modes   # apply routing changes
+sudo wg-client set-mode alice twohop
+sudo wg-client sync-vpn-modes   # apply routing after bulk mode changes
 ```
 
 ---
