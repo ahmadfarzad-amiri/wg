@@ -137,6 +137,14 @@ On the **exit** VPS (use the entry tunnel key from Step 3):
 sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_IP'
 ```
 
+Get `ENTRY_TUNNEL_PUBKEY` from the **entry** VPS (printed at the end of install-entry, or anytime with):
+
+```bash
+sudo cat /etc/wireguard/tunnel-entry.pub
+```
+
+`ENTRY_IP` is the entry server’s public IP (same as `WG_ENTRY_PUBLIC_IP` from Step 3).
+
 On the **entry** VPS, confirm a recent handshake:
 
 ```bash
