@@ -201,6 +201,22 @@ assert_ok "server env WG_VERSION does not pin menu release channel" \
     )"
     echo "$out" | grep -q "Version: 1.0.25"
   '
+assert_ok "refresh_release_channel keeps RAW_BASE after sourcing common.sh" \
+  bash -c '
+    set -euo pipefail
+    # shellcheck source=/dev/null
+    source <(
+      sed -n "/^wg_strip_v()/,/^require_root()/p" "'"$ROOT"'/deploy/wg-ops" | sed "\$d"
+    )
+    resolve_ops_version
+    # shellcheck source=/dev/null
+    source "'"$ROOT"'/deploy/lib/common.sh"
+    refresh_release_channel
+    sync_ops_raw_base
+    test -n "${RAW_BASE:-}"
+    cdn_resolved_version >/dev/null || true
+    printf "%s" "${RAW_BASE}" | grep -q .
+  '
 assert_ok "WG_VERSION env drives CDN ref without hardcode" \
   bash -c '
     unset GITHUB_CDN_REF GITHUB_RAW_BASE

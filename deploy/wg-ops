@@ -54,7 +54,8 @@ _github_latest_tag() {
 }
 
 # WG_VERSION from env, else latest GitHub release/tag (jsDelivr @latest as last resort).
-resolve_wg_version() {
+# Named resolve_ops_version so sourcing lib/common.sh cannot overwrite it.
+resolve_ops_version() {
   local owner="${GITHUB_OWNER:-ahmadfarzad-amiri}"
   local repo="${GITHUB_REPO_NAME:-wg}"
   local tag="" hdr=""
@@ -82,25 +83,51 @@ resolve_wg_version() {
     warn "Could not resolve WG_VERSION — using CDN @latest"
     RAW_BASE="https://cdn.jsdelivr.net/gh/${owner}/${repo}@latest"
   fi
-  export WG_VERSION RAW_BASE
+  # Keep common.sh / panel helpers in sync when they are sourced later.
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-$RAW_BASE}"
+  GITHUB_CDN_REF="${GITHUB_CDN_REF:-v${WG_VERSION:-latest}}"
+  export WG_VERSION RAW_BASE GITHUB_RAW_BASE GITHUB_CDN_REF
+}
+
+# Ensure RAW_BASE is set (common.sh resolve only exports GITHUB_RAW_BASE).
+sync_ops_raw_base() {
+  local owner="${GITHUB_OWNER:-ahmadfarzad-amiri}"
+  local repo="${GITHUB_REPO_NAME:-wg}"
+  if [[ -n "${RAW_BASE:-}" ]]; then
+    export RAW_BASE
+    return 0
+  fi
+  if [[ -n "${WG_RAW_BASE:-}" ]]; then
+    RAW_BASE="$WG_RAW_BASE"
+  elif [[ -n "${GITHUB_RAW_BASE:-}" ]]; then
+    RAW_BASE="$GITHUB_RAW_BASE"
+  elif [[ -n "${WG_VERSION:-}" ]]; then
+    RAW_BASE="https://cdn.jsdelivr.net/gh/${owner}/${repo}@v${WG_VERSION}"
+  else
+    RAW_BASE="https://cdn.jsdelivr.net/gh/${owner}/${repo}@latest"
+  fi
+  export RAW_BASE
 }
 
 # Re-resolve latest release for pull/update unless the operator pinned WG_VERSION / RAW_BASE.
 refresh_release_channel() {
   if [[ "${WG_OPS_VERSION_PINNED}" == "1" || "${WG_OPS_RAW_PINNED}" == "1" ]]; then
-    resolve_wg_version
+    resolve_ops_version
     return 0
   fi
   unset WG_VERSION RAW_BASE GITHUB_CDN_REF GITHUB_RAW_BASE
-  resolve_wg_version
+  resolve_ops_version
 }
 
-resolve_wg_version
+resolve_ops_version
 
 # Best-effort: report which semver jsDelivr resolved for this RAW_BASE (empty if not CDN).
 cdn_resolved_version() {
-  local hdr=""
-  hdr="$(curl -fsSI "$RAW_BASE/deploy/wg-ops" 2>/dev/null | tr -d '\r' || true)"
+  local hdr="" base=""
+  sync_ops_raw_base
+  base="${RAW_BASE:-}"
+  [[ -n "$base" ]] || return 0
+  hdr="$(curl -fsSI "${base}/deploy/wg-ops" 2>/dev/null | tr -d '\r' || true)"
   printf '%s\n' "$hdr" | awk -F': ' 'tolower($1)=="x-jsd-version"{print $2; exit}'
 }
 
@@ -280,6 +307,7 @@ load_server_env() {
   if [[ "$_had_cdn" -eq 1 ]]; then export GITHUB_CDN_REF="$_cdn"; else unset GITHUB_CDN_REF 2>/dev/null || true; fi
   if [[ "$_had_graw" -eq 1 ]]; then export GITHUB_RAW_BASE="$_graw"; else unset GITHUB_RAW_BASE 2>/dev/null || true; fi
   if [[ "$_had_wraw" -eq 1 ]]; then export WG_RAW_BASE="$_wraw"; else unset WG_RAW_BASE 2>/dev/null || true; fi
+  sync_ops_raw_base
 }
 
 # Start wg-quick@IF even when the interface already exists outside systemd.
@@ -410,7 +438,9 @@ resolve_local_dir() {
 fetch_one() {
   local rel="$1"
   local dest="$OPS_DIR/$rel"
-  local url="$RAW_BASE/deploy/$rel"
+  local url
+  sync_ops_raw_base
+  url="${RAW_BASE}/deploy/$rel"
   mkdir -p "$(dirname "$dest")"
   curl -fsSL "$url" -o "$dest"
   if [[ "$rel" == *.sh || "$rel" == "wg-ops" || "$rel" == *.py ]]; then
@@ -439,13 +469,14 @@ cmd_pull() {
   require_root pull
   local rel ver=""
   refresh_release_channel
+  sync_ops_raw_base
   ver="$(cdn_resolved_version || true)"
   if [[ -n "$ver" ]]; then
     log "Fetching scripts into $OPS_DIR (CDN → v${ver})"
   else
-    log "Fetching scripts into $OPS_DIR (base: $RAW_BASE)"
+    log "Fetching scripts into $OPS_DIR (base: ${RAW_BASE})"
   fi
-  log "  $RAW_BASE"
+  log "  ${RAW_BASE}"
   [[ -n "${WG_VERSION:-}" ]] && log "Release version: ${WG_VERSION}"
   mkdir -p "$OPS_DIR/lib"
   for rel in "${CORE_FILES[@]}" "${HELPER_SCRIPTS[@]}"; do
@@ -495,6 +526,7 @@ cmd_update_all() {
   case "$role" in
     entry|both)
       # Ensure update-panels inherits the refreshed release tag (not install-time env).
+      sync_ops_raw_base
       export WG_VERSION RAW_BASE
       invoke_script update-panels.sh
       if ask_yes "Apply routing/performance repair now?"; then
@@ -1092,9 +1124,13 @@ show_menu() {
     # shellcheck source=/dev/null
     source "$OPS_DIR/lib/common.sh"
     ensure_wg_version
-    RAW_BASE="${GITHUB_RAW_BASE:-$RAW_BASE}"
+    # common.sh may overwrite resolve_wg_version; keep ops RAW_BASE in sync.
+    if [[ -n "${GITHUB_RAW_BASE:-}" && -z "${RAW_BASE:-}" ]]; then
+      RAW_BASE="$GITHUB_RAW_BASE"
+    fi
+    sync_ops_raw_base
   else
-    resolve_wg_version
+    resolve_ops_version
   fi
   echo "The OS release is: ${os_id}"
   echo
@@ -1107,7 +1143,7 @@ show_menu() {
 # Print role-filtered menu to stdout (for docs/tests; no clear/status).
 cmd_list_menu() {
   local role="${1:-}"
-  resolve_wg_version
+  resolve_ops_version
   if [[ -n "$role" ]]; then
     export WG_OPS_ROLE_OVERRIDE="$role"
   fi
@@ -1163,6 +1199,7 @@ run_menu_action() {
       require_role entry
       ensure_ops_ready
       refresh_release_channel
+      sync_ops_raw_base
       export WG_VERSION RAW_BASE
       invoke_script update-panels.sh
       ;;
@@ -1292,6 +1329,7 @@ dispatch_cli() {
       require_role entry
       ensure_ops_ready
       refresh_release_channel
+      sync_ops_raw_base
       export WG_VERSION RAW_BASE
       invoke_script update-panels.sh "$@"
       ;;
