@@ -10,14 +10,14 @@ set -euo pipefail
 
 OPS_NAME="wg-ops"
 OPS_DIR="${WG_OPS_DIR:-/opt/wg-ops}"
-RAW_BASE="${WG_RAW_BASE:-${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest}}"
+RAW_BASE="${WG_RAW_BASE:-${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8}}"
 BIN_PATH="${WG_OPS_BIN:-/usr/local/bin/wg-ops}"
 
 log() { printf '[%s] %s\n' "$OPS_NAME" "$*"; }
 warn() { printf '[%s] WARN: %s\n' "$OPS_NAME" "$*" >&2; }
 die() { printf '[%s] ERROR: %s\n' "$OPS_NAME" "$*" >&2; exit 1; }
 
-# Best-effort: report which semver jsDelivr @latest resolved to (empty if not CDN).
+# Best-effort: report which semver jsDelivr resolved for this RAW_BASE (empty if not CDN).
 cdn_resolved_version() {
   local hdr=""
   hdr="$(curl -fsSI "$RAW_BASE/deploy/wg-ops" 2>/dev/null | tr -d '\r' || true)"
@@ -315,7 +315,7 @@ cmd_pull() {
   local rel ver=""
   ver="$(cdn_resolved_version || true)"
   if [[ -n "$ver" ]]; then
-    log "Fetching scripts into $OPS_DIR (CDN @latest → v${ver})"
+    log "Fetching scripts into $OPS_DIR (CDN → v${ver})"
   else
     log "Fetching scripts into $OPS_DIR (base: $RAW_BASE)"
   fi
@@ -413,13 +413,13 @@ Usage:
   sudo $OPS_NAME                 Interactive menu (role-aware)
   sudo $OPS_NAME menu
   sudo $OPS_NAME list-menu       Print menu for current role (no prompts)
-  sudo $OPS_NAME pull            Refresh scripts from CDN (@latest)
+  sudo $OPS_NAME pull            Refresh scripts from CDN (pinned tag)
   sudo $OPS_NAME update          Pull scripts + update panels/tools
   sudo $OPS_NAME <command> ...
 
 CDN / source:
   Default script base: $RAW_BASE
-  Override: WG_RAW_BASE=https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest
+  Override: WG_RAW_BASE=https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8
   Panel git clone still uses branch main (WG_GITHUB_BRANCH).
 
 Role detection (automatic):

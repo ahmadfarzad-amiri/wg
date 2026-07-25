@@ -4,7 +4,7 @@
 
 | Guide | Audience | Start here if you want to… |
 |-------|----------|----------------------------|
-| **[Deployment](DEPLOYMENT.md)** | Operators | Install entry + exit for the first time (`@latest` CDN) |
+| **[Deployment](DEPLOYMENT.md)** | Operators | Install entry + exit for the first time (pinned CDN tag) |
 | **[Operations](OPERATIONS.md)** | Operators | `pull` / `update`, backup, change servers, release/purge |
 | **[Architecture](ARCHITECTURE.md)** | Everyone | Understand the two-hop design |
 | **[Admin guide](ADMIN_GUIDE.md)** | Admins | Use the admin panel |

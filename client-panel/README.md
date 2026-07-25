@@ -10,7 +10,7 @@ WireGuard user-facing web panel. Runs on the **entry** server (where client devi
 ## Install (production)
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/wg-ops \
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8/deploy/wg-ops \
   -o /usr/local/bin/wg-ops && sudo chmod 755 /usr/local/bin/wg-ops
 sudo wg-ops pull
 
@@ -21,7 +21,7 @@ sudo WG_ENTRY_PUBLIC_IP=... WG_EXIT_PUBLIC_IP=... WG_EXIT_TUNNEL_PUB='...' \
 See [../docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) to install, [../docs/OPERATIONS.md](../docs/OPERATIONS.md) for day-2 ops, and [../docs/USER_GUIDE.md](../docs/USER_GUIDE.md) for end-user instructions.
 
 ```bash
-sudo wg-ops update          # CDN @latest scripts + panel refresh
+sudo wg-ops update          # CDN pinned-tag scripts + panel refresh
 ```
 
 ---
@@ -47,7 +47,7 @@ journalctl -u wg-panel -f
 
 ## Environment variables
 
-Set in `/etc/wireguard/entry-server.env` during install. See `/opt/wg-ops/config.env.example` or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/config.env.example
+Set in `/etc/wireguard/entry-server.env` during install. See `/opt/wg-ops/config.env.example` or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8/deploy/config.env.example
 
 | Variable | Default | Purpose |
 |----------|---------|---------|

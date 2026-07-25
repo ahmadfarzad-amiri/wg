@@ -17,12 +17,13 @@ Fresh install on clean entry and exit servers. Full walkthrough: **[docs/DEPLOYM
 On **each** server:
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/wg-ops \
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8/deploy/wg-ops \
   -o /usr/local/bin/wg-ops && sudo chmod 755 /usr/local/bin/wg-ops
 sudo wg-ops pull
 ```
 
-`@latest` tracks the newest semver release tag on this repo (jsDelivr CDN).
+Scripts are served from a **pinned** jsDelivr tag (`@v1.0.8`). If update is stuck on an old release, force:  
+`sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8' wg-ops pull`
 
 1. **Exit first:** `sudo WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP wg-ops install-exit` — save the tunnel public key  
 2. **Entry second:** set `WG_ENTRY_PUBLIC_IP`, `WG_EXIT_PUBLIC_IP`, `WG_EXIT_TUNNEL_PUB`, `WG_ADMIN_PASS`, then `wg-ops install-entry` — save the entry tunnel public key  
@@ -74,7 +75,7 @@ Or use `sudo wg-ops` (role-aware menu) on each host.
 
 ```bash
 sudo wg-ops                 # interactive menu
-sudo wg-ops pull            # refresh scripts from CDN @latest
+sudo wg-ops pull            # refresh scripts from pinned CDN tag
 sudo wg-ops update          # pull + panels/tools
 sudo wg-ops test --role entry
 sudo wg-ops uninstall       # full remove on this host

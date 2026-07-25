@@ -16,7 +16,7 @@ sudo wg-ops status
 
 | Goal | Command |
 |------|---------|
-| Refresh scripts from CDN (`@latest`) | `sudo wg-ops pull` |
+| Refresh scripts from CDN (pinned tag) | `sudo wg-ops pull` |
 | Update scripts + panels + tools | `sudo wg-ops update` |
 | Update panels only (entry) | `sudo wg-ops update-panels` |
 | Test / diagnose / repair | `sudo wg-ops test` · `diagnose` · `fix-routing` |
@@ -31,19 +31,17 @@ Native WireGuard CLI remains `wg` (example: `sudo wg show`).
 
 | What | Source | Notes |
 |------|--------|--------|
-| `wg-ops` bootstrap + `pull` / `update` scripts | jsDelivr `@latest` | Highest semver tag (e.g. `v1.0.0`) |
+| `wg-ops` bootstrap + `pull` / `update` scripts | jsDelivr **pinned tag** (e.g. `@v1.0.8`) | Avoid `@latest` — jsDelivr purge is often throttled and can stick on an old release |
 | Panel code (`update-panels`, entry install) | Git branch `main` | Clone into `/opt/wg-src` (GitHub or `gh-proxy.com`) |
 
-Default CDN base:
+Default CDN base (bump with each release in `deploy/repo.conf`):
 
-`https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest`
+`https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8`
 
-Override for a one-off pull:
+If `wg-ops update` still shows an old version (stuck `@latest` cache), force one pull:
 
 ```bash
-sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest' wg-ops pull
-# or pin a tag:
-sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.0' wg-ops pull
+sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8' wg-ops pull
 ```
 
 ---
@@ -63,7 +61,7 @@ Back up before changing entry/exit addresses, bulk deletes, or major config edit
 ## Update panels and styles
 
 ```bash
-sudo wg-ops pull            # scripts from CDN @latest → /opt/wg-ops
+sudo wg-ops pull            # scripts from CDN pinned tag → /opt/wg-ops
 sudo wg-ops update-panels   # panel code from git main → /opt/wg
 sudo wg-ops update          # pull + panels (entry) + optional tune
 sudo wg-ops styles          # check CSS/JS sync
@@ -74,7 +72,7 @@ sudo wg-ops styles --fix
 
 After a style fix, hard-refresh the browser (`Ctrl+Shift+R`).
 
-New **script** fixes only appear on servers after a new semver tag is published (so `@latest` moves). Panel UI fixes can land sooner via `update-panels` from `main`.
+New **script** fixes only appear after you pull a newer pinned release tag. Panel UI fixes can land sooner via `update-panels` from `main`.
 
 ---
 
@@ -303,37 +301,32 @@ Runtime file on entry: `/etc/wireguard/entry-server.env`
 | `WG_ENABLE_MSS_CLAMP` | `1` | MSS clamp service |
 
 Full list: `/opt/wg-ops/config.env.example`  
-or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/config.env.example
+or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8/deploy/config.env.example
 
 ---
 
-## Releases and jsDelivr `@latest`
+## Releases and CDN tags
 
-Install and `wg-ops pull` / `update` use `cdn.jsdelivr.net/.../wg@latest`, which resolves to the **highest semver Git tag** (e.g. `v1.0.0`). Git clone for panels still uses branch `main`.
+Install and `wg-ops pull` / `update` use a **pinned** jsDelivr tag (see `GITHUB_CDN_REF` in `deploy/repo.conf`), not `@latest`. Git clone for panels still uses branch `main`.
 
-After tagging a new release:
+For each release:
+
+1. Bump `GITHUB_CDN_REF` / `GITHUB_RAW_BASE` / docs URLs to the new tag (e.g. `v1.0.9`).
+2. Commit, then `git tag` / `git push` that same version.
+3. On servers still stuck on an old `@latest` cache, pull once with an explicit base:
 
 ```bash
-git tag vX.Y.Z
-git push origin vX.Y.Z
-# Force CDN to pick up the new @latest (purge key install/update files):
-curl 'https://purge.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/wg-ops'
-curl 'https://purge.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/lib/common.sh'
-curl 'https://purge.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/repo.conf'
-curl 'https://purge.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/install-entry-server.sh'
-curl 'https://purge.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/install-exit-server.sh'
-curl 'https://purge.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/update-panels.sh'
+sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8' wg-ops pull
+sudo wg-ops update
+```
+
+Optional purge (often throttled):
+
+```bash
+curl 'https://purge.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8/deploy/wg-ops'
 ```
 
 Or use the [jsDelivr purge tool](https://www.jsdelivr.com/tools/purge).
-
-On each server after a release:
-
-```bash
-sudo wg-ops update          # entry: scripts + panels
-# or on exit / scripts-only:
-sudo wg-ops pull
-```
 
 ---
 
