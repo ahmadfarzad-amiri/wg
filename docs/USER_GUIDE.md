@@ -2,7 +2,7 @@
 
 This guide is for **VPN users**. It covers registration, connecting, downloading configs, and getting help.
 
-> **Not a user?** Server setup → [Operations guide](OPERATIONS.md). Admin tasks → [Admin guide](ADMIN_GUIDE.md).
+> **Not a user?** Server setup → [Deployment](DEPLOYMENT.md). Day-2 ops → [Operations](OPERATIONS.md). Admin tasks → [Admin guide](ADMIN_GUIDE.md).
 
 ---
 

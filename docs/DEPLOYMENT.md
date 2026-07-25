@@ -1,83 +1,44 @@
 # Deployment guide
 
-Clean **entry** and **exit** server install for the two-hop VPN:
-
-`client device → entry → exit → internet` (websites must see the **exit** IP).
-
-This repository assumes **no previous installation**. Installers refuse to overwrite an existing managed config — uninstall with `sudo wg-ops uninstall` first.
-
-> Live servers are **not** modified by a repository checkout alone. Run the commands below deliberately, with console/out-of-band access available before changing firewall or WireGuard units.
-
-**Also see:** [Operations](OPERATIONS.md) (day-2 ops) · [Performance](PERFORMANCE.md) · [Architecture](ARCHITECTURE.md)
-
----
-
-## Architecture
+Get a working two-hop VPN on **two clean servers**. Follow the steps in order.
 
 ```
-┌─────────────┐     UDP 51820      ┌──────────────────┐   tunnel 51821   ┌─────────────────┐
-│   devices   │ ─────────────────► │ Entry VPS        │ ───────────────► │ Exit VPS        │ ──► internet
-└─────────────┘   client Endpoint  │ wg-clients+panels│   wg-tunnel      │ NAT + egress    │
-                                   └──────────────────┘                  └─────────────────┘
+Your phone / laptop  →  Entry VPS  →  Exit VPS  →  Internet
+                         (panels)     (public IP websites see)
 ```
 
-| Server | Role | Interface | Who connects |
-|--------|------|-----------|--------------|
-| Entry VPS | Entry | `wg-clients`, `wg-tunnel` (to exit) | Users + admin panels |
-| Exit VPS | Exit | `wg-tunnel` (from entry) | Entry server only — not end users |
+You need two Ubuntu/Debian VPS machines with public IPv4. Installers only work on **clean** servers (no previous install). To start over: `sudo wg-ops uninstall`.
 
-Default client subnet: `10.10.10.0/24` (override with `WG_CLIENT_CIDR` on both servers).
+Examples use fake IPs (`198.51.100.10`, `203.0.113.50`). Replace them with yours.
 
 ---
 
-## 1. Minimum requirements
+## Before you start
 
-| Role | vCPU | RAM | Disk | Network |
-|------|------|-----|------|---------|
-| Entry | 2 | 2 GB | 20 GB | Public IPv4, UDP open |
-| Exit | 2 | 1 GB | 20 GB | Public IPv4, good egress |
+Collect these values:
 
-**Recommended:** 4 vCPU entry (double crypto), exit sized for aggregate client bandwidth, same provider region for entry↔exit when possible.
+| What | Example | Notes |
+|------|---------|--------|
+| Entry public IP | `198.51.100.10` | IP clients will connect to |
+| Exit public IP | `203.0.113.50` | IP websites will see |
+| Admin password | (your secret) | At least 8 characters |
 
-**OS:** Ubuntu 22.04 / 24.04 LTS or Debian 12 (wireguard-tools + iptables).
+Open these ports in your **cloud firewall** (keep SSH open):
 
-**Kernel:** `CONFIG_WIREGUARD` / wireguard module, IPv4 forwarding, iptables/nft compatibility for iptables.
+| Server | Ports |
+|--------|--------|
+| Entry | UDP `51820`, UDP `51822`, TCP `22` (add TCP `80`/`443` if you want HTTPS) |
+| Exit | UDP `51821` from the entry IP only, TCP `22` |
 
----
+Optional: point a DNS A record at the entry IP if you want HTTPS panels later.
 
-## 2. DNS preparation (optional)
-
-If using HTTPS panels:
-
-```text
-A  vpn.example.com  →  ENTRY_PUBLIC_IP
-```
-
-**No domain:** panels at `http://ENTRY_IP:8088/login` and `http://ENTRY_IP:8090/admin/login`.
-
-**With domain:** enable Let's Encrypt during install (`WG_DOMAIN` / `WG_ENABLE_SSL`) or run `certbot --nginx -d your-domain.com` later.
+**Hardware (minimum):** entry 2 vCPU / 2 GB RAM; exit 2 vCPU / 1 GB RAM. Ubuntu 22.04/24.04 or Debian 12.
 
 ---
 
-## 3. Cloud firewall
+## Step 1 — Install `wg-ops` on both servers
 
-| Host | Allow |
-|------|-------|
-| Entry | UDP `51820` (clients), UDP `51822` (tunnel return), or range `51820–51830`; TCP `22`; TCP `80`/`443` if HTTPS |
-| Exit | UDP `51821` **from entry egress IP only**, TCP `22` |
-
-Keep SSH allowed from your management network before applying host `ufw` rules.
-
-```bash
-# Optional helper after install
-sudo WG_UDP_PORT_RANGE=51820:51830 wg-ops open-ports --role entry
-```
-
-Note: entry servers behind NAT may connect to exit from a **different egress IP** than `WG_ENTRY_PUBLIC_IP`. Allow the IP shown as `endpoint` in `wg show wg-tunnel` on exit.
-
----
-
-## 4. Install operator CLI (each server)
+Run on **entry** and **exit**:
 
 ```bash
 curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/wg-ops \
@@ -85,289 +46,169 @@ curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/wg-ops \
 sudo wg-ops pull
 ```
 
-Scripts and examples land under `/opt/wg-ops/`.
+Then either:
 
-The interactive menu (`sudo wg-ops`) detects the host role automatically (`none` / `entry` / `exit` / `both`) and only lists relevant actions. Preview with `wg-ops list-menu`.
-
-| Detected role | Menu shows |
-|---------------|------------|
-| `none` | Install exit / entry, pull scripts |
-| `entry` | Panels, admin, Xray, entry VPN ops |
-| `exit` | Add peer, exit VPN ops |
-| `both` | Combined entry + exit options |
-
-### Panel source clone (entry install)
-
-Entry install clones the repo into `/opt/wg-src` (then syncs panels to `/opt/wg`). Attempt order:
-
-1. Direct GitHub (`WG_GITHUB_REPO` / default repo URL)
-2. `gh-proxy.com` mirror
-
-Each attempt times out after `WG_GIT_CLONE_TIMEOUT` seconds (default `5`).
-
-```bash
-# Force a reachable mirror
-sudo WG_GITHUB_REPO='https://gh-proxy.com/https://github.com/ahmadfarzad-amiri/wg.git' \
-  wg-ops install-entry
-```
-
-### Alternatives (no GitHub clone)
-
-If GitHub/git clone is blocked or unreliable:
-
-1. **Pre-seed `/opt/wg-src`** — copy the full repo onto the server first (`scp`, `rsync`, or a tarball). If `client-panel/bin/wg-client` is already present, install skips clone.
-   ```bash
-   # From your workstation
-   rsync -a ./ root@ENTRY:/opt/wg-src/
-   # Then on ENTRY
-   sudo wg-ops install-entry
-   ```
-2. **Run from a local checkout** — clone/copy the repo on the server and run installers from that tree; `update-panels` can use the parent of `deploy/`.
-3. **Scripts-only CDN** — `wg-ops pull` fetches deploy scripts via jsDelivr (`GITHUB_RAW_BASE`). That does **not** replace cloning for panel install into `/opt/wg`; use (1) or (2) for panels.
-
-Useful env vars: `WG_GITHUB_REPO`, `WG_GITHUB_BRANCH`, `WG_REPO_DIR` (default `/opt/wg-src`), `WG_GIT_CLONE_TIMEOUT`.
+- Interactive: `sudo wg-ops` (menu shows only options for this server’s role), or  
+- Copy-paste the commands below.
 
 ---
 
-## 5. Configuration and secrets
+## Step 2 — Install the exit server (do this first)
 
-Copy and edit (do **not** commit secrets):
-
-```bash
-# On the server after wg-ops pull:
-cp /opt/wg-ops/config.env.example /tmp/wg-prod.env
-
-# Or download from CDN (any machine):
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/config.env.example \
-  -o /tmp/wg-prod.env
-
-# Edit WG_ENTRY_PUBLIC_IP, WG_EXIT_PUBLIC_IP, WG_ADMIN_PASS, …
-```
-
-Documentation examples use RFC 5737 addresses (`198.51.100.0/24`, `203.0.113.0/24`). Replace with your real public IPs at install time.
-
-Generate a strong admin password locally; keep it in a password manager.
-
-Full env list: `/opt/wg-ops/config.env.example` or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/config.env.example
-
----
-
-## 6. Exit server install + validation
-
-Run **first**, on the exit VPS. Interactive: clean-server menu → **Install exit server**.
+On the **exit** VPS:
 
 ```bash
-sudo WG_EXIT_PUBLIC_IP=203.0.113.50 \
-  WG_TUNNEL_PORT=51821 \
-  WG_CLIENT_CIDR=10.10.10.0/24 \
-  wg-ops install-exit
+sudo WG_EXIT_PUBLIC_IP=203.0.113.50 wg-ops install-exit
 ```
 
-Replace `203.0.113.50` with your exit public IP. If a previous install is detected: `sudo wg-ops uninstall` first.
+Or: `sudo wg-ops` → **Install exit server**.
 
-**Save:** tunnel public key (`/etc/wireguard/tunnel-server.pub`) and `EXIT_IP:51821`.
+**Write down from the output:**
+
+1. Exit tunnel public key (also in `/etc/wireguard/tunnel-server.pub`)
+2. Exit endpoint: `EXIT_IP:51821`
+
+Quick check:
 
 ```bash
 sudo wg-ops test --role exit
-sudo wg-ops diagnose --role exit
-sudo wg-ops validate --role exit
 ```
-
-Expect `[HEALTHY]` for NAT, forwarding, and public egress IP.
 
 ---
 
-## 7. Entry server install + validation
+## Step 3 — Install the entry server
 
-Run **second**, on the entry VPS. Interactive: clean-server menu → **Install entry server**.
+On the **entry** VPS (use the exit key from Step 2):
 
 ```bash
 sudo WG_ENTRY_PUBLIC_IP=198.51.100.10 \
   WG_EXIT_PUBLIC_IP=203.0.113.50 \
   WG_EXIT_TUNNEL_PUB='PASTE_EXIT_TUNNEL_PUBKEY' \
-  WG_ADMIN_PASS='STRONG_PASSWORD' \
-  WG_CLIENT_CIDR=10.10.10.0/24 \
-  WG_XRAY_REALITY_SNI=www.microsoft.com \
+  WG_ADMIN_PASS='your-strong-password' \
+  WG_SKIP_XRAY=1 \
   wg-ops install-entry
 ```
 
-- Set `WG_ENTRY_PUBLIC_IP` when auto-detect picks a private address. Use the **public** IP clients will connect to.
-- `WG_XRAY_REALITY_SNI` installs VLESS+Reality, WebSocket, and Shadowsocks 2022 alongside WireGuard. Omit or set `WG_SKIP_XRAY=1` to skip; install later with `sudo WG_XRAY_REALITY_SNI=… wg-ops install-xray`.
-- Xray must not sit in the WireGuard two-hop data path.
+Or: `sudo wg-ops` → **Install entry server**.
 
-**Save:** entry tunnel public key (`/etc/wireguard/tunnel-entry.pub`).
+Notes:
+
+- `WG_ENTRY_PUBLIC_IP` must be the **public** IP clients use (not a private `10.x` / `172.16.x` LAN IP).
+- `WG_SKIP_XRAY=1` skips alternate protocols for a simpler first install. To enable Xray later: set `WG_XRAY_REALITY_SNI=www.microsoft.com` and run `sudo wg-ops install-xray`.
+
+**Write down:** entry tunnel public key (`/etc/wireguard/tunnel-entry.pub`).
+
+Quick check:
 
 ```bash
 sudo wg-ops test --role entry
-sudo wg-ops diagnose --role entry
-sudo wg-ops validate --role entry
+```
+
+### If GitHub clone fails during entry install
+
+The installer needs the repo under `/opt/wg-src`. It tries GitHub, then `gh-proxy.com` (5s each).
+
+**Easiest fix — copy the repo yourself, then install:**
+
+```bash
+# From your laptop (in this project directory)
+rsync -a ./ root@ENTRY_IP:/opt/wg-src/
+# On entry
+sudo wg-ops install-entry
+```
+
+Or force the proxy:
+
+```bash
+sudo WG_GITHUB_REPO='https://gh-proxy.com/https://github.com/ahmadfarzad-amiri/wg.git' \
+  wg-ops install-entry
 ```
 
 ---
 
-## 8. Entry↔exit link
+## Step 4 — Link entry ↔ exit
 
-Run **on the exit server only**:
+On the **exit** VPS (use the entry tunnel key from Step 3):
 
 ```bash
-sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
+sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' '198.51.100.10'
 ```
 
-The peer is persisted in `/etc/wireguard/wg-tunnel.conf` (survives reboot).
+On the **entry** VPS, confirm a recent handshake:
 
 ```bash
-# On ENTRY — expect recent handshake
 sudo wg show wg-tunnel
-ping -c 5 10.200.0.1
+ping -c 3 10.200.0.1
 ```
 
 ---
 
-## 9. Client creation and import
+## Step 5 — Create a test client and log in
+
+On **entry**:
 
 ```bash
-# On ENTRY
 sudo wg-client add alice --days 30 --vpn-mode twohop
 sudo wg-client show alice
-# Deliver /etc/wireguard/clients/alice.conf (or QR / panel download)
 ```
 
-Import on the **client device** with the WireGuard app. Do not edit `Endpoint` away from `ENTRY_IP:51820`.
-
-Admin can assign one or more WireGuard clients per panel user. Users download all assigned `.conf` files as **`/configs.zip`**. Per-client routing: `wg-client add NAME --vpn-mode direct|twohop` (`direct` is diagnostic only).
+1. Open admin: `http://ENTRY_IP:8090/admin/login`  
+   User `admin` / password from `WG_ADMIN_PASS`
+2. Open client panel: `http://ENTRY_IP:8088/login`  
+   Register a user, then approve them in admin and assign the `alice` config
+3. On your phone/laptop: import `/etc/wireguard/clients/alice.conf` (or QR / panel download) into the WireGuard app  
+   Leave **Endpoint** as `ENTRY_IP:51820`
 
 ---
 
-## 10. Two-hop verification
+## Step 6 — Verify it works
+
+On the **client device** (VPN connected):
 
 ```bash
-# On CLIENT device (VPN connected)
 curl -4 https://api.ipify.org
-# MUST equal EXIT_PUBLIC_IP
-
-dig +short example.com
-curl -4 https://ifconfig.me
 ```
 
+That IP must be your **exit** public IP (not the entry IP).
+
+On **entry**:
+
 ```bash
-# On ENTRY
 sudo wg-ops diagnose --role entry
-# Anti-leak DROP and policy table 100 should be HEALTHY
 ```
 
----
-
-## 11. Performance baseline
+Optional speed/MTU baseline on both servers:
 
 ```bash
-# On ENTRY and EXIT
 sudo wg-ops tune
 sudo wg-ops measure --role guide
 ```
 
-Follow the printed hop plan. See [PERFORMANCE.md](PERFORMANCE.md). Production clients stay on **twohop** (exit IP).
-
 ---
 
-## 12. Production acceptance checklist
+## You’re done when
 
-- [ ] Client public IP = exit IP  
-- [ ] `wg-ops diagnose` on entry and exit: **0 FAILED**  
-- [ ] Tunnel handshake recent  
-- [ ] No subnet MASQUERADE on entry  
-- [ ] MSS clamp unit enabled  
-- [ ] SSH still reachable on both hosts  
-- [ ] Operational backup taken (`sudo wg-ops backup`) if desired  
+- [ ] `curl` on the client shows the **exit** IP  
+- [ ] `wg show wg-tunnel` on entry has a recent handshake  
+- [ ] Admin and client panels load  
+- [ ] `wg-ops diagnose` reports no `FAILED` checks  
 
----
-
-## 13. Validate / repair / backup
-
-```bash
-sudo wg-ops                    # role-aware menu
-sudo wg-ops pull
-sudo wg-ops validate --role runtime
-sudo wg-ops diagnose --role entry
-sudo wg-ops fix-routing --role entry   # or exit | auto
-sudo wg-ops fix-endpoint --old OLD_ENTRY_IP --new NEW_ENTRY_IP:51820
-sudo wg-ops backup
-sudo wg-ops update-panels              # entry only
-sudo wg-ops styles --fix
-```
-
-Scripts also live under `/opt/wg-ops/` after `wg-ops pull`.
-
-```bash
-# On ENTRY (and EXIT if desired)
-sudo wg-ops backup
-# Copies under /etc/wireguard/backups/
-```
-
----
-
-## 14. Change entry / exit server
-
-On the **entry** server:
-
-```bash
-sudo wg-ops change-entry --old OLD_IP --new ENTRY_IP:51820
-sudo WG_EXIT_PUBLIC_IP=NEW_EXIT WG_EXIT_TUNNEL_PUB='...' wg-ops change-exit
-```
-
-After changing exit, on the **new** exit: `sudo wg-ops add-peer` with this entry's tunnel public key.
-
----
-
-## 15. Uninstall
-
-Removes WireGuard interfaces, web panels, `panel.db`, admin config, all keys and client configs under `/etc/wireguard`, nginx panel site, systemd units, CLI tools, and `/opt/wg`. Auto-detects entry vs exit.
-
-```bash
-sudo WG_UNINSTALL_CONFIRM=yes wg-ops uninstall
-```
-
-Optional snapshot: `WG_UNINSTALL_BACKUP=1`. System packages (wireguard-tools, nginx, python3, certbot) are **not** removed. Run on **both** servers for full teardown.
-
----
-
-## 16. Recovery
-
-1. Prefer fixing the current stack with `sudo wg-ops diagnose` and `sudo wg-ops fix-routing`.
-2. For a bad deploy, uninstall both servers and reinstall from this guide.
-3. Optionally restore specific files from `/etc/wireguard/backups/` if you took a backup.
-
-**Risk note:** Changing cloud firewall or `ufw` can lock you out. Validate SSH from console before restricting management ports.
-
----
-
-## 17. Troubleshooting one-way traffic (TX up, RX stuck)
-
-| Check | Command | Expected |
-|-------|---------|----------|
-| Exit routes client subnet via tunnel | `ip route get 10.10.10.2` on exit | `dev wg-tunnel` |
-| Entry routes client subnet via wg-clients | `ip route get 10.10.10.2` on entry | `dev wg-clients` |
-| Entry tunnel to exit | `wg show wg-tunnel` on entry | recent handshake |
-| rp_filter on entry | `sysctl net.ipv4.conf.wg-tunnel.rp_filter` | `0` |
-| Docker on entry | `iptables -L DOCKER-USER -n -v` | ACCEPT rules for `wg-clients ↔ wg-tunnel` |
-
-Common causes fixed by `sudo wg-ops fix-routing`:
-
-1. **Exit:** client subnet routed via default NIC instead of `wg-tunnel`
-2. **Entry:** same subnet routed via provider LAN instead of `wg-clients`
-3. **Entry:** `rp_filter=2` on `wg-tunnel` drops asymmetric return traffic
-4. **Entry:** Docker `DOCKER-USER` chain blocks forwarded packets
-
-Run `sudo wg-ops diagnose --role entry` for a full report.
-
----
-
-## 18. Important config files
-
-| File | Server |
+| What | Where |
 |------|--------|
-| `/etc/wireguard/wg-endpoint` | Entry — `ENTRY_IP:51820` for client configs |
-| `/etc/wireguard/entry-server.env` | Entry — panel + routing env |
-| `/etc/wireguard/exit-server.env` | Exit — tunnel metadata |
-| `/etc/sysctl.d/99-z-wg-entry-vpn.conf` | Entry — `rp_filter=0` for VPN forwarding |
-| `/etc/systemd/system/wg-docker-forward.service` | Entry — Docker bypass (if Docker installed) |
-| `/opt/wg-ops/config.env.example` | Example install/runtime env vars |
+| Client panel | `http://ENTRY_IP:8088/login` |
+| Admin panel | `http://ENTRY_IP:8090/admin/login` |
+| VPN endpoint | `ENTRY_IP:51820` |
+
+---
+
+## Next steps
+
+| Task | Guide |
+|------|--------|
+| Day-2 ops (backup, update, change IP, uninstall, troubleshoot) | [Operations](OPERATIONS.md) |
+| How the stack works | [Architecture](ARCHITECTURE.md) |
+| Admin panel UI | [Admin guide](ADMIN_GUIDE.md) |
+| End-user help | [User guide](USER_GUIDE.md) |
+
+Full environment variable list: after `wg-ops pull`, see `/opt/wg-ops/config.env.example`  
+or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/config.env.example
