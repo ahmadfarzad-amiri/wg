@@ -149,13 +149,7 @@ def assigned_client_names_for_user(user):
 
     if not user:
         return []
-    names = client_names_for_user(user["id"])
-    if names:
-        return names
-    legacy = _user_field(user, "client_name")
-    if legacy:
-        return [legacy]
-    return []
+    return client_names_for_user(user["id"])
 
 
 def primary_client_for_user(user):
@@ -163,7 +157,7 @@ def primary_client_for_user(user):
 
     if not user:
         return ""
-    return primary_client_name(user["id"], _user_field(user, "client_name"))
+    return primary_client_name(user["id"], "")
 
 
 def statuses_for_user(user):

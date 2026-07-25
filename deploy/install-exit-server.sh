@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Exit VPS — internet egress via site-to-site tunnel from entry server.
 #
-# Non-interactive (recommended):
+# Preferred:
+#   sudo WG_EXIT_PUBLIC_IP=203.0.113.50 wg-ops install-exit
+#
+# Direct (repo checkout):
 #   WG_EXIT_PUBLIC_IP=203.0.113.50 WG_TUNNEL_PORT=51821 sudo bash install-exit-server.sh
 #
-# Upgrade (preserve tunnel keys):
-#   WG_INSTALL_MODE=upgrade sudo bash install-exit-server.sh
+# Fresh install only — existing installs must be uninstalled first.
 set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
@@ -70,7 +72,7 @@ else
   fi
 fi
 
-require_fresh_or_upgrade "$TUNNEL_CONF"
+require_fresh_install "$TUNNEL_CONF"
 
 export WG_EXIT_PUBLIC_IP="$PUBLIC_IP"
 export WG_TUNNEL_PORT="$TUNNEL_PORT"
@@ -80,11 +82,10 @@ wg_validate_exit_install_env
 DEF_IF="$(default_route_iface)"
 DEF_IF="${DEF_IF:-eth0}"
 ensure_wg_dirs
+install_wg_ops "$SCRIPT_DIR"
 
-if ! preserve_tunnel_keys "$TUNNEL_CONF" /etc/wireguard/tunnel-server.pub; then
-  TUNNEL_PRIV="$(wg genkey)"
-  TUNNEL_PUB="$(printf '%s' "$TUNNEL_PRIV" | wg pubkey)"
-fi
+TUNNEL_PRIV="$(wg genkey)"
+TUNNEL_PUB="$(printf '%s' "$TUNNEL_PRIV" | wg pubkey)"
 
 umask 077
 cat > "$TUNNEL_CONF" <<EOF
@@ -150,9 +151,15 @@ Tunnel endpoint     : ${PUBLIC_IP}:${TUNNEL_PORT}
 Tunnel public key   : ${TUNNEL_PUB}
 Client subnet       : ${CLIENT_CIDR} (from entry server)
 
-NEXT: run install-entry-server.sh on your ENTRY VPS.
+Operator CLI:
+  sudo wg-ops pull
+  sudo wg-ops test --role exit
+  sudo wg-ops diagnose --role exit
+  sudo wg-ops tune --role exit
+
+NEXT: on your ENTRY VPS run: sudo wg-ops install-entry
 After entry install, on THIS server:
-  bash deploy/add-entry-peer.sh ENTRY_TUNNEL_PUB [ENTRY_PUBLIC_IP]
+  sudo wg-ops add-peer ENTRY_TUNNEL_PUB [ENTRY_PUBLIC_IP]
 
 Cloud firewall: allow UDP ${TUNNEL_PORT} (ideally only from entry server IP).
 

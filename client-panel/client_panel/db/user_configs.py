@@ -8,20 +8,6 @@ from client_panel.db.connection import db
 _schema_ready = False
 
 
-def _migrate_legacy_assignments(con):
-    con.execute(
-        """
-        INSERT OR IGNORE INTO user_configs (user_id, client_name, sort_order, created_at)
-        SELECT id, client_name,
-               0,
-               COALESCE(created_at, ?)
-        FROM users
-        WHERE COALESCE(client_name, '') != ''
-        """,
-        (int(time.time()),),
-    )
-
-
 def ensure_user_configs_schema(con=None):
     global _schema_ready
     if _schema_ready and con is None:
@@ -46,7 +32,6 @@ def ensure_user_configs_schema(con=None):
     con.execute(
         "CREATE INDEX IF NOT EXISTS idx_user_configs_user ON user_configs(user_id)"
     )
-    _migrate_legacy_assignments(con)
     if own:
         con.commit()
         con.close()

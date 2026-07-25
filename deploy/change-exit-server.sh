@@ -143,7 +143,7 @@ cat <<EOF
 Tunnel peer now: ${EXIT_IP}:${EXIT_PORT}
 
 NEXT — on the NEW exit server:
-  sudo bash deploy/add-entry-peer.sh '${ENTRY_PUB}' '${ENTRY_IP:-ENTRY_PUBLIC_IP}'
+  sudo wg-ops add-peer '${ENTRY_PUB}' '${ENTRY_IP:-ENTRY_PUBLIC_IP}'
 
 On the OLD exit server (if replacing):
   sudo wg set ${TUNNEL_IF} peer OLD_TUNNEL_PUBKEY remove
@@ -152,6 +152,6 @@ Cloud firewall: allow UDP ${EXIT_PORT} from entry server egress IP.
 
 Verify on entry:
   wg show ${TUNNEL_IF}
-  bash deploy/test-connectivity.sh --role entry
+  sudo wg-ops test --role entry
 
 EOF

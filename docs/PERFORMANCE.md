@@ -4,20 +4,19 @@ How to improve **two-hop** WireGuard throughput while keeping:
 
 `device → entry → exit → internet` (websites must see the **exit** IP).
 
-> See [Architecture](ARCHITECTURE.md), [Assessment](ASSESSMENT.md), [Fresh deployment](FRESH_DEPLOYMENT.md).
+> See [Architecture](ARCHITECTURE.md) and [Fresh deployment](FRESH_DEPLOYMENT.md).
 > Do **not** treat single-hop / direct mode as the production speed fix.
 
 ---
 
 ## Quick start
 
-On **each** server (entry and exit) after install or upgrade:
+On **each** server (entry and exit) after a fresh install:
 
 ```bash
-sudo bash deploy/migrate-vpn-stack.sh --role auto      # existing installs
-sudo bash deploy/tune-vpn-performance.sh
-sudo bash deploy/diagnose-vpn.sh --role auto
-sudo bash deploy/measure-vpn-bandwidth.sh --role guide
+sudo wg-ops tune
+sudo wg-ops diagnose --role auto
+sudo wg-ops measure --role guide
 ```
 
 From a **connected twohop client**:
@@ -42,18 +41,18 @@ WireGuard IPv4 overhead is about **60 bytes** per encapsulation.
 
 On a 1500-byte underlay, two hops imply client payload ≈ `1500 − 60 − 60 = 1380`. Raise toward 1420 only after `ping -M do` / path MTU tests succeed. Valid range enforced by install/validate: **1280–1500**.
 
-TCP MSS uses **clamp-to-PMTU** on FORWARD (`wg-mss-clamp.service`) — one rule, duplicates removed by migrate/tune.
+TCP MSS uses **clamp-to-PMTU** on FORWARD (`wg-mss-clamp.service`) — one rule; duplicates are removed by tune/fix scripts.
 
 ---
 
-## Dataplane simplifications
+## Dataplane design
 
 - Entry `wg-clients` PostUp is **route-only** (no broad FORWARD ACCEPT).
 - Forwarding is limited to `wg-clients ↔ wg-tunnel`.
 - Entry **anti-leak** DROP for `wg-clients → WAN` (direct mode inserts ACCEPT).
 - Internet **NAT only on exit** for the client subnet.
 - Idempotent iptables (`-C || -A`) in install PostUp and repair scripts.
-- Sysctl via managed files under `/etc/sysctl.d/` (not fragile `sysctl.conf` appends).
+- Sysctl via managed files under `/etc/sysctl.d/`.
 - Socket **max** buffers 64MB; defaults left modest to avoid RAM waste.
 - BBR enabled only when `tcp_bbr` is available.
 
@@ -62,7 +61,7 @@ TCP MSS uses **clamp-to-PMTU** on FORWARD (`wg-mss-clamp.service`) — one rule,
 ## Measure which hop is slow
 
 ```bash
-sudo bash deploy/measure-vpn-bandwidth.sh --role guide
+sudo wg-ops measure --role guide
 ```
 
 | Test | Isolates |
@@ -79,7 +78,7 @@ Actual Mbps depends on client ISP, VPS CPU, PPS limits, distance, loss, and shap
 
 ## Related
 
-- [Operations](OPERATIONS.md) — install / migration  
+- [Operations](OPERATIONS.md) — install and day-2 ops  
 - [Fresh deployment](FRESH_DEPLOYMENT.md) — clean servers  
-- [deploy/diagnose-vpn.sh](../deploy/diagnose-vpn.sh) — HEALTHY/WARNING/FAILED  
-- [deploy/migrate-vpn-stack.sh](../deploy/migrate-vpn-stack.sh) — upgrade dataplane  
+- `sudo wg-ops diagnose` — HEALTHY/WARNING/FAILED  
+- `sudo wg-ops fix-routing` — repair current dataplane  

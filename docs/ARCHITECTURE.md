@@ -43,7 +43,7 @@ flowchart LR
 
 Default client subnet: `10.10.10.0/24` (override with `WG_CLIENT_CIDR`).
 
-See [ASSESSMENT.md](ASSESSMENT.md) for packet-path detail and [FRESH_DEPLOYMENT.md](FRESH_DEPLOYMENT.md) for install steps.
+Install steps: [FRESH_DEPLOYMENT.md](FRESH_DEPLOYMENT.md). Day-2 ops: [OPERATIONS.md](OPERATIONS.md).
 
 ---
 
@@ -71,8 +71,6 @@ Both panels run on the **entry** server and share one SQLite database.
 |-------|----------------|--------------|-------------|
 | Client (users) | `/opt/wg/client-panel/` | `wg-panel.service` | 8088 |
 | Admin | `/opt/wg/admin-panel/` | `wg-admin-panel.service` | 8090 |
-
-> `admin-panel/admin_app.py` is a legacy alias for `app.py`. Install scripts use `app.py`.
 
 ### Shared data files
 
@@ -181,7 +179,7 @@ Admin **Clients → Add clients in bulk**: accepts up to 50 newline-separated na
 
 | Area | Implementation |
 |------|----------------|
-| Passwords | PBKDF2-SHA256, 300 000 iterations, per-user salt (legacy 250 000 accepted on login) |
+| Passwords | PBKDF2-SHA256, 300 000 iterations, per-user salt |
 | CSRF | Double-submit cookie pattern validated with `hmac.compare_digest` |
 | Sessions | Random token in `sessions` table; purged on expiry (max once per 60 s under load) |
 | X-Forwarded-For | Trusted only from `127.0.0.1` / `::1` / `localhost` |
@@ -218,7 +216,7 @@ wg/
 │   ├── app.py
 │   ├── admin_panel/
 │   └── static/
-├── deploy/             # Install, backup, routing, migration scripts
+├── deploy/             # Install, backup, routing, validate, diagnose
 ├── tests/              # Unit tests (wg_common)
 └── docs/               # Documentation (you are here)
 ```

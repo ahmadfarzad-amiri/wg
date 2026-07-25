@@ -1,8 +1,41 @@
 # Operations guide
 
-Step-by-step tasks for **server operators** who install and maintain the WireGuard entry/exit stack.
+Step-by-step tasks for **server operators** who install and maintain the WireGuard entry/exit stack on clean servers.
 
 > Panel UI tasks → [Admin guide](ADMIN_GUIDE.md). End-user actions → [User guide](USER_GUIDE.md).
+
+---
+
+## Operator CLI (`wg-ops`)
+
+Run with no arguments for an interactive menu:
+
+```bash
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/wg-ops \
+  -o /usr/local/bin/wg-ops && sudo chmod 755 /usr/local/bin/wg-ops
+
+sudo wg-ops
+```
+
+Menu covers **install**, **update**, and **delete**:
+
+| Action | Menu |
+|--------|------|
+| Install exit / entry | 1 / 2 |
+| Update all (scripts + panels + tools) | 3 |
+| Update scripts only | 4 |
+| Update panels only | 5 |
+| Uninstall server | 6 |
+| Uninstall Xray only | 7 |
+
+Non-interactive examples:
+
+```bash
+sudo wg-ops update
+sudo wg-ops test --role entry
+sudo wg-ops uninstall
+sudo wg-ops status
+```
 
 ---
 
@@ -17,17 +50,26 @@ Before you start, prepare:
   - Exit: UDP `51821` (tunnel — restrict to entry IP when possible)
 - (Optional) A domain name pointed at the entry server IP
 
+Install the operator CLI on each server first:
+
+```bash
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/wg-ops \
+  -o /usr/local/bin/wg-ops && sudo chmod 755 /usr/local/bin/wg-ops
+sudo wg-ops pull
+```
+
 ---
 
 ## Step 1 — Install the exit server
 
-Run on the **exit** VPS:
+Run on the **exit** VPS.
+
+Interactive: `sudo wg-ops` → **1**
+
+Or non-interactive:
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/install-exit-server.sh \
-  -o /tmp/install-exit-server.sh
-
-sudo WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP bash /tmp/install-exit-server.sh
+sudo WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP wg-ops install-exit
 ```
 
 > **Save from the output:**
@@ -41,24 +83,23 @@ Optional environment variables:
 | `WG_EXIT_PUBLIC_IP` | auto-detect | Your exit server's public IP |
 | `WG_TUNNEL_PORT` | `51821` | Tunnel UDP port |
 | `WG_CLIENT_CIDR` | `10.10.10.0/24` | VPN client subnet |
-| `WG_INSTALL_INTERACTIVE` | — | Set to `1` for interactive prompts |
+| `WG_INSTALL_INTERACTIVE` | auto | `1` prompts; omit when env vars are set |
 
 ---
 
 ## Step 2 — Install the entry server
 
-Download the script first — environment variables passed to `curl` do not reach `sudo bash` inside a pipe.
+Interactive: `sudo wg-ops` → **2**
+
+Or non-interactive:
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/install-entry-server.sh \
-  -o /tmp/install-entry-server.sh
-
 sudo WG_ENTRY_PUBLIC_IP=YOUR_ENTRY_IP \
   WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP \
   WG_EXIT_TUNNEL_PUB='PASTE_EXIT_TUNNEL_PUBKEY' \
   WG_ADMIN_PASS='choose-a-strong-password' \
   WG_XRAY_REALITY_SNI=www.microsoft.com \
-  bash /tmp/install-entry-server.sh
+  wg-ops install-entry
 ```
 
 > Set `WG_ENTRY_PUBLIC_IP` when auto-detect picks a private address (common with VPS providers using `172.16.x.x` internally). Use the **public** IP that clients will connect to.
@@ -97,10 +138,7 @@ Full environment variable reference: [deploy/config.env.example](../deploy/confi
 Run on the **exit** server:
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/add-entry-peer.sh \
-  -o /tmp/add-entry-peer.sh
-
-sudo bash /tmp/add-entry-peer.sh 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
+sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
 ```
 
 The peer is saved to `/etc/wireguard/wg-tunnel.conf` and survives reboots.
@@ -124,12 +162,12 @@ You should see a recent handshake (`latest handshakes:` within the last few seco
 | Exit | 51821 | UDP | Entry server egress IP only (recommended) |
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/open-firewall-ports.sh \
-  -o /tmp/open-ports.sh
-
-sudo WG_UDP_PORT_RANGE=51820:51830 bash /tmp/open-ports.sh --role entry
-sudo bash /tmp/open-ports.sh --role exit
+sudo wg-ops open-ports --role entry
+sudo wg-ops open-ports --role exit
 ```
+
+# Or with a custom UDP range on entry:
+# sudo WG_UDP_PORT_RANGE=51820:51830 wg-ops open-ports --role entry
 
 > **Note:** If the entry server is behind NAT, the egress IP seen by the exit server may differ from `WG_ENTRY_PUBLIC_IP`. Check `wg show wg-tunnel` on the exit server for the actual endpoint IP and allow that in your cloud firewall.
 
@@ -139,12 +177,10 @@ sudo bash /tmp/open-ports.sh --role exit
 
 ```bash
 # On exit server
-sudo bash /tmp/test.sh --role exit
+sudo wg-ops test --role exit
 
 # On entry server
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/test-connectivity.sh \
-  -o /tmp/test.sh
-sudo bash /tmp/test.sh --role entry
+sudo wg-ops test --role entry
 ```
 
 **End-to-end test** — run from a client device with VPN connected (not the server):
@@ -196,14 +232,14 @@ nginx cannot reach the Python app. Diagnose in order:
 sudo journalctl -u wg-panel -n 50 --no-pager
 
 # 2. Sync wg_common and repair units, then restart
-sudo bash deploy/update-panels.sh
+sudo wg-ops update-panels
 
 # 3. Direct health check (bypasses nginx)
 curl -fsS http://127.0.0.1:8088/health
 ls -la /opt/wg/wg_common/__init__.py
 ```
 
-If `wg_common/__init__.py` is missing, re-run `update-panels.sh` or re-run the install script with `WG_INSTALL_MODE=upgrade`.
+If `wg_common/__init__.py` is missing, re-run `wg-ops update-panels`. If the install is corrupted, uninstall and reinstall on a clean server.
 
 ---
 
@@ -222,48 +258,42 @@ Panels also work over raw HTTP without a domain.
 
 ---
 
-## Backup and restore
+## Operational backup
 
-### Create a backup
+Create a snapshot of the current production WireGuard configs, env files, and panel database:
 
 ```bash
-sudo bash deploy/backup.sh
+sudo wg-ops backup
 ```
 
 Backups are saved under `/etc/wireguard/backups/TIMESTAMP-label/`.
 
 **When to back up:**
-- Before an exit server migration
-- Before panel upgrades
+- Before changing entry or exit server addresses
 - Before bulk client deletion
+- Before major configuration edits
 
-### Restore from a backup
-
-```bash
-sudo bash deploy/restore.sh /etc/wireguard/backups/TIMESTAMP-label
-sudo systemctl restart wg-panel wg-admin-panel
-```
+To recover from a bad config change, copy files back from a backup directory manually, then restart interfaces and run `sudo wg-ops fix-routing`.
 
 ---
 
 ## Update the panels
 
 ```bash
-sudo bash deploy/update-panels.sh
+sudo wg-ops update-panels
+# or full update (scripts + panels + tools):
+sudo wg-ops update
 ```
 
-Syncs code from the repo to `/opt/wg/`, repairs systemd units, and restarts both panels.
+Syncs code from the repo to `/opt/wg/`, refreshes CLI tools, and restarts both panels.
 
 ### Fix panel CSS or layout
 
 If the panel looks wrong after an update (broken layout, overlapping cards, wrong language):
 
 ```bash
-# Check what is installed vs what the repo has
-sudo bash deploy/check-sync-panel-styles.sh
-
-# Sync CSS/JS from the repo and restart panels
-sudo bash deploy/check-sync-panel-styles.sh --fix
+sudo wg-ops styles
+sudo wg-ops styles --fix
 ```
 
 After syncing, hard-refresh your browser (`Ctrl+Shift+R`) to clear the cached CSS.
@@ -275,7 +305,7 @@ After syncing, hard-refresh your browser (`Ctrl+Shift+R`) to clear the cached CS
 When the entry VPS IP or port changes:
 
 ```bash
-sudo bash deploy/change-entry-server.sh --new NEW_IP:51820
+sudo wg-ops change-entry --new NEW_IP:51820
 # Optional: --old OLD_IP to replace only that specific IP in config files
 ```
 
@@ -291,55 +321,18 @@ After this: update your cloud firewall, DNS records, and ask users to reconnect.
 
 ```bash
 sudo WG_EXIT_PUBLIC_IP=NEW_EXIT_IP WG_EXIT_TUNNEL_PUB='NEW_EXIT_PUBKEY' \
-  bash deploy/change-exit-server.sh
+  wg-ops change-exit
 ```
 
 **On the new exit server:**
 
 ```bash
-sudo bash /tmp/add-entry-peer.sh 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
+sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
 ```
 
 **On the old exit server** (if decommissioning): remove the stale entry peer from `/etc/wireguard/wg-tunnel.conf` and run `sudo wg syncconf wg-tunnel /etc/wireguard/wg-tunnel.conf`.
 
 Or use **Admin panel → Tools → Change exit** for the entry-side steps.
-
----
-
-## Upgrade (preserve keys and data)
-
-```bash
-# On exit server
-sudo WG_INSTALL_MODE=upgrade WG_EXIT_PUBLIC_IP=EXIT_IP \
-  bash /tmp/install-exit-server.sh
-
-# On entry server
-sudo WG_INSTALL_MODE=upgrade \
-  WG_ENTRY_PUBLIC_IP=ENTRY_IP \
-  WG_EXIT_PUBLIC_IP=EXIT_IP \
-  WG_EXIT_TUNNEL_PUB='EXIT_PUBKEY' \
-  bash /tmp/install-entry-server.sh
-```
-
-Upgrade mode preserves existing WireGuard keys, `panel.db`, `audit.db`, client configs, and admin credentials.
-
-### Dataplane migration (existing servers)
-
-After pulling this release, migrate routing/firewall without rewriting keys:
-
-```bash
-# Dry-run first
-sudo bash deploy/migrate-vpn-stack.sh --role auto --dry-run
-
-# Apply (backs up under /etc/wireguard/backups/*-pre-migrate)
-sudo bash deploy/migrate-vpn-stack.sh --role entry   # on entry
-sudo bash deploy/migrate-vpn-stack.sh --role exit    # on exit
-
-sudo bash deploy/validate-config.sh --role runtime
-sudo bash deploy/diagnose-vpn.sh --role auto
-```
-
-Rollback: restore the `pre-migrate` backup directory over `/etc/wireguard`, then `fix-vpn-routing.sh`.
 
 ---
 
@@ -358,35 +351,26 @@ Symptom: `wg show wg-clients` on entry shows incoming traffic but the client has
 Auto-fix:
 
 ```bash
-sudo bash deploy/fix-vpn-routing.sh --role entry
-sudo bash deploy/fix-vpn-routing.sh --role exit
-sudo bash deploy/diagnose-vpn.sh --role entry
-```
-
----
-
-## Migrate from legacy install paths
-
-If panels were installed under `/opt/wg-panel` or `/opt/wg-admin-panel` (old layout):
-
-```bash
-sudo bash /opt/wg/client-panel/deploy/migrate-to-opt-wg.sh
+sudo wg-ops fix-routing --role entry
+sudo wg-ops fix-routing --role exit
+sudo wg-ops diagnose --role entry
 ```
 
 ---
 
 ## Uninstall
 
-> **Warning:** This removes WireGuard, both panels, `panel.db`, `audit.db`, all keys, and client configs.
+> **Warning:** This removes WireGuard, both panels, `panel.db`, `audit.db`, all keys, and client configs managed by the current install.
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/uninstall-server.sh \
-  -o /tmp/uninstall-server.sh
-
-sudo WG_UNINSTALL_CONFIRM=yes bash /tmp/uninstall-server.sh
+sudo wg-ops uninstall
+# Non-interactive:
+sudo WG_UNINSTALL_CONFIRM=yes wg-ops uninstall
 ```
 
-Optional backup before removal: add `WG_UNINSTALL_BACKUP=1`. Run on **both** entry and exit servers for full teardown. System packages (wireguard-tools, nginx, python3, certbot) are not removed.
+Optional snapshot before removal: add `WG_UNINSTALL_BACKUP=1`. Run on **both** entry and exit servers for full teardown. System packages (wireguard-tools, nginx, python3, certbot) are not removed.
+
+If the installer reports an existing install conflict, uninstall first, then run a fresh install on the clean server.
 
 ---
 
@@ -431,7 +415,7 @@ Run on the **entry** server:
 Panel service repair (run when services are in a bad state):
 
 ```bash
-sudo bash deploy/fix-panel-services.sh
+sudo wg-ops fix-panels
 ```
 
 ---

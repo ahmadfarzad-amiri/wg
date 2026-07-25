@@ -2,9 +2,9 @@
 # Change the client WireGuard endpoint (entry server public IP:port) for all configs.
 #
 # Usage:
-#   sudo bash deploy/change-entry-server.sh 31.25.93.168:51820
-#   sudo bash deploy/change-entry-server.sh --old 216.147.121.53 --new 31.25.93.168:51820
-#   sudo WG_ENTRY_PUBLIC_IP=31.25.93.168 bash deploy/change-entry-server.sh
+#   sudo bash deploy/change-entry-server.sh 198.51.100.10:51820
+#   sudo bash deploy/change-entry-server.sh --old 198.51.100.20 --new 198.51.100.10:51820
+#   sudo WG_ENTRY_PUBLIC_IP=198.51.100.10 bash deploy/change-entry-server.sh
 set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then

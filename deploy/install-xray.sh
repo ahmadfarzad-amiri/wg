@@ -6,18 +6,21 @@
 #   2. VLESS + WebSocket + TLS (port 8443) — CDN-compatible, works behind Cloudflare
 #   3. Shadowsocks 2022 (port 8388) — simple fallback, fast
 #
-# Usage (non-interactive):
+# Usage (preferred):
 #   sudo WG_XRAY_REALITY_SNI=www.microsoft.com \
 #        WG_XRAY_WS_DOMAIN=vpn.example.com \
-#        bash deploy/install-xray.sh
+#        wg-ops install-xray
+#
+# Direct (repo checkout):
+#   sudo WG_XRAY_REALITY_SNI=www.microsoft.com bash deploy/install-xray.sh
 #
 # Usage (interactive):
-#   sudo WG_INSTALL_INTERACTIVE=1 bash deploy/install-xray.sh
+#   sudo WG_INSTALL_INTERACTIVE=1 wg-ops install-xray
 #
 # After running:
 #   - Client configs are written to /etc/xray/clients/
-#   - Run: sudo bash deploy/install-xray.sh --show-client NAME  to print config
-#   - Combine with xray-client-add.sh to create new client profiles
+#   - Run: sudo wg-ops install-xray --show-client NAME  to print config
+#   - Combine with xray-client-add.sh / wg-ops xray-client to create new client profiles
 #
 set -eo pipefail
 set -u
@@ -392,7 +395,7 @@ main() {
     install_xray_binary
   else
     log "Xray already installed: $("$XRAY_BIN" version | head -1)"
-    log "To upgrade, delete $XRAY_BIN and re-run this script."
+    log "To reinstall Xray, delete $XRAY_BIN and re-run this script."
   fi
 
   # Generate cryptographic material
@@ -458,7 +461,7 @@ ENV
   fi
 
   # Check for port 443 conflict BEFORE starting the service.
-  # Skip if xray itself holds 443 (upgrade/reinstall scenario — xray will be restarted).
+  # Skip if xray itself holds 443 (reinstall scenario — xray will be restarted).
   PORT443_HOLDER=""
   if ss -tlnp 2>/dev/null | grep -qE ':443\b'; then
     PORT443_HOLDER="$(ss -tlnp 2>/dev/null | grep -E ':443\b' | awk '{print $NF}' | head -1)"
@@ -545,7 +548,7 @@ NGINX_WS
     "$SS_PASSWORD"
 
   log ""
-  log "To add a new client: sudo bash deploy/xray-client-add.sh CLIENT_NAME"
+  log "To add a new client: sudo wg-ops xray-client CLIENT_NAME"
   log "To view logs:        journalctl -u xray -f"
   log "Config location:     $XRAY_DIR/config.json"
   log "Server secrets:      $XRAY_DIR/server-secrets.env"

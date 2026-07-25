@@ -4,7 +4,6 @@ import hmac
 import secrets
 
 PBKDF2_ITERATIONS = 300_000
-_LEGACY_ITERATIONS = (250_000,)
 
 
 def _derive(password, salt, iterations):
@@ -22,7 +21,6 @@ def hash_password(password, salt=None):
 def verify_password(password, stored_hash, salt):
     if not stored_hash or not salt:
         return False
-    for iterations in (PBKDF2_ITERATIONS, *_LEGACY_ITERATIONS):
-        if hmac.compare_digest(_derive(password, salt, iterations), stored_hash):
-            return True
-    return False
+    return hmac.compare_digest(
+        _derive(password, salt, PBKDF2_ITERATIONS), stored_hash
+    )

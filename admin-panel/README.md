@@ -10,11 +10,12 @@ WireGuard admin web panel. Runs on the **entry** server alongside the client pan
 ## Install (production)
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/install-entry-server.sh \
-  -o /tmp/install-entry-server.sh
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/wg-ops \
+  -o /usr/local/bin/wg-ops && sudo chmod 755 /usr/local/bin/wg-ops
+sudo wg-ops pull
 
 sudo WG_ENTRY_PUBLIC_IP=... WG_EXIT_PUBLIC_IP=... WG_EXIT_TUNNEL_PUB='...' \
-  WG_ADMIN_PASS='...' bash /tmp/install-entry-server.sh
+  WG_ADMIN_PASS='...' wg-ops install-entry
 ```
 
 See [../deploy/README-DEPLOY.md](../deploy/README-DEPLOY.md) for full env var reference and [../docs/ADMIN_GUIDE.md](../docs/ADMIN_GUIDE.md) for panel usage.

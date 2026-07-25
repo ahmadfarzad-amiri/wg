@@ -6,12 +6,11 @@ Guides for **end users**, **administrators**, and **operators** running the two-
 
 | Guide | Audience | What it covers |
 |-------|----------|----------------|
-| [Architecture](ARCHITECTURE.md) | Everyone (reference) | Traffic path, panels, database schema, security, and performance model |
-| [Assessment](ASSESSMENT.md) | Operators / developers | Packet path, bottlenecks, feature keep/remove decisions |
+| [Architecture](ARCHITECTURE.md) | Everyone (reference) | Traffic path, panels, database schema, security |
 | [Fresh deployment](FRESH_DEPLOYMENT.md) | Operators | Clean entry/exit install and acceptance checklist |
 | [User guide](USER_GUIDE.md) | VPN users | Register, log in, connect, subscription links, connection test, support requests |
 | [Admin guide](ADMIN_GUIDE.md) | Panel administrators | Approve users, bulk create clients, handle requests, audit log, server tools |
-| [Operations guide](OPERATIONS.md) | Server operators | Install, upgrade, backup, migrate servers, troubleshoot |
+| [Operations guide](OPERATIONS.md) | Server operators | Install, validate, operate, troubleshoot, uninstall |
 | [Performance guide](PERFORMANCE.md) | Operators / admins | Two-hop throughput, MTU, BBR, hop bandwidth tests |
 
 ## Quick links

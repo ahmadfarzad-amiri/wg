@@ -73,6 +73,33 @@ assert_ok "postup has table 100" sh -c "printf '%s' \"$postup\" | grep -q 'looku
 assert_fail "postup no bare -A only" sh -c "printf '%s' \"$postup\" | grep -Eq 'PostUp = iptables -A FORWARD -i wg-clients -j ACCEPT$'"
 
 echo
+echo "=== fresh-install guards ==="
+assert_ok "require_fresh_install defined" type require_fresh_install
+assert_fail "no upgrade mode in entry installer" \
+  grep -q 'WG_INSTALL_MODE' "$ROOT/deploy/install-entry-server.sh"
+assert_fail "no upgrade mode in exit installer" \
+  grep -q 'WG_INSTALL_MODE' "$ROOT/deploy/install-exit-server.sh"
+assert_fail "migrate script removed" \
+  test -f "$ROOT/deploy/migrate-vpn-stack.sh"
+assert_fail "restore script removed" \
+  test -f "$ROOT/deploy/restore.sh"
+assert_fail "deprecated panel installer removed" \
+  test -f "$ROOT/deploy/install-panel-server.sh"
+assert_ok "backup script kept (ops)" \
+  test -f "$ROOT/deploy/backup.sh"
+assert_ok "uninstall script kept" \
+  test -f "$ROOT/deploy/uninstall-server.sh"
+
+assert_ok "wg-ops bash -n" bash -n "$ROOT/deploy/wg-ops"
+assert_ok "wg-ops CLI present" test -f "$ROOT/deploy/wg-ops"
+assert_ok "wg-ops help" bash "$ROOT/deploy/wg-ops" help
+assert_ok "wg-ops maps test" bash -c "bash '$ROOT/deploy/wg-ops' list | grep -q 'test-connectivity.sh\|test,'"
+assert_ok "wg-ops help mentions update" bash -c "bash '$ROOT/deploy/wg-ops' help | grep -q update"
+assert_ok "wg-ops help mentions uninstall" bash -c "bash '$ROOT/deploy/wg-ops' help | grep -q uninstall"
+assert_fail "wg-ops unknown command" bash "$ROOT/deploy/wg-ops" not-a-real-command
+assert_ok "set-admin-password syntax" python3 -m py_compile "$ROOT/deploy/set-admin-password.py"
+
+echo
 echo "=== shell syntax ==="
 syntax_fail=0
 while IFS= read -r f; do
@@ -93,7 +120,6 @@ if command -v shellcheck >/dev/null 2>&1; then
   for f in \
     "$ROOT/deploy/lib/common.sh" \
     "$ROOT/deploy/validate-config.sh" \
-    "$ROOT/deploy/migrate-vpn-stack.sh" \
     "$ROOT/deploy/diagnose-vpn.sh" \
     "$ROOT/deploy/tune-vpn-performance.sh"
   do
@@ -103,7 +129,6 @@ if command -v shellcheck >/dev/null 2>&1; then
     else
       echo "  WARN shellcheck $(basename "$f") (non-fatal)"
       head -20 /tmp/wg-sc.err || true
-      # Do not fail the suite on shellcheck style — syntax tests above are gating.
     fi
   done
 else
@@ -120,6 +145,37 @@ assert_fail "entry clients no broad FORWARD" \
   grep -q 'FORWARD -i ${CLIENT_IF} -j ACCEPT' "$ROOT/deploy/install-entry-server.sh"
 assert_ok "exit install idempotent NAT" \
   grep -q 'iptables -t nat -C POSTROUTING' "$ROOT/deploy/install-exit-server.sh"
+assert_ok "entry uses require_fresh_install" \
+  grep -q 'require_fresh_install' "$ROOT/deploy/install-entry-server.sh"
+assert_ok "exit uses require_fresh_install" \
+  grep -q 'require_fresh_install' "$ROOT/deploy/install-exit-server.sh"
+
+echo
+echo "=== hardcoded IP check ==="
+if bash "$ROOT/tests/check_no_hardcoded_ips.sh"; then
+  echo "  OK  no suspicious hardcoded IPs"
+  pass=$((pass + 1))
+else
+  echo "  FAIL hardcoded IP check"
+  fail=$((fail + 1))
+fi
+
+echo
+echo "=== legacy keyword scan (deploy + docs) ==="
+legacy_hits="$(
+  grep -RInE \
+    --exclude-dir=.git \
+    'migrate-vpn-stack|WG_INSTALL_MODE|install-panel-server|migrate-to-opt-wg|restore\.sh|pre-migrate|preserve_tunnel_keys|require_fresh_or_upgrade' \
+    "$ROOT/deploy" "$ROOT/docs" "$ROOT/README.md" 2>/dev/null || true
+)"
+if [[ -n "$legacy_hits" ]]; then
+  echo "$legacy_hits"
+  echo "  FAIL legacy references still present"
+  fail=$((fail + 1))
+else
+  echo "  OK  no legacy migrate/upgrade/restore references"
+  pass=$((pass + 1))
+fi
 
 echo
 echo "Results: ${pass} passed, ${fail} failed"

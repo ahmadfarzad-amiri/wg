@@ -1,0 +1,745 @@
+#!/usr/bin/env bash
+# wg-ops — interactive operator menu + CLI for install / update / delete / ops.
+# Does not replace WireGuard's native `wg` (e.g. `wg show`).
+#
+#   sudo wg-ops              # interactive menu
+#   sudo wg-ops update       # pull scripts + update panels/tools
+#   sudo wg-ops uninstall
+#   sudo wg-ops test --role entry
+set -euo pipefail
+
+OPS_NAME="wg-ops"
+OPS_DIR="${WG_OPS_DIR:-/opt/wg-ops}"
+RAW_BASE="${WG_RAW_BASE:-${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main}}"
+BIN_PATH="${WG_OPS_BIN:-/usr/local/bin/wg-ops}"
+
+log() { printf '[%s] %s\n' "$OPS_NAME" "$*"; }
+warn() { printf '[%s] WARN: %s\n' "$OPS_NAME" "$*" >&2; }
+die() { printf '[%s] ERROR: %s\n' "$OPS_NAME" "$*" >&2; exit 1; }
+
+require_root() {
+  [[ "$(id -u)" -eq 0 ]] || die "Run as root: sudo $OPS_NAME $*"
+}
+
+CORE_FILES=(
+  repo.conf
+  lib/common.sh
+  wg-ops
+  config.env.example
+)
+
+HELPER_SCRIPTS=(
+  add-entry-peer.sh
+  backup.sh
+  change-entry-server.sh
+  change-exit-server.sh
+  check-sync-panel-styles.sh
+  diagnose-vpn.sh
+  fix-client-endpoint.sh
+  fix-panel-services.sh
+  fix-vpn-routing.sh
+  install-entry-server.sh
+  install-exit-server.sh
+  install-xray.sh
+  measure-vpn-bandwidth.sh
+  open-firewall-ports.sh
+  set-admin-password.py
+  test-connectivity.sh
+  tune-vpn-performance.sh
+  uninstall-server.sh
+  update-panels.sh
+  validate-config.sh
+  xray-client-add.sh
+)
+
+os_release_id() {
+  if [[ -f /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    printf '%s' "${ID:-unknown}"
+  else
+    printf 'unknown'
+  fi
+}
+
+detect_role() {
+  if [[ -f /etc/wireguard/entry-server.env ]]; then
+    printf 'entry'
+  elif [[ -f /etc/wireguard/exit-server.env ]]; then
+    printf 'exit'
+  else
+    printf 'none'
+  fi
+}
+
+require_role() {
+  local want="$1"
+  local role
+  role="$(detect_role)"
+  [[ "$role" == "$want" ]] || die "This action requires the ${want} server (detected: ${role})."
+}
+
+unit_state() {
+  local unit="$1"
+  if systemctl is-active --quiet "$unit" 2>/dev/null; then
+    printf 'Running'
+  elif systemctl cat "$unit" >/dev/null 2>&1; then
+    printf 'Stopped'
+  else
+    printf 'n/a'
+  fi
+}
+
+unit_enabled() {
+  local unit="$1"
+  if systemctl is-enabled --quiet "$unit" 2>/dev/null; then
+    printf 'Yes'
+  else
+    printf 'No'
+  fi
+}
+
+print_status_footer() {
+  local role
+  role="$(detect_role)"
+  echo
+  echo "Role detected: ${role}"
+  case "$role" in
+    entry)
+      echo "wg-clients:     $(unit_state 'wg-quick@wg-clients')  (autostart: $(unit_enabled 'wg-quick@wg-clients'))"
+      echo "wg-tunnel:      $(unit_state 'wg-quick@wg-tunnel')  (autostart: $(unit_enabled 'wg-quick@wg-tunnel'))"
+      echo "wg-panel:       $(unit_state wg-panel)  (autostart: $(unit_enabled wg-panel))"
+      echo "wg-admin-panel: $(unit_state wg-admin-panel)  (autostart: $(unit_enabled wg-admin-panel))"
+      if systemctl cat xray.service >/dev/null 2>&1; then
+        echo "xray:           $(unit_state xray)  (autostart: $(unit_enabled xray))"
+      fi
+      ;;
+    exit)
+      echo "wg-tunnel:      $(unit_state 'wg-quick@wg-tunnel')  (autostart: $(unit_enabled 'wg-quick@wg-tunnel'))"
+      ;;
+    *)
+      echo "No install detected (clean server)."
+      ;;
+  esac
+  echo "Scripts dir:    ${OPS_DIR}"
+  [[ -x "$BIN_PATH" ]] && echo "CLI:            ${BIN_PATH}" || echo "CLI:            not installed"
+}
+
+pause_menu() {
+  echo
+  read -r -p "Press Enter to continue..." _
+}
+
+ask_role() {
+  local default="${1:-auto}"
+  local detected choice=""
+  detected="$(detect_role)"
+  if [[ "$default" == "auto" && "$detected" != "none" ]]; then
+    default="$detected"
+  fi
+  read -r -p "Role [${default}]: " choice || true
+  choice="${choice:-$default}"
+  printf '%s' "$choice"
+}
+
+ask_yes() {
+  local prompt="$1"
+  local ans=""
+  read -r -p "${prompt} [y/N]: " ans || true
+  [[ "${ans,,}" == "y" || "${ans,,}" == "yes" ]]
+}
+
+resolve_local_dir() {
+  local here
+  if [[ "${BASH_SOURCE[0]+set}" == "set" && -f "${BASH_SOURCE[0]}" ]]; then
+    here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ -f "$here/lib/common.sh" || -f "$here/test-connectivity.sh" || -f "$here/wg-ops" ]]; then
+      printf '%s' "$here"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+fetch_one() {
+  local rel="$1"
+  local dest="$OPS_DIR/$rel"
+  local url="$RAW_BASE/deploy/$rel"
+  mkdir -p "$(dirname "$dest")"
+  curl -fsSL "$url" -o "$dest"
+  if [[ "$rel" == *.sh || "$rel" == "wg-ops" || "$rel" == *.py ]]; then
+    chmod 755 "$dest"
+  else
+    chmod 644 "$dest"
+  fi
+}
+
+source_ops_common() {
+  if [[ -f "$OPS_DIR/lib/common.sh" ]]; then
+    # shellcheck source=/dev/null
+    source "$OPS_DIR/lib/common.sh"
+    return 0
+  fi
+  local local_dir=""
+  if local_dir="$(resolve_local_dir)" && [[ -f "$local_dir/lib/common.sh" ]]; then
+    # shellcheck source=/dev/null
+    source "$local_dir/lib/common.sh"
+    return 0
+  fi
+  return 1
+}
+
+cmd_pull() {
+  require_root pull
+  local rel
+  log "Fetching scripts into $OPS_DIR (base: $RAW_BASE)"
+  mkdir -p "$OPS_DIR/lib"
+  for rel in "${CORE_FILES[@]}" "${HELPER_SCRIPTS[@]}"; do
+    log "  $rel"
+    fetch_one "$rel" || warn "Failed to fetch $rel"
+  done
+  if [[ -f "$OPS_DIR/wg-ops" ]]; then
+    install -m 755 "$OPS_DIR/wg-ops" "$BIN_PATH"
+    log "CLI updated: $BIN_PATH"
+  fi
+  log "Scripts ready in $OPS_DIR"
+}
+
+cmd_install_cli() {
+  require_root install-cli
+  local src=""
+  if [[ -f "$OPS_DIR/wg-ops" ]]; then
+    src="$OPS_DIR/wg-ops"
+  elif src="$(resolve_local_dir)" && [[ -f "$src/wg-ops" ]]; then
+    src="$src/wg-ops"
+  elif [[ "${BASH_SOURCE[0]+set}" == "set" && -f "${BASH_SOURCE[0]}" ]]; then
+    src="${BASH_SOURCE[0]}"
+  else
+    die "No wg-ops source found. Run: sudo $OPS_NAME pull"
+  fi
+  install -m 755 "$src" "$BIN_PATH"
+  log "Installed $BIN_PATH"
+}
+
+ensure_ops_ready() {
+  if [[ ! -f "$OPS_DIR/lib/common.sh" || ! -f "$OPS_DIR/test-connectivity.sh" ]]; then
+    log "Ops scripts missing — pulling..."
+    cmd_pull
+  fi
+}
+
+cmd_update_all() {
+  require_root update
+  local role
+  role="$(detect_role)"
+  log "=== Update all (${role}) ==="
+  cmd_pull
+  case "$role" in
+    entry)
+      invoke_script update-panels.sh
+      if ask_yes "Apply routing/performance repair now?"; then
+        invoke_script tune-vpn-performance.sh --role entry
+      fi
+      ;;
+    exit)
+      if ask_yes "Apply routing/performance repair now?"; then
+        invoke_script tune-vpn-performance.sh --role exit
+      fi
+      log "Exit server: scripts updated. Panels live on the entry server."
+      ;;
+    *)
+      log "No stack installed — scripts/CLI updated only."
+      ;;
+  esac
+  log "Update complete."
+}
+
+cmd_list() {
+  cat <<EOF
+Ops dir: ${OPS_DIR}
+CLI:     ${BIN_PATH}
+Role:    $(detect_role)
+
+CLI commands:
+  menu, pull, update, update-panels, install-entry, install-exit,
+  uninstall, uninstall-xray, test, diagnose, tune, validate, fix-routing,
+  measure, backup, open-ports, start, stop, restart, status, logs,
+  change-entry, change-exit, add-peer, set-admin-pass, show-admin,
+  install-xray, styles, fix-panels, run <script> [...]
+EOF
+}
+
+cmd_help() {
+  cat <<EOF
+Usage:
+  sudo $OPS_NAME                 Interactive menu
+  sudo $OPS_NAME menu
+  sudo $OPS_NAME update          Pull scripts + update panels/tools
+  sudo $OPS_NAME <command> ...
+
+Install / update / delete:
+  pull, self-update, update, update-panels
+  install-entry, install-exit, install-xray
+  uninstall, uninstall-xray
+
+Ops: test, diagnose, tune, validate, fix-routing, measure, backup,
+     open-ports, start, stop, restart, status, logs,
+     change-entry, change-exit, add-peer, set-admin-pass, show-admin
+
+Native WireGuard tool remains \`wg\` (e.g. \`wg show\`).
+EOF
+}
+
+script_for_command() {
+  case "$1" in
+    test) echo test-connectivity.sh ;;
+    diagnose|diag) echo diagnose-vpn.sh ;;
+    tune) echo tune-vpn-performance.sh ;;
+    validate|check) echo validate-config.sh ;;
+    fix-routing|fix) echo fix-vpn-routing.sh ;;
+    measure) echo measure-vpn-bandwidth.sh ;;
+    backup) echo backup.sh ;;
+    update-panels) echo update-panels.sh ;;
+    open-ports) echo open-firewall-ports.sh ;;
+    fix-endpoint) echo fix-client-endpoint.sh ;;
+    fix-panels) echo fix-panel-services.sh ;;
+    styles) echo check-sync-panel-styles.sh ;;
+    change-entry) echo change-entry-server.sh ;;
+    change-exit) echo change-exit-server.sh ;;
+    add-peer) echo add-entry-peer.sh ;;
+    install-entry) echo install-entry-server.sh ;;
+    install-exit) echo install-exit-server.sh ;;
+    install-xray) echo install-xray.sh ;;
+    xray-client) echo xray-client-add.sh ;;
+    uninstall) echo uninstall-server.sh ;;
+    *) return 1 ;;
+  esac
+}
+
+find_script() {
+  local name="$1"
+  local local_dir=""
+  if [[ -f "$OPS_DIR/$name" ]]; then
+    printf '%s' "$OPS_DIR/$name"
+    return 0
+  fi
+  if local_dir="$(resolve_local_dir)" && [[ -f "$local_dir/$name" ]]; then
+    printf '%s' "$local_dir/$name"
+    return 0
+  fi
+  return 1
+}
+
+ensure_script() {
+  local name="$1"
+  local path=""
+  if path="$(find_script "$name")"; then
+    printf '%s' "$path"
+    return 0
+  fi
+  warn "Script not found locally: $name — fetching..."
+  require_root "fetch $name"
+  mkdir -p "$OPS_DIR/lib"
+  if [[ ! -f "$OPS_DIR/lib/common.sh" ]]; then
+    fetch_one "repo.conf"
+    fetch_one "lib/common.sh"
+  fi
+  fetch_one "$name"
+  printf '%s' "$OPS_DIR/$name"
+}
+
+invoke_script() {
+  local name="$1"
+  shift
+  local path
+  path="$(ensure_script "$name")"
+  [[ -f "$path" ]] || die "Missing script: $path"
+  log "Running $path $*"
+  # Keep stdin as the TTY so interactive installers can prompt.
+  if [[ -e /dev/tty ]]; then
+    bash "$path" "$@" </dev/tty
+  else
+    bash "$path" "$@"
+  fi
+}
+
+run_script_exec() {
+  local name="$1"
+  shift
+  local path
+  path="$(ensure_script "$name")"
+  [[ -f "$path" ]] || die "Missing script: $path"
+  log "Running $path $*"
+  exec bash "$path" "$@"
+}
+
+run_install_exit() {
+  require_root
+  ensure_ops_ready
+  if [[ "$(detect_role)" != "none" ]]; then
+    die "Existing install detected. Uninstall first (menu 6 / sudo wg-ops uninstall), then install."
+  fi
+  # Interactive when no public IP set; otherwise honor env for non-interactive CLI installs.
+  if [[ -z "${WG_INSTALL_INTERACTIVE:-}" ]]; then
+    if [[ -n "${WG_EXIT_PUBLIC_IP:-}" ]]; then
+      export WG_INSTALL_INTERACTIVE=0
+    else
+      export WG_INSTALL_INTERACTIVE=1
+    fi
+  fi
+  invoke_script install-exit-server.sh "$@"
+}
+
+run_install_entry() {
+  require_root
+  ensure_ops_ready
+  if [[ "$(detect_role)" != "none" ]]; then
+    die "Existing install detected. Uninstall first (menu 6 / sudo wg-ops uninstall), then install."
+  fi
+  if [[ -z "${WG_INSTALL_INTERACTIVE:-}" ]]; then
+    if [[ -n "${WG_EXIT_PUBLIC_IP:-}" && -n "${WG_EXIT_TUNNEL_PUB:-}" && -n "${WG_ADMIN_PASS:-}${WG_ADMIN_PASS_FILE:-}" ]]; then
+      export WG_INSTALL_INTERACTIVE=0
+    else
+      export WG_INSTALL_INTERACTIVE=1
+    fi
+  fi
+  invoke_script install-entry-server.sh "$@"
+}
+
+run_uninstall() {
+  require_root
+  ensure_ops_ready
+  local role
+  role="$(detect_role)"
+  [[ "$role" != "none" ]] || die "Nothing to uninstall on this host."
+  if ask_yes "Create config backup under /root before uninstall?"; then
+    export WG_UNINSTALL_BACKUP=1
+  fi
+  # Keep confirmation prompt from uninstall-server.sh
+  unset WG_UNINSTALL_CONFIRM || true
+  invoke_script uninstall-server.sh
+}
+
+run_uninstall_xray() {
+  require_root
+  require_role entry
+  ensure_ops_ready
+  source_ops_common || die "common.sh missing — run: sudo $OPS_NAME pull"
+  if ! ask_yes "Remove Xray service and /etc/xray (WireGuard stays)?"; then
+    log "Cancelled."
+    return 0
+  fi
+  uninstall_xray
+}
+
+svc_start() {
+  local role
+  role="$(detect_role)"
+  case "$role" in
+    entry)
+      systemctl start 'wg-quick@wg-clients' 'wg-quick@wg-tunnel' wg-panel wg-admin-panel 2>/dev/null || true
+      systemctl start wg-mss-clamp.service 2>/dev/null || true
+      systemctl start xray 2>/dev/null || true
+      ;;
+    exit)
+      systemctl start 'wg-quick@wg-tunnel' 2>/dev/null || true
+      systemctl start wg-mss-clamp.service 2>/dev/null || true
+      ;;
+    *) die "No install detected on this host." ;;
+  esac
+  log "Start requested."
+  print_status_footer
+}
+
+svc_stop() {
+  local role
+  role="$(detect_role)"
+  case "$role" in
+    entry)
+      systemctl stop wg-panel wg-admin-panel xray 2>/dev/null || true
+      systemctl stop 'wg-quick@wg-clients' 'wg-quick@wg-tunnel' 2>/dev/null || true
+      ;;
+    exit)
+      systemctl stop 'wg-quick@wg-tunnel' 2>/dev/null || true
+      ;;
+    *) die "No install detected on this host." ;;
+  esac
+  log "Stop requested."
+  print_status_footer
+}
+
+svc_restart() {
+  local role
+  role="$(detect_role)"
+  case "$role" in
+    entry)
+      systemctl restart 'wg-quick@wg-clients' 'wg-quick@wg-tunnel' 2>/dev/null || true
+      systemctl restart wg-panel wg-admin-panel 2>/dev/null || true
+      systemctl restart wg-mss-clamp.service 2>/dev/null || true
+      systemctl restart xray 2>/dev/null || true
+      ;;
+    exit)
+      systemctl restart 'wg-quick@wg-tunnel' 2>/dev/null || true
+      systemctl restart wg-mss-clamp.service 2>/dev/null || true
+      ;;
+    *) die "No install detected on this host." ;;
+  esac
+  log "Restart requested."
+  print_status_footer
+}
+
+svc_logs() {
+  local role
+  role="$(detect_role)"
+  case "$role" in
+    entry)
+      journalctl -u wg-panel -u wg-admin-panel -u 'wg-quick@wg-clients' -u 'wg-quick@wg-tunnel' -u xray -n 100 --no-pager
+      ;;
+    exit)
+      journalctl -u 'wg-quick@wg-tunnel' -n 100 --no-pager
+      ;;
+    *) die "No install detected on this host." ;;
+  esac
+}
+
+svc_enable() {
+  local role
+  role="$(detect_role)"
+  case "$role" in
+    entry)
+      systemctl enable 'wg-quick@wg-clients' 'wg-quick@wg-tunnel' wg-panel wg-admin-panel 2>/dev/null || true
+      systemctl enable xray 2>/dev/null || true
+      ;;
+    exit)
+      systemctl enable 'wg-quick@wg-tunnel' 2>/dev/null || true
+      ;;
+    *) die "No install detected on this host." ;;
+  esac
+  log "Autostart enabled."
+}
+
+svc_disable() {
+  local role
+  role="$(detect_role)"
+  case "$role" in
+    entry)
+      systemctl disable wg-panel wg-admin-panel 'wg-quick@wg-clients' 'wg-quick@wg-tunnel' xray 2>/dev/null || true
+      ;;
+    exit)
+      systemctl disable 'wg-quick@wg-tunnel' 2>/dev/null || true
+      ;;
+    *) die "No install detected on this host." ;;
+  esac
+  log "Autostart disabled."
+}
+
+set_admin_password_menu() {
+  require_role entry
+  local user pass path=""
+  user="${WG_ADMIN_USER:-admin}"
+  read -r -p "Admin username [${user}]: " user_in || true
+  user="${user_in:-$user}"
+  read -r -s -p "New admin password: " pass
+  echo
+  [[ ${#pass} -ge 8 ]] || die "Password must be at least 8 characters"
+  path="$(ensure_script set-admin-password.py)"
+  WG_DATA_DIR=/etc/wireguard WG_INSTALL_DIR="${WG_INSTALL_DIR:-/opt/wg}" \
+    WG_ADMIN_USER="$user" WG_ADMIN_PASS="$pass" python3 "$path"
+}
+
+show_admin_menu() {
+  require_role entry
+  local path
+  path="$(ensure_script set-admin-password.py)"
+  WG_DATA_DIR=/etc/wireguard python3 "$path" --show
+}
+
+show_menu() {
+  clear 2>/dev/null || true
+  local os_id
+  os_id="$(os_release_id)"
+  echo "The OS release is: ${os_id}"
+  echo
+  echo "  WG-OPS Management Script"
+  echo "————————————————————————————————"
+  echo "  0. Exit"
+  echo "————————————————————————————————"
+  echo "  1. Install exit server"
+  echo "  2. Install entry server"
+  echo "  3. Update all (scripts + panels + tools)"
+  echo "  4. Update scripts only (pull)"
+  echo "  5. Update panels only (entry)"
+  echo "  6. Uninstall this server"
+  echo "  7. Uninstall Xray only (entry)"
+  echo "————————————————————————————————"
+  echo "  8. Test connectivity"
+  echo "  9. Diagnose VPN"
+  echo "  10. Validate config"
+  echo "  11. Fix routing"
+  echo "  12. Tune performance"
+  echo "  13. Measure bandwidth"
+  echo "————————————————————————————————"
+  echo "  14. Backup configs"
+  echo "  15. Open firewall ports"
+  echo "  16. Fix panel services"
+  echo "  17. Sync panel styles"
+  echo "————————————————————————————————"
+  echo "  18. Start services"
+  echo "  19. Stop services"
+  echo "  20. Restart services"
+  echo "  21. Check service state"
+  echo "  22. View logs"
+  echo "  23. Enable autostart"
+  echo "  24. Disable autostart"
+  echo "————————————————————————————————"
+  echo "  25. Change entry endpoint"
+  echo "  26. Change exit server"
+  echo "  27. Add entry peer (on exit)"
+  echo "  28. View admin username"
+  echo "  29. Set admin password"
+  echo "  30. Install / reinstall Xray"
+  echo "  31. Add Xray client"
+  echo "————————————————————————————————"
+  print_status_footer
+  echo
+}
+
+handle_menu_choice() {
+  local choice="$1"
+  local role
+  case "$choice" in
+    0) echo "Bye."; exit 0 ;;
+    1) run_install_exit ;;
+    2) run_install_entry ;;
+    3) cmd_update_all ;;
+    4) cmd_pull ;;
+    5) require_root; require_role entry; ensure_ops_ready; invoke_script update-panels.sh ;;
+    6) run_uninstall ;;
+    7) run_uninstall_xray ;;
+    8)
+      require_root; ensure_ops_ready
+      role="$(ask_role auto)"
+      invoke_script test-connectivity.sh --role "$role"
+      ;;
+    9)
+      require_root; ensure_ops_ready
+      role="$(ask_role auto)"
+      invoke_script diagnose-vpn.sh --role "$role"
+      ;;
+    10)
+      require_root; ensure_ops_ready
+      role="$(ask_role runtime)"
+      invoke_script validate-config.sh --role "$role"
+      ;;
+    11)
+      require_root; ensure_ops_ready
+      role="$(ask_role auto)"
+      invoke_script fix-vpn-routing.sh --role "$role"
+      ;;
+    12)
+      require_root; ensure_ops_ready
+      role="$(ask_role auto)"
+      invoke_script tune-vpn-performance.sh --role "$role"
+      ;;
+    13)
+      require_root; ensure_ops_ready
+      role="$(ask_role guide)"
+      invoke_script measure-vpn-bandwidth.sh --role "$role"
+      ;;
+    14) require_root; ensure_ops_ready; invoke_script backup.sh ;;
+    15)
+      require_root; ensure_ops_ready
+      role="$(ask_role auto)"
+      invoke_script open-firewall-ports.sh --role "$role"
+      ;;
+    16) require_root; require_role entry; ensure_ops_ready; invoke_script fix-panel-services.sh ;;
+    17) require_root; require_role entry; ensure_ops_ready; invoke_script check-sync-panel-styles.sh ;;
+    18) require_root; svc_start ;;
+    19) require_root; svc_stop ;;
+    20) require_root; svc_restart ;;
+    21) print_status_footer ;;
+    22) require_root; svc_logs ;;
+    23) require_root; svc_enable ;;
+    24) require_root; svc_disable ;;
+    25) require_root; require_role entry; ensure_ops_ready; invoke_script change-entry-server.sh ;;
+    26) require_root; require_role entry; ensure_ops_ready; invoke_script change-exit-server.sh ;;
+    27) require_root; require_role exit; ensure_ops_ready; invoke_script add-entry-peer.sh ;;
+    28) require_root; show_admin_menu ;;
+    29) require_root; set_admin_password_menu ;;
+    30) require_root; require_role entry; ensure_ops_ready; export WG_INSTALL_INTERACTIVE=1; invoke_script install-xray.sh ;;
+    31) require_root; require_role entry; ensure_ops_ready; invoke_script xray-client-add.sh ;;
+    *)
+      echo "Invalid selection: $choice"
+      ;;
+  esac
+}
+
+menu_loop() {
+  require_root
+  ensure_ops_ready || true
+  local choice=""
+  while true; do
+    show_menu
+    read -r -p "Please enter your selection [0-31]: " choice || true
+    choice="${choice// /}"
+    [[ -n "$choice" ]] || continue
+    echo
+    set +e
+    handle_menu_choice "$choice"
+    set -e
+    if [[ "$choice" != "0" ]]; then
+      pause_menu
+    fi
+  done
+}
+
+dispatch_cli() {
+  local cmd="$1"
+  shift || true
+  case "$cmd" in
+    -h|--help|help) cmd_help ;;
+    menu) menu_loop ;;
+    pull|get|sync) cmd_pull ;;
+    install-cli) cmd_install_cli ;;
+    self-update) cmd_pull; cmd_install_cli ;;
+    update) cmd_update_all ;;
+    list) cmd_list ;;
+    path) printf '%s\n' "$OPS_DIR" ;;
+    status) print_status_footer ;;
+    start) require_root; svc_start ;;
+    stop) require_root; svc_stop ;;
+    restart) require_root; svc_restart ;;
+    logs) require_root; svc_logs ;;
+    show-admin) require_root; show_admin_menu ;;
+    set-admin-pass) require_root; set_admin_password_menu ;;
+    uninstall-xray) run_uninstall_xray ;;
+    install-entry) run_install_entry ;;
+    install-exit) run_install_exit ;;
+    uninstall) run_uninstall ;;
+    run)
+      [[ $# -ge 1 ]] || die "Usage: $OPS_NAME run <script.sh> [args...]"
+      local script="$1"
+      shift
+      run_script_exec "$script" "$@"
+      ;;
+    *)
+      local mapped=""
+      if mapped="$(script_for_command "$cmd")"; then
+        ensure_ops_ready
+        run_script_exec "$mapped" "$@"
+      else
+        die "Unknown command: $cmd (try: sudo $OPS_NAME   or   $OPS_NAME help)"
+      fi
+      ;;
+  esac
+}
+
+main() {
+  if [[ $# -eq 0 ]]; then
+    menu_loop
+    exit 0
+  fi
+  dispatch_cli "$@"
+}
+
+main "$@"
