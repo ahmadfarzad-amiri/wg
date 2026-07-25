@@ -91,7 +91,7 @@ case "$ROLE" in
     wg_check_duplicate_client_addresses /etc/wireguard/clients
     if [[ -f /etc/wireguard/wg-clients.conf ]]; then
       if grep -qE 'iptables -A FORWARD -i wg-clients -j ACCEPT' /etc/wireguard/wg-clients.conf; then
-        die "Unsupported broad FORWARD PostUp in wg-clients.conf — uninstall and reinstall, or set PostUp to route-only"
+        die "Broad FORWARD PostUp in wg-clients.conf — run: sudo wg-ops fix-routing (or uninstall and reinstall)"
       fi
     fi
     log "Entry configuration: OK"

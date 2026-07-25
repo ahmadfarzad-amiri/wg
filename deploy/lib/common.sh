@@ -659,28 +659,36 @@ ensure_entry_client_postup_in_conf() {
   local conf="${1:-/etc/wireguard/wg-clients.conf}"
   local client_if="${2:-wg-clients}"
   local client_cidr="${3:-10.10.10.0/24}"
+  local needs_rewrite=0
   [[ -f "$conf" ]] || return 0
   if grep -qE 'PostUp = .*iptables .*FORWARD' "$conf" 2>/dev/null; then
-    die "Unsupported PostUp in ${conf} (iptables FORWARD belongs on wg-tunnel). Remove conflicting resources with uninstall-server.sh, then reinstall."
+    needs_rewrite=1
+  elif ! grep -q 'ip route replace' "$conf" 2>/dev/null; then
+    needs_rewrite=1
   fi
-  if grep -q 'ip route replace' "$conf" 2>/dev/null; then
-    return 0
-  fi
-  if ! grep -q '^PostUp' "$conf" 2>/dev/null; then
-    awk -v cif="$client_if" -v cidr="$client_cidr" '
-      /^Address[[:space:]]*=/ && !done {
-        print
+  [[ "$needs_rewrite" == "1" ]] || return 0
+  awk -v cif="$client_if" -v cidr="$client_cidr" '
+    BEGIN { posted=0 }
+    /^PostUp[[:space:]]*=/ { next }
+    /^PostDown[[:space:]]*=/ { next }
+    /^Address[[:space:]]*=/ && !posted {
+      print
+      print "PostUp = ip route replace " cidr " dev " cif " scope link"
+      print "PostDown = ip route del " cidr " dev " cif " scope link 2>/dev/null || true"
+      posted=1
+      next
+    }
+    { print }
+    END {
+      if (!posted) {
         print "PostUp = ip route replace " cidr " dev " cif " scope link"
         print "PostDown = ip route del " cidr " dev " cif " scope link 2>/dev/null || true"
-        done=1
-        next
       }
-      { print }
-    ' "$conf" > "${conf}.tmp"
-    chmod 600 "${conf}.tmp"
-    mv "${conf}.tmp" "$conf"
-    log "Added client subnet route PostUp to $conf"
-  fi
+    }
+  ' "$conf" > "${conf}.tmp"
+  chmod 600 "${conf}.tmp"
+  mv "${conf}.tmp" "$conf"
+  log "Normalized client subnet route PostUp in $conf (FORWARD belongs on wg-tunnel)"
 }
 
 wg_entry_forward_rules_up() {

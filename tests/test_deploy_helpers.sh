@@ -73,6 +73,24 @@ assert_ok "postup has table 100" sh -c "printf '%s' \"$postup\" | grep -q 'looku
 assert_fail "postup no bare -A only" sh -c "printf '%s' \"$postup\" | grep -Eq 'PostUp = iptables -A FORWARD -i wg-clients -j ACCEPT$'"
 
 echo
+echo "=== client PostUp normalize ==="
+_tmpdir="$(mktemp -d)"
+cat > "$_tmpdir/wg-clients.conf" <<'EOF'
+[Interface]
+Address = 10.10.10.1/24
+ListenPort = 51820
+PrivateKey = dummy
+PostUp = iptables -A FORWARD -i wg-clients -j ACCEPT; iptables -A FORWARD -o wg-clients -j ACCEPT; ip route replace 10.10.10.0/24 dev wg-clients scope link
+PostDown = iptables -D FORWARD -i wg-clients -j ACCEPT; iptables -D FORWARD -o wg-clients -j ACCEPT; ip route del 10.10.10.0/24 dev wg-clients scope link 2>/dev/null || true
+EOF
+ensure_entry_client_postup_in_conf "$_tmpdir/wg-clients.conf" wg-clients 10.10.10.0/24
+assert_ok "rewrites broad FORWARD PostUp" \
+  grep -q 'PostUp = ip route replace 10.10.10.0/24 dev wg-clients scope link' "$_tmpdir/wg-clients.conf"
+assert_fail "no FORWARD left in clients PostUp" \
+  grep -qE 'PostUp = .*iptables .*FORWARD' "$_tmpdir/wg-clients.conf"
+rm -rf "$_tmpdir"
+
+echo
 echo "=== fresh-install guards ==="
 assert_ok "require_fresh_install defined" type require_fresh_install
 assert_fail "no upgrade mode in entry installer" \
