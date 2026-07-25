@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Update panel code, CLI tools, and wg-ops without touching WireGuard keys.
-# Usage: sudo bash deploy/update-panels.sh
+# Usage: sudo wg-ops update-panels
 #        sudo wg-ops update-panels
 set -eo pipefail
 

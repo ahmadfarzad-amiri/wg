@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Backup WireGuard configs, env files, and panel database.
-# Usage: sudo bash deploy/backup.sh [label]
+# Usage: sudo wg-ops backup [label]
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

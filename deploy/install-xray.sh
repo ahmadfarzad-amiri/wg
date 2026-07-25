@@ -11,8 +11,8 @@
 #        WG_XRAY_WS_DOMAIN=vpn.example.com \
 #        wg-ops install-xray
 #
-# Direct (repo checkout):
-#   sudo WG_XRAY_REALITY_SNI=www.microsoft.com bash deploy/install-xray.sh
+# Direct path after wg-ops pull:
+#   sudo WG_XRAY_REALITY_SNI=www.microsoft.com bash /opt/wg-ops/install-xray.sh
 #
 # Usage (interactive):
 #   sudo WG_INSTALL_INTERACTIVE=1 wg-ops install-xray

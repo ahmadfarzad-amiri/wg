@@ -5,7 +5,7 @@
 #   Exit — client subnet routes via wg-tunnel, NAT, forward rules
 #   Entry — policy routing, client subnet → wg-clients, rp_filter, Docker bypass
 #
-# Usage: sudo bash deploy/fix-vpn-routing.sh [--role entry|exit|auto]
+# Usage: sudo wg-ops fix-routing [--role entry|exit|auto]
 set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
@@ -49,7 +49,7 @@ if [[ "$ROLE" == "auto" ]]; then
   elif [[ -f /etc/wireguard/exit-server.env ]]; then
     ROLE="exit"
   else
-    die "Could not detect role — use: sudo bash deploy/fix-vpn-routing.sh --role entry|exit"
+    die "Could not detect role — use: sudo wg-ops fix-routing --role entry|exit"
   fi
 fi
 
@@ -81,7 +81,7 @@ case "$ROLE" in
   entry) fix_entry ;;
   exit) fix_exit ;;
   *)
-    die "Usage: sudo bash deploy/fix-vpn-routing.sh [--role entry|exit|auto]"
+    die "Usage: sudo wg-ops fix-routing [--role entry|exit|auto]"
     ;;
 esac
 

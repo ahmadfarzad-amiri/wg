@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Add a new Xray client and print their connection configs.
 #
-# Usage: sudo bash deploy/xray-client-add.sh CLIENT_NAME
+# Usage: sudo wg-ops xray-client CLIENT_NAME
 #
 # The script reads server secrets from /etc/xray/server-secrets.env,
 # generates a UUID for the client, adds them to both VLESS inbounds in
@@ -33,7 +33,7 @@ main() {
   require_root
 
   local raw_name="${1:-}"
-  [[ -n "$raw_name" ]] || die "Usage: sudo bash deploy/xray-client-add.sh CLIENT_NAME"
+  [[ -n "$raw_name" ]] || die "Usage: sudo wg-ops xray-client CLIENT_NAME"
   local name
   name="$(sanitize_name "$raw_name")"
 

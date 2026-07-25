@@ -2,7 +2,7 @@
 # Validate install/runtime configuration before applying changes.
 #
 # Usage:
-#   bash deploy/validate-config.sh --role entry|exit|runtime [--dry-run]
+#   sudo wg-ops validate --role entry|exit|runtime [--dry-run]
 #
 # Exit codes: 0 = valid, 1 = validation failed
 # Does not modify the system.

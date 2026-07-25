@@ -2,7 +2,7 @@
 # Deep VPN diagnostics for the two-hop stack.
 # Read-only: does not modify routing, firewall, or sysctl.
 #
-# Usage: sudo bash deploy/diagnose-vpn.sh [--role entry|exit|auto]
+# Usage: sudo wg-ops diagnose [--role entry|exit|auto]
 #
 # Status legend:
 #   [HEALTHY]  expected state
@@ -47,7 +47,7 @@ if [[ "$ROLE" == "--role" ]]; then
 fi
 if [[ "$ROLE" == "auto" ]]; then
   ROLE="$(server_role)"
-  [[ "$ROLE" != "unknown" ]] || die "Could not detect role — use: sudo bash deploy/diagnose-vpn.sh --role entry|exit"
+  [[ "$ROLE" != "unknown" ]] || die "Could not detect role — use: sudo wg-ops diagnose --role entry|exit"
 fi
 
 HEALTHY=0
@@ -123,7 +123,7 @@ diag_host_perf() {
     local mss_count
     mss_count="$(iptables-save -t mangle 2>/dev/null | grep -c 'TCPMSS.*clamp' || true)"
     if [[ "${mss_count:-0}" -gt 1 ]]; then
-      status WARNING "Duplicate MSS clamp rules (${mss_count}) — run: sudo bash deploy/fix-vpn-routing.sh --role ${ROLE}"
+      status WARNING "Duplicate MSS clamp rules (${mss_count}) — run: sudo wg-ops fix-routing --role ${ROLE}"
     else
       status HEALTHY "TCP MSS clamp rule present"
     fi
@@ -212,7 +212,7 @@ diag_exit() {
     local nat_count
     nat_count="$(iptables-save -t nat 2>/dev/null | grep -cE -- "-A POSTROUTING -s ${client_cidr}.*MASQUERADE" || true)"
     if [[ "${nat_count:-0}" -gt 1 ]]; then
-      status WARNING "Duplicate MASQUERADE rules (${nat_count}) — run: sudo bash deploy/fix-vpn-routing.sh --role exit"
+      status WARNING "Duplicate MASQUERADE rules (${nat_count}) — run: sudo wg-ops fix-routing --role exit"
     else
       status HEALTHY "NAT MASQUERADE for ${client_cidr}"
     fi
@@ -374,14 +374,14 @@ diag_entry() {
 case "$ROLE" in
   exit) diag_exit ;;
   entry) diag_entry ;;
-  *) die "Usage: sudo bash deploy/diagnose-vpn.sh [--role entry|exit|auto]" ;;
+  *) die "Usage: sudo wg-ops diagnose [--role entry|exit|auto]" ;;
 esac
 
 echo
 status INFO "Summary: healthy=${HEALTHY} warning=${WARNING} failed=${FAILED}"
 if [[ "$FAILED" -gt 0 ]]; then
-  status INFO "Fix: sudo bash deploy/fix-vpn-routing.sh --role ${ROLE}"
-  status INFO "Then: sudo bash deploy/diagnose-vpn.sh --role ${ROLE}"
+  status INFO "Fix: sudo wg-ops fix-routing --role ${ROLE}"
+  status INFO "Then: sudo wg-ops diagnose --role ${ROLE}"
   exit 1
 fi
 exit 0

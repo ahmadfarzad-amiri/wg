@@ -63,7 +63,7 @@ sudo WG_ENTRY_PUBLIC_IP=198.51.100.10 \
 
 Set `WG_ENTRY_PUBLIC_IP` when auto-detect picks a private address. Use the **public** IP clients will connect to.
 
-Interactive: `WG_INSTALL_INTERACTIVE=1` or menu → **2**. Full env list: [config.env.example](config.env.example).
+Interactive: `WG_INSTALL_INTERACTIVE=1` or menu → **2**. Full env list: `/opt/wg-ops/config.env.example` or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/config.env.example
 
 **Save from output:**
 - Entry tunnel public key (`tunnel-entry.pub`)
@@ -124,7 +124,7 @@ sudo wg-ops styles
 sudo wg-ops styles --fix
 ```
 
-Or call scripts directly under `deploy/` / `/opt/wg-ops/`. Install scripts apply routing for the current architecture. Use `fix-routing` after manual iptables changes or if client traffic is one-way.
+Or call scripts directly under `/opt/wg-ops/` (after `wg-ops pull`). Install scripts apply routing for the current architecture. Use `fix-routing` after manual iptables changes or if client traffic is one-way.
 
 ## Performance tuning
 
@@ -219,4 +219,4 @@ Run `sudo wg-ops diagnose --role entry` for a full report.
 | `/etc/sysctl.d/99-z-wg-entry-vpn.conf` | Entry — `rp_filter=0` for VPN forwarding |
 | `/etc/systemd/system/wg-docker-forward.service` | Entry — Docker bypass (if Docker installed) |
 
-See `deploy/config.env.example`.
+See `/opt/wg-ops/config.env.example` or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/config.env.example

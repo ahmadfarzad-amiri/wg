@@ -54,17 +54,22 @@ curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/wg-ops \
 sudo wg-ops pull
 ```
 
-Or clone the repo and use `deploy/wg-ops` from the checkout.
+Scripts and examples land under `/opt/wg-ops/`.
 
 ---
 
 ## 5–6. Configuration and secrets
 
-Copy and edit locally (do **not** commit secrets):
+Copy and edit (do **not** commit secrets):
 
 ```bash
-# Local workstation
-cp deploy/config.env.example /tmp/wg-prod.env
+# On the server after wg-ops pull:
+cp /opt/wg-ops/config.env.example /tmp/wg-prod.env
+
+# Or download from CDN (any machine):
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/config.env.example \
+  -o /tmp/wg-prod.env
+
 # Edit WG_ENTRY_PUBLIC_IP, WG_EXIT_PUBLIC_IP, WG_ADMIN_PASS, …
 ```
 

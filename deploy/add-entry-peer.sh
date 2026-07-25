@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Add entry server as peer on exit server (run on exit after entry install).
-# Usage: sudo bash deploy/add-entry-peer.sh [ENTRY_TUNNEL_PUBLIC_KEY] [ENTRY_PUBLIC_IP]
+# Usage: sudo wg-ops add-peer [ENTRY_TUNNEL_PUBLIC_KEY] [ENTRY_PUBLIC_IP]
 set -eo pipefail
 
 # curl | bash: save to a temp file and re-run so stdin is not the script body.

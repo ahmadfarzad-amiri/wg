@@ -51,7 +51,7 @@ sudo WG_ENTRY_PUBLIC_IP=YOUR_ENTRY_IP \
 
 Save the **entry tunnel public key** printed at the end.
 
-> Full env var list: [deploy/config.env.example](deploy/config.env.example).
+> Full env var list: `/opt/wg-ops/config.env.example` (after `wg-ops pull`), or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/config.env.example
 
 ### 3. Link the tunnel on the exit VPS
 

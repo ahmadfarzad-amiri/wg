@@ -8,8 +8,8 @@
 # Optional config snapshot before removal:
 #   sudo WG_UNINSTALL_BACKUP=1 WG_UNINSTALL_CONFIRM=yes wg-ops uninstall
 #
-# Direct (repo checkout):
-#   sudo bash deploy/uninstall-server.sh
+# Direct path after wg-ops pull:
+#   sudo bash /opt/wg-ops/uninstall-server.sh
 set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then

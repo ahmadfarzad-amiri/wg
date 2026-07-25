@@ -203,6 +203,10 @@ cmd_pull() {
     log "CLI updated: $BIN_PATH"
   fi
   log "Scripts ready in $OPS_DIR"
+  if [[ -f "$OPS_DIR/config.env.example" ]]; then
+    log "Example env: $OPS_DIR/config.env.example"
+    log "  cp $OPS_DIR/config.env.example /tmp/wg-prod.env"
+  fi
 }
 
 cmd_install_cli() {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Test connectivity for entry/exit VPN infrastructure.
-# Usage: bash deploy/test-connectivity.sh --role exit|entry|all
+# Usage: sudo wg-ops test --role exit|entry|all
 set -eo pipefail
 
 log() { printf '[wg-deploy] %s\n' "$*"; }
