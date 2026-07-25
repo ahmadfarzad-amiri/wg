@@ -1049,14 +1049,12 @@ menu_loop() {
     echo
     set +e
     handle_menu_choice "$choice"
-    local rc=$?
     set -e
     if [[ "$choice" == "0" ]]; then
       break
     fi
-    if [[ $rc -eq 0 ]]; then
-      pause_menu
-    fi
+    # Always pause — tests/diagnose exit non-zero on failures; users still need to read output.
+    pause_menu
   done
 }
 
