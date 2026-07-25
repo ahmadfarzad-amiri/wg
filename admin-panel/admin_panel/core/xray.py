@@ -162,10 +162,22 @@ def add_client(name):
         for ib in cfg.get("inbounds", []):
             if ib.get("protocol") != "vless":
                 continue
+            tag = ib.get("tag", "")
             clients = ib.setdefault("settings", {}).setdefault("clients", [])
-            if any(c.get("id") == client_uuid for c in clients):
+            existing = next((c for c in clients if c.get("id") == client_uuid), None)
+            if existing is not None:
+                # Repair: Vision flow is Reality-only; WS must not have it.
+                if tag == "vless-ws-tls" and "flow" in existing:
+                    existing.pop("flow", None)
+                    changed = True
+                elif tag == "vless-reality" and existing.get("flow") != "xtls-rprx-vision":
+                    existing["flow"] = "xtls-rprx-vision"
+                    changed = True
                 continue
-            clients.append({"id": client_uuid, "email": safe, "flow": "xtls-rprx-vision"})
+            entry = {"id": client_uuid, "email": safe}
+            if tag == "vless-reality":
+                entry["flow"] = "xtls-rprx-vision"
+            clients.append(entry)
             changed = True
 
         if changed:

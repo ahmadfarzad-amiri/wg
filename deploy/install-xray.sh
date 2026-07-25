@@ -297,19 +297,25 @@ add_client_to_inbound() {
   local client_email="$3"
   local config="$XRAY_DIR/config.json"
 
+  # flow=xtls-rprx-vision is Reality/TCP only — never set it on WebSocket inbounds.
   python3 - "$config" "$inbound_tag" "$client_id" "$client_email" <<'PY'
 import json, sys
 config_path, tag, client_id, email = sys.argv[1:]
 with open(config_path) as f:
     cfg = json.load(f)
 for ib in cfg["inbounds"]:
-    if ib.get("tag") == tag:
-        clients = ib["settings"].setdefault("clients", [])
-        for c in clients:
-            if c.get("id") == client_id or c.get("email") == email:
-                sys.exit(0)  # already exists
-        clients.append({"id": client_id, "email": email, "flow": "xtls-rprx-vision"})
-        break
+    if ib.get("tag") != tag:
+        continue
+    clients = ib["settings"].setdefault("clients", [])
+    for c in clients:
+        if c.get("id") == client_id or c.get("email") == email:
+            print(f"Client {email} already in {tag}")
+            sys.exit(0)
+    entry = {"id": client_id, "email": email}
+    if tag == "vless-reality":
+        entry["flow"] = "xtls-rprx-vision"
+    clients.append(entry)
+    break
 with open(config_path, "w") as f:
     json.dump(cfg, f, indent=2, ensure_ascii=False)
 print(f"Added client {email} to {tag}")
@@ -334,9 +340,14 @@ show_client_configs() {
   echo "--- 1. VLESS + Reality (best for Iran, paste in v2rayNG/Hiddify) ---"
   echo "vless://${client_uuid}@${server_ip}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${reality_sni}&fp=chrome&pbk=${reality_public_key}&sid=${reality_short_id}&type=tcp&headerType=none#${client_name}-reality"
   echo ""
-  echo "--- 2. VLESS + WebSocket + TLS (behind Cloudflare CDN) ---"
-  echo "vless://${client_uuid}@${ws_domain}:443?encryption=none&security=tls&sni=${ws_domain}&type=ws&path=%2Fvless#${client_name}-ws"
-  echo ""
+  if [[ -n "$ws_domain" ]]; then
+    echo "--- 2. VLESS + WebSocket + TLS (behind Cloudflare CDN) ---"
+    echo "vless://${client_uuid}@${ws_domain}:443?encryption=none&security=tls&sni=${ws_domain}&type=ws&path=%2Fvless#${client_name}-ws"
+    echo ""
+  else
+    echo "--- 2. VLESS + WebSocket --- skipped (set WG_XRAY_WS_DOMAIN to enable)"
+    echo ""
+  fi
   echo "--- 3. Shadowsocks 2022 (simple fallback) ---"
   echo "ss://$(echo -n "2022-blake3-aes-256-gcm:${ss_password}" | base64 -w0)@${server_ip}:8388#${client_name}-ss"
   echo ""
@@ -451,7 +462,14 @@ XRAY_WS_DOMAIN=${WS_DOMAIN}
 ENV
   chmod 600 "$XRAY_DIR/server-secrets.env"
 
-  # Write firewall rules (UFW)
+  # Host firewall (iptables + UFW if present)
+  for _proto_port in "tcp 443" "tcp 8388" "udp 8388"; do
+    set -- $_proto_port
+    if ! iptables -C INPUT -p "$1" --dport "$2" -j ACCEPT 2>/dev/null; then
+      iptables -I INPUT 1 -p "$1" --dport "$2" -j ACCEPT
+      log "iptables INPUT ACCEPT ${1}/${2}"
+    fi
+  done
   if command -v ufw >/dev/null 2>&1; then
     ufw allow 443/tcp comment "xray-reality" 2>/dev/null || true
     ufw allow 8388/tcp comment "xray-ss"     2>/dev/null || true
@@ -521,6 +539,15 @@ NGINX_WS
   if [[ -n "$WS_DOMAIN" ]]; then
     setup_nginx_ws_proxy "$WS_DOMAIN"
   fi
+
+  # Register the default VLESS UUID in both inbounds (links are useless without this).
+  add_client_to_inbound "vless-reality" "$SERVER_UUID" "default"
+  add_client_to_inbound "vless-ws-tls" "$SERVER_UUID" "default"
+  cat > "$XRAY_CLIENTS_DIR/default.env" <<ENV
+CLIENT_NAME=default
+CLIENT_UUID=${SERVER_UUID}
+ENV
+  chmod 600 "$XRAY_CLIENTS_DIR/default.env"
 
   write_systemd_service
   systemctl restart xray

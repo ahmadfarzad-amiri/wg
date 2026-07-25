@@ -62,7 +62,7 @@ ENV
     log "Created client '$name' with UUID $CLIENT_UUID"
   fi
 
-  # Add UUID to VLESS inbounds
+  # Add UUID to VLESS inbounds (Reality gets flow; WebSocket must not).
   python3 - "$config" "$name" "$CLIENT_UUID" <<'PY'
 import json, sys
 config_path, name, client_id = sys.argv[1:]
@@ -70,21 +70,31 @@ with open(config_path) as f:
     cfg = json.load(f)
 changed = False
 for ib in cfg["inbounds"]:
-    proto = ib.get("protocol", "")
-    if proto != "vless":
+    if ib.get("protocol") != "vless":
         continue
+    tag = ib.get("tag", "")
     clients = ib["settings"].setdefault("clients", [])
     exists = any(c.get("id") == client_id for c in clients)
     if not exists:
-        clients.append({
-            "id": client_id,
-            "email": name,
-            "flow": "xtls-rprx-vision"
-        })
+        entry = {"id": client_id, "email": name}
+        if tag == "vless-reality":
+            entry["flow"] = "xtls-rprx-vision"
+        clients.append(entry)
         changed = True
-        print(f"Added {name} to inbound {ib.get('tag','?')}")
+        print(f"Added {name} to inbound {tag or '?'}")
     else:
-        print(f"Client {name} already in inbound {ib.get('tag','?')}")
+        # Repair wrong flow on WebSocket if an older installer added it.
+        for c in clients:
+            if c.get("id") != client_id:
+                continue
+            if tag == "vless-ws-tls" and c.pop("flow", None) is not None:
+                changed = True
+                print(f"Removed invalid flow from {name} on {tag}")
+            elif tag == "vless-reality" and c.get("flow") != "xtls-rprx-vision":
+                c["flow"] = "xtls-rprx-vision"
+                changed = True
+                print(f"Set Reality flow for {name} on {tag}")
+        print(f"Client {name} already in inbound {tag or '?'}")
 if changed:
     with open(config_path, "w") as f:
         json.dump(cfg, f, indent=2, ensure_ascii=False)

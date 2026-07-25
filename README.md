@@ -30,7 +30,7 @@ sudo wg-ops pull
 ```
 
 Scripts follow the **latest** GitHub release (`@latest`), or pin with `WG_VERSION` / `WG_RAW_BASE`:  
-`sudo WG_VERSION=1.0.24 wg-ops pull`
+`sudo WG_VERSION=1.0.25 wg-ops pull`
 
 ### Two-hop (entry + exit)
 
