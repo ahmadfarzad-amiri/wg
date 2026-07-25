@@ -467,7 +467,17 @@ h1{color:#3aa6ff;margin:0 0 8px}
 }
 .toast--show{opacity:1;transform:translateY(0)}
 .toast--hide{opacity:0;transform:translateY(-10px)}
-.toast-text{flex:1;word-break:break-word}
+.toast-text{
+  flex:1;
+  word-break:break-word;
+  overflow-wrap:anywhere;
+  max-height:6.6em;
+  overflow:hidden;
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:4;
+  line-clamp:4;
+}
 .toast-close{
   flex-shrink:0;
   background:transparent;

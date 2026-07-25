@@ -19,6 +19,10 @@
     if (!message) {
       return;
     }
+    var textValue = String(message).trim();
+    if (textValue.length > 280) {
+      textValue = textValue.slice(0, 279).replace(/\s+\S*$/, "") + "…";
+    }
     var root = ensureToastRoot();
     var existing = root.querySelectorAll(".toast");
     while (existing.length >= 3) {
@@ -33,7 +37,7 @@
 
     var text = document.createElement("span");
     text.className = "toast-text";
-    text.textContent = message;
+    text.textContent = textValue;
 
     var close = document.createElement("button");
     close.type = "button";

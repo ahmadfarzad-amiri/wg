@@ -104,13 +104,13 @@ def handle(handler, data):
             vpn_mode=vpn_mode,
         )
         if not ok:
-            _render(handler, tail_message(out), variant="error")
+            _render(handler, tail_message(out) or t("msg.unknown_action"), variant="error")
             return
         _audit(handler, "add_client", client)
         _try_add_xray_client(client)
         _render(
             handler,
-            tail_message(out or tf("msg.client_ready", name=client)),
+            tf("msg.client_ready", name=client),
             variant="success",
             client=client,
         )
@@ -161,7 +161,12 @@ def handle(handler, data):
             return
         _audit(handler, "update", client)
         combined = "\n".join(m for m in messages if m)
-        _render(handler, tail_message(combined), variant="success", client=client)
+        _render(
+            handler,
+            tail_message(combined) or tf("msg.client_ready", name=client),
+            variant="success",
+            client=client,
+        )
         return
 
     if not meta_exists or not status:
@@ -209,7 +214,12 @@ def handle(handler, data):
         return
 
     _audit(handler, action, client)
-    _render(handler, tail_message(out), variant="success", client=client)
+    _render(
+        handler,
+        tail_message(out) or tf("msg.client_ready", name=client),
+        variant="success",
+        client=client,
+    )
 
 
 def _render(handler, msg, *, path="/clients", variant="info", client=""):
