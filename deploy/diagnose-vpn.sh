@@ -13,7 +13,7 @@ set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.21}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22}"
   _WG_INSTALLER="$(mktemp /tmp/wg-diagnose-XXXXXX.sh)"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/diagnose-vpn.sh" -o "$_WG_INSTALLER"
   chmod 700 "$_WG_INSTALLER"
@@ -31,7 +31,7 @@ if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.21}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22}"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"
@@ -261,8 +261,42 @@ diag_entry() {
   fi
   if [[ -f /etc/wireguard/wg-endpoint ]]; then
     status HEALTHY "Client endpoint=$(cat /etc/wireguard/wg-endpoint)"
+    local ep_ip
+    ep_ip="$(tr -d '[:space:]' </etc/wireguard/wg-endpoint | cut -d: -f1)"
+    if [[ -n "$ep_ip" ]] && ! _is_public_ipv4 "$ep_ip" 2>/dev/null; then
+      status WARNING "Endpoint IP ${ep_ip} looks private — remote clients cannot handshake"
+    fi
   else
     status FAILED "Missing /etc/wireguard/wg-endpoint"
+  fi
+
+  wg_ensure_clients_udp_input 2>/dev/null || true
+  local client_port="${WG_CLIENT_PORT:-51820}"
+  if [[ -f /etc/wireguard/wg-endpoint ]]; then
+    local _ep
+    _ep="$(tr -d '[:space:]' </etc/wireguard/wg-endpoint)"
+    [[ "$_ep" == *:* ]] && client_port="${_ep##*:}"
+  fi
+  if iptables -C INPUT -p udp --dport "$client_port" -j ACCEPT 2>/dev/null \
+    || iptables -L INPUT -n 2>/dev/null | grep -qE "udp.*dpt:${client_port}"; then
+    status HEALTHY "iptables INPUT ACCEPT udp/${client_port} (clients)"
+  else
+    status WARNING "No INPUT ACCEPT for udp/${client_port} — run: sudo wg-ops open-ports --role entry"
+  fi
+
+  local peer_count=0 live_hs=0
+  peer_count="$(wg show wg-clients peers 2>/dev/null | wc -l | tr -d ' ')"
+  peer_count="${peer_count:-0}"
+  if [[ "$peer_count" -gt 0 ]]; then
+    status HEALTHY "wg-clients has ${peer_count} configured peer(s)"
+    live_hs="$(wg show wg-clients latest-handshakes 2>/dev/null | awk '$2+0 > 0 {n++} END{print n+0}')"
+    if [[ "${live_hs:-0}" -gt 0 ]]; then
+      status HEALTHY "${live_hs} peer(s) with a handshake"
+    else
+      status WARNING "No client handshakes yet — import .conf on a device, then check cloud firewall UDP ${client_port}"
+    fi
+  else
+    status WARNING "wg-clients has no peers — create a client in the admin panel"
   fi
 
   if [[ "$standalone" -eq 1 ]]; then

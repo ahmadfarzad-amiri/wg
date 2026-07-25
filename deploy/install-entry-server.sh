@@ -20,7 +20,7 @@ set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.21}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22}"
   _WG_INSTALLER="$(mktemp /tmp/wg-install-XXXXXX.sh)"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/install-entry-server.sh" -o "$_WG_INSTALLER"
   chmod 700 "$_WG_INSTALLER"
@@ -38,7 +38,7 @@ if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.21}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22}"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"
@@ -241,6 +241,7 @@ fi
 
 if command -v ufw >/dev/null 2>&1; then
   wg_ufw_allow_udp_ports
+  wg_ensure_clients_udp_input
   if [[ "$USE_NGINX" == "yes" ]]; then
     ufw allow 80/tcp || true
     ufw allow 443/tcp || true
@@ -248,6 +249,8 @@ if command -v ufw >/dev/null 2>&1; then
     ufw allow "${CLIENT_PORT}/tcp" || true
     ufw allow "${ADMIN_PORT}/tcp" || true
   fi
+else
+  wg_ensure_clients_udp_input
 fi
 maybe_enable_ufw
 

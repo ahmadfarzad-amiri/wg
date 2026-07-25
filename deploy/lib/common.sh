@@ -11,7 +11,7 @@ fi
 GITHUB_OWNER="${GITHUB_OWNER:-ahmadfarzad-amiri}"
 GITHUB_REPO_NAME="${GITHUB_REPO_NAME:-wg}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
-GITHUB_CDN_REF="${GITHUB_CDN_REF:-v1.0.21}"
+GITHUB_CDN_REF="${GITHUB_CDN_REF:-v1.0.22}"
 GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/${GITHUB_OWNER}/${GITHUB_REPO_NAME}.git}"
 # jsDelivr CDN mirrors GitHub and works where raw.githubusercontent.com is blocked (e.g. Iran).
 # Pin GITHUB_CDN_REF to a semver tag (not @latest) — jsDelivr @latest purge is often throttled.
@@ -475,7 +475,7 @@ fetch_deploy_helper_scripts() {
 source_deploy_lib() {
   local script_ref="${1:-}"
   # jsDelivr works where raw.githubusercontent.com is blocked (Iran, etc.)
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.21}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22}"
   if [[ -n "$script_ref" && -f "$(dirname "$script_ref")/lib/common.sh" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "$script_ref")" && pwd)"
     # shellcheck source=lib/common.sh
@@ -979,6 +979,31 @@ wg_ensure_exit_tunnel_udp_input() {
   fi
 }
 
+# Client devices handshake on entry INPUT (wg-clients ListenPort, default 51820).
+wg_ensure_clients_udp_input() {
+  local port="${WG_CLIENT_PORT:-51820}"
+  local ep
+  if [[ -z "${WG_CLIENT_PORT:-}" && -f /etc/wireguard/wg-endpoint ]]; then
+    ep="$(tr -d '[:space:]' </etc/wireguard/wg-endpoint)"
+    if [[ "$ep" == *:* ]]; then
+      port="${ep##*:}"
+    fi
+  elif [[ -z "${WG_CLIENT_PORT:-}" && -n "${WG_ENDPOINT:-}" && "${WG_ENDPOINT}" == *:* ]]; then
+    port="${WG_ENDPOINT##*:}"
+  fi
+  wg_is_port "$port" || return 0
+
+  if ! iptables -C INPUT -p udp --dport "$port" -j ACCEPT 2>/dev/null; then
+    iptables -I INPUT 1 -p udp --dport "$port" -j ACCEPT
+    log "iptables INPUT ACCEPT udp/${port} (WireGuard clients)"
+  fi
+
+  if command -v ufw >/dev/null 2>&1; then
+    ufw allow "${port}/udp" comment 'wg-clients' 2>/dev/null \
+      || ufw allow "${port}/udp" || true
+  fi
+}
+
 wg_strip_wg_key() {
   printf '%s' "${1:-}" | tr -d '[:space:]'
 }
@@ -1295,6 +1320,7 @@ apply_entry_vpn_routing_fix() {
   ensure_entry_client_postup_in_conf "/etc/wireguard/${client_if}.conf" "$client_if" "$client_cidr"
   wg_install_rp_filter_systemd_hooks
   ensure_wg_quick_running "$client_if"
+  wg_ensure_clients_udp_input
 
   if wg_entry_is_standalone; then
     wg_apply_ip_forward

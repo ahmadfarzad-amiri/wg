@@ -463,6 +463,9 @@ add_live_peer() {
 
   if wg show "$WG_IF" >/dev/null 2>&1; then
     wg set "$WG_IF" peer "$public_key" allowed-ips "$ip/32"
+    if ! wg show "$WG_IF" peers 2>/dev/null | grep -qxF "$public_key"; then
+      die "Failed to add live peer on ${WG_IF} — is the interface up? Try: systemctl restart wg-quick@${WG_IF}"
+    fi
   else
     echo "WARNING: $WG_IF is not running. Peer saved to config only."
     echo "Start it with: systemctl restart wg-quick@$WG_IF"
@@ -530,6 +533,11 @@ create_client_config() {
   mkdir -p "$CLIENT_DIR"
   chmod 700 "$CLIENT_DIR"
 
+  [ -n "$endpoint" ] || die "Client Endpoint is empty — set /etc/wireguard/wg-endpoint or pass --endpoint ENTRY_IP:51820"
+  if [[ "$endpoint" == 127.0.0.1:* || "$endpoint" == localhost:* ]]; then
+    die "Client Endpoint is ${endpoint} — set a public ENTRY_IP in /etc/wireguard/wg-endpoint (sudo wg-ops change-entry --new ENTRY_IP:51820)"
+  fi
+
   local mtu
   mtu="$(resolve_mtu "$vpn_mode" "$mtu_override")"
 
@@ -541,7 +549,7 @@ DNS = $DNS_SERVERS
 MTU = $mtu
 
 [Peer]
-PublicKey = $(cat "$SERVER_PUBLIC_KEY_FILE")
+PublicKey = $(tr -d '[:space:]' < "$SERVER_PUBLIC_KEY_FILE")
 Endpoint = $endpoint
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
