@@ -16,7 +16,7 @@ sudo wg-ops status
 
 | Goal | Command |
 |------|---------|
-| Refresh scripts from CDN (pinned tag) | `sudo wg-ops pull` |
+| Refresh scripts from CDN (latest tag, or `WG_VERSION` if set) | `sudo wg-ops pull` |
 | Update scripts + panels + tools | `sudo wg-ops update` |
 | Update panels only (entry) | `sudo wg-ops update-panels` |
 | Test / diagnose / repair | `sudo wg-ops test` · `diagnose` · `fix-routing` |
@@ -74,7 +74,7 @@ sudo wg-ops styles --fix
 
 After a style fix, hard-refresh the browser (`Ctrl+Shift+R`).
 
-New **script** fixes only appear after you pull a newer pinned release tag. Panel UI fixes can land sooner via `update-panels` from `main`.
+New **script** fixes appear after `pull` / `update` re-resolves the latest GitHub tag (unless you pinned `WG_VERSION` / `WG_RAW_BASE`). Panel UI fixes can also land via `update-panels` from `main`. Install-time `WG_VERSION` in `entry-server.env` is updated on panel update and no longer freezes the ops release channel.
 
 ---
 

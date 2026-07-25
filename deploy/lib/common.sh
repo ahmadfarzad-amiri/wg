@@ -28,6 +28,27 @@ wg_strip_v() {
 
 # Resolve WG_VERSION from env or latest GitHub release/tag (jsDelivr @latest as last resort).
 # Sets WG_VERSION, GITHUB_CDN_REF, and GITHUB_RAW_BASE (unless already set).
+_github_latest_tag() {
+  local owner="$1" repo="$2"
+  local path="repos/${owner}/${repo}"
+  local url tag="" body=""
+  for url in \
+    "https://api.github.com/${path}/releases/latest" \
+    "https://gh-proxy.com/https://api.github.com/${path}/releases/latest"; do
+    body="$(curl -fsSL --connect-timeout 5 --max-time 12 "$url" 2>/dev/null || true)"
+    tag="$(printf '%s' "$body" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 || true)"
+    [[ -n "$tag" ]] && { printf '%s' "$tag"; return 0; }
+  done
+  for url in \
+    "https://api.github.com/${path}/tags?per_page=1" \
+    "https://gh-proxy.com/https://api.github.com/${path}/tags?per_page=1"; do
+    body="$(curl -fsSL --connect-timeout 5 --max-time 12 "$url" 2>/dev/null || true)"
+    tag="$(printf '%s' "$body" | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 || true)"
+    [[ -n "$tag" ]] && { printf '%s' "$tag"; return 0; }
+  done
+  return 1
+}
+
 resolve_wg_version() {
   local owner="${GITHUB_OWNER:-ahmadfarzad-amiri}"
   local repo="${GITHUB_REPO_NAME:-wg}"
@@ -42,14 +63,7 @@ resolve_wg_version() {
   elif [[ -n "${GITHUB_CDN_REF:-}" && "$GITHUB_CDN_REF" != "latest" ]]; then
     WG_VERSION="$(wg_strip_v "$GITHUB_CDN_REF")"
   else
-    tag="$(curl -fsSL --connect-timeout 5 --max-time 12 \
-      "https://api.github.com/repos/${owner}/${repo}/releases/latest" 2>/dev/null \
-      | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 || true)"
-    if [[ -z "$tag" ]]; then
-      tag="$(curl -fsSL --connect-timeout 5 --max-time 12 \
-        "https://api.github.com/repos/${owner}/${repo}/tags?per_page=1" 2>/dev/null \
-        | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 || true)"
-    fi
+    tag="$(_github_latest_tag "$owner" "$repo" || true)"
     if [[ -z "$tag" ]]; then
       hdr="$(curl -fsSI --connect-timeout 5 --max-time 12 \
         "https://cdn.jsdelivr.net/gh/${owner}/${repo}@latest/deploy/repo.conf" 2>/dev/null \

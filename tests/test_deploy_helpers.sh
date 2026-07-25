@@ -188,6 +188,19 @@ assert_ok "wg-ops help mentions role detection" bash -c "bash '$ROOT/deploy/wg-o
 assert_fail "wg-ops unknown command" bash "$ROOT/deploy/wg-ops" not-a-real-command
 assert_ok "wg-ops list-menu shows version" \
   bash -c "WG_VERSION=0.0.0-test bash '$ROOT/deploy/wg-ops' list-menu none | grep -q 'Version: 0.0.0-test'"
+assert_ok "server env WG_VERSION does not pin menu release channel" \
+  bash -c '
+    tmp="$(mktemp -d)"
+    trap "rm -rf \"$tmp\"" EXIT
+    printf "WG_VERSION=1.0.23\nWG_ENTRY_MODE=standalone\n" > "$tmp/entry-server.env"
+    out="$(
+      WG_VERSION=1.0.25 \
+      WG_ENTRY_ENV_FILE="$tmp/entry-server.env" \
+      WG_OPS_ROLE_OVERRIDE=entry \
+      bash "'"$ROOT"'/deploy/wg-ops" list-menu entry
+    )"
+    echo "$out" | grep -q "Version: 1.0.25"
+  '
 assert_ok "WG_VERSION env drives CDN ref without hardcode" \
   bash -c '
     unset GITHUB_CDN_REF GITHUB_RAW_BASE

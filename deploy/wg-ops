@@ -11,6 +11,8 @@ set -euo pipefail
 OPS_NAME="wg-ops"
 OPS_DIR="${WG_OPS_DIR:-/opt/wg-ops}"
 BIN_PATH="${WG_OPS_BIN:-/usr/local/bin/wg-ops}"
+ENTRY_ENV_FILE="${WG_ENTRY_ENV_FILE:-/etc/wireguard/entry-server.env}"
+EXIT_ENV_FILE="${WG_EXIT_ENV_FILE:-/etc/wireguard/exit-server.env}"
 
 log() { printf '[%s] %s\n' "$OPS_NAME" "$*"; }
 warn() { printf '[%s] WARN: %s\n' "$OPS_NAME" "$*" >&2; }
@@ -23,6 +25,34 @@ wg_strip_v() {
   printf '%s' "$v"
 }
 
+# True when the operator explicitly pinned the release channel (not from server env).
+WG_OPS_VERSION_PINNED=0
+WG_OPS_RAW_PINNED=0
+[[ -n "${WG_VERSION:-}" ]] && WG_OPS_VERSION_PINNED=1
+[[ -n "${WG_RAW_BASE:-}" || -n "${GITHUB_RAW_BASE:-}" ]] && WG_OPS_RAW_PINNED=1
+
+# Fetch latest release/tag name from GitHub (direct, then gh-proxy). Empty on failure.
+_github_latest_tag() {
+  local owner="$1" repo="$2"
+  local path="repos/${owner}/${repo}"
+  local url tag="" body=""
+  for url in \
+    "https://api.github.com/${path}/releases/latest" \
+    "https://gh-proxy.com/https://api.github.com/${path}/releases/latest"; do
+    body="$(curl -fsSL --connect-timeout 5 --max-time 12 "$url" 2>/dev/null || true)"
+    tag="$(printf '%s' "$body" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 || true)"
+    [[ -n "$tag" ]] && { printf '%s' "$tag"; return 0; }
+  done
+  for url in \
+    "https://api.github.com/${path}/tags?per_page=1" \
+    "https://gh-proxy.com/https://api.github.com/${path}/tags?per_page=1"; do
+    body="$(curl -fsSL --connect-timeout 5 --max-time 12 "$url" 2>/dev/null || true)"
+    tag="$(printf '%s' "$body" | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 || true)"
+    [[ -n "$tag" ]] && { printf '%s' "$tag"; return 0; }
+  done
+  return 1
+}
+
 # WG_VERSION from env, else latest GitHub release/tag (jsDelivr @latest as last resort).
 resolve_wg_version() {
   local owner="${GITHUB_OWNER:-ahmadfarzad-amiri}"
@@ -32,14 +62,7 @@ resolve_wg_version() {
   if [[ -n "${WG_VERSION:-}" ]]; then
     WG_VERSION="$(wg_strip_v "$WG_VERSION")"
   else
-    tag="$(curl -fsSL --connect-timeout 5 --max-time 12 \
-      "https://api.github.com/repos/${owner}/${repo}/releases/latest" 2>/dev/null \
-      | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 || true)"
-    if [[ -z "$tag" ]]; then
-      tag="$(curl -fsSL --connect-timeout 5 --max-time 12 \
-        "https://api.github.com/repos/${owner}/${repo}/tags?per_page=1" 2>/dev/null \
-        | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 || true)"
-    fi
+    tag="$(_github_latest_tag "$owner" "$repo" || true)"
     if [[ -z "$tag" ]]; then
       hdr="$(curl -fsSI --connect-timeout 5 --max-time 12 \
         "https://cdn.jsdelivr.net/gh/${owner}/${repo}@latest/deploy/wg-ops" 2>/dev/null \
@@ -60,6 +83,16 @@ resolve_wg_version() {
     RAW_BASE="https://cdn.jsdelivr.net/gh/${owner}/${repo}@latest"
   fi
   export WG_VERSION RAW_BASE
+}
+
+# Re-resolve latest release for pull/update unless the operator pinned WG_VERSION / RAW_BASE.
+refresh_release_channel() {
+  if [[ "${WG_OPS_VERSION_PINNED}" == "1" || "${WG_OPS_RAW_PINNED}" == "1" ]]; then
+    resolve_wg_version
+    return 0
+  fi
+  unset WG_VERSION RAW_BASE GITHUB_CDN_REF GITHUB_RAW_BASE
+  resolve_wg_version
 }
 
 resolve_wg_version
@@ -124,8 +157,8 @@ detect_role() {
     return 0
   fi
   local has_entry=0 has_exit=0
-  [[ -f /etc/wireguard/entry-server.env ]] && has_entry=1
-  [[ -f /etc/wireguard/exit-server.env ]] && has_exit=1
+  [[ -f "$ENTRY_ENV_FILE" ]] && has_entry=1
+  [[ -f "$EXIT_ENV_FILE" ]] && has_exit=1
   if (( has_entry && has_exit )); then
     printf 'both'
   elif (( has_entry )); then
@@ -225,11 +258,28 @@ entry_has_tunnel_conf() {
   [[ -f /etc/wireguard/wg-tunnel.conf ]]
 }
 
+# Load runtime server env without clobbering the ops release channel.
+# entry-server.env stores WG_VERSION for panel CSS cache-bust; that install-time
+# pin must not freeze pull/update on an old tag.
 load_server_env() {
+  local _had_ver=0 _had_raw=0 _had_cdn=0 _had_graw=0 _had_wraw=0
+  local _ver="" _raw="" _cdn="" _graw="" _wraw=""
+  [[ "${WG_VERSION+x}" == "x" ]] && { _had_ver=1; _ver="${WG_VERSION}"; }
+  [[ "${RAW_BASE+x}" == "x" ]] && { _had_raw=1; _raw="${RAW_BASE}"; }
+  [[ "${GITHUB_CDN_REF+x}" == "x" ]] && { _had_cdn=1; _cdn="${GITHUB_CDN_REF}"; }
+  [[ "${GITHUB_RAW_BASE+x}" == "x" ]] && { _had_graw=1; _graw="${GITHUB_RAW_BASE}"; }
+  [[ "${WG_RAW_BASE+x}" == "x" ]] && { _had_wraw=1; _wraw="${WG_RAW_BASE}"; }
+
   # shellcheck disable=SC1091
-  [[ -f /etc/wireguard/entry-server.env ]] && source /etc/wireguard/entry-server.env 2>/dev/null || true
+  [[ -f "$ENTRY_ENV_FILE" ]] && source "$ENTRY_ENV_FILE" 2>/dev/null || true
   # shellcheck disable=SC1091
-  [[ -f /etc/wireguard/exit-server.env ]] && source /etc/wireguard/exit-server.env 2>/dev/null || true
+  [[ -f "$EXIT_ENV_FILE" ]] && source "$EXIT_ENV_FILE" 2>/dev/null || true
+
+  if [[ "$_had_ver" -eq 1 ]]; then export WG_VERSION="$_ver"; else unset WG_VERSION 2>/dev/null || true; fi
+  if [[ "$_had_raw" -eq 1 ]]; then export RAW_BASE="$_raw"; else unset RAW_BASE 2>/dev/null || true; fi
+  if [[ "$_had_cdn" -eq 1 ]]; then export GITHUB_CDN_REF="$_cdn"; else unset GITHUB_CDN_REF 2>/dev/null || true; fi
+  if [[ "$_had_graw" -eq 1 ]]; then export GITHUB_RAW_BASE="$_graw"; else unset GITHUB_RAW_BASE 2>/dev/null || true; fi
+  if [[ "$_had_wraw" -eq 1 ]]; then export WG_RAW_BASE="$_wraw"; else unset WG_RAW_BASE 2>/dev/null || true; fi
 }
 
 # Start wg-quick@IF even when the interface already exists outside systemd.
@@ -388,6 +438,7 @@ source_ops_common() {
 cmd_pull() {
   require_root pull
   local rel ver=""
+  refresh_release_channel
   ver="$(cdn_resolved_version || true)"
   if [[ -n "$ver" ]]; then
     log "Fetching scripts into $OPS_DIR (CDN → v${ver})"
@@ -395,6 +446,7 @@ cmd_pull() {
     log "Fetching scripts into $OPS_DIR (base: $RAW_BASE)"
   fi
   log "  $RAW_BASE"
+  [[ -n "${WG_VERSION:-}" ]] && log "Release version: ${WG_VERSION}"
   mkdir -p "$OPS_DIR/lib"
   for rel in "${CORE_FILES[@]}" "${HELPER_SCRIPTS[@]}"; do
     log "  $rel"
@@ -442,6 +494,8 @@ cmd_update_all() {
   cmd_pull
   case "$role" in
     entry|both)
+      # Ensure update-panels inherits the refreshed release tag (not install-time env).
+      export WG_VERSION RAW_BASE
       invoke_script update-panels.sh
       if ask_yes "Apply routing/performance repair now?"; then
         if [[ "$role" == "both" ]]; then
@@ -462,7 +516,7 @@ cmd_update_all() {
       log "No stack installed — scripts/CLI updated only."
       ;;
   esac
-  log "Update complete."
+  log "Update complete (version ${WG_VERSION:-unknown})."
 }
 
 cmd_list() {
@@ -903,10 +957,7 @@ build_menu() {
       menu_add update-panels "Update panels only"
       menu_add uninstall "Uninstall this server"
       menu_add uninstall-xray "Uninstall Xray only"
-      if [[ -f /etc/wireguard/entry-server.env ]]; then
-        # shellcheck disable=SC1091
-        source /etc/wireguard/entry-server.env 2>/dev/null || true
-      fi
+      load_server_env
       menu_section "VPN ops [entry]"
       menu_add test "Test connectivity"
       menu_add diagnose "Diagnose VPN"
@@ -973,10 +1024,7 @@ build_menu() {
       menu_add update-panels "Update panels only"
       menu_add uninstall "Uninstall this server"
       menu_add uninstall-xray "Uninstall Xray only"
-      if [[ -f /etc/wireguard/entry-server.env ]]; then
-        # shellcheck disable=SC1091
-        source /etc/wireguard/entry-server.env 2>/dev/null || true
-      fi
+      load_server_env
       menu_section "VPN ops [both]"
       menu_add test "Test connectivity"
       menu_add diagnose "Diagnose VPN"
@@ -1110,7 +1158,14 @@ run_menu_action() {
       ;;
     update) cmd_update_all ;;
     pull) cmd_pull ;;
-    update-panels) require_root; require_role entry; ensure_ops_ready; invoke_script update-panels.sh ;;
+    update-panels)
+      require_root
+      require_role entry
+      ensure_ops_ready
+      refresh_release_channel
+      export WG_VERSION RAW_BASE
+      invoke_script update-panels.sh
+      ;;
     uninstall) run_uninstall ;;
     uninstall-xray) run_uninstall_xray ;;
     test)
@@ -1232,6 +1287,14 @@ dispatch_cli() {
     install-cli) cmd_install_cli ;;
     self-update) cmd_pull; cmd_install_cli ;;
     update) cmd_update_all ;;
+    update-panels)
+      require_root
+      require_role entry
+      ensure_ops_ready
+      refresh_release_channel
+      export WG_VERSION RAW_BASE
+      invoke_script update-panels.sh "$@"
+      ;;
     list) cmd_list ;;
     path) printf '%s\n' "$OPS_DIR" ;;
     status) print_status_footer ;;
