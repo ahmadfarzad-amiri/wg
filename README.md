@@ -17,7 +17,7 @@ Fresh install on clean entry and exit servers. Full walkthrough: **[docs/DEPLOYM
 On **each** server:
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/wg-ops \
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/wg-ops \
   -o /usr/local/bin/wg-ops && sudo chmod 755 /usr/local/bin/wg-ops
 sudo wg-ops pull
 ```

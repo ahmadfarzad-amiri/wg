@@ -233,7 +233,24 @@ Runtime file on entry: `/etc/wireguard/entry-server.env`
 | `WG_ENABLE_MSS_CLAMP` | `1` | MSS clamp service |
 
 Full list: `/opt/wg-ops/config.env.example`  
-or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/config.env.example
+or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/config.env.example
+
+---
+
+## Releases and jsDelivr `@latest`
+
+Install URLs use `cdn.jsdelivr.net/.../wg@latest`, which resolves to the **highest semver Git tag** (e.g. `v1.0.0`). Git clone still uses branch `main`.
+
+After tagging a new release:
+
+```bash
+git tag vX.Y.Z
+git push origin vX.Y.Z
+# Force CDN to pick up the new @latest (one URL at a time):
+curl 'https://purge.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/wg-ops'
+```
+
+Or use the [jsDelivr purge tool](https://www.jsdelivr.com/tools/purge).
 
 ---
 

@@ -41,7 +41,7 @@ Optional: point a DNS A record at the entry IP if you want HTTPS panels later.
 Run on **entry** and **exit**:
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/wg-ops \
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/wg-ops \
   -o /usr/local/bin/wg-ops && sudo chmod 755 /usr/local/bin/wg-ops
 sudo wg-ops pull
 ```
@@ -211,4 +211,4 @@ sudo wg-ops measure --role guide
 | End-user help | [User guide](USER_GUIDE.md) |
 
 Full environment variable list: after `wg-ops pull`, see `/opt/wg-ops/config.env.example`  
-or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/config.env.example
+or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/config.env.example
