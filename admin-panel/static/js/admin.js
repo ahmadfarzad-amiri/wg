@@ -335,9 +335,16 @@
       return;
     }
     var root = ensureToastRoot();
+    var existing = root.querySelectorAll(".toast");
+    while (existing.length >= 3) {
+      existing[0].remove();
+      existing = root.querySelectorAll(".toast");
+    }
     var toast = document.createElement("div");
-    toast.className = "toast toast--" + (variant || "info");
-    toast.setAttribute("role", "alert");
+    var kind = variant || "info";
+    toast.className = "toast toast--" + kind;
+    toast.setAttribute("role", kind === "error" ? "alert" : "status");
+    root.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
 
     var text = document.createElement("span");
     text.className = "toast-text";
@@ -360,16 +367,52 @@
     close.addEventListener("click", dismiss);
     toast.appendChild(text);
     toast.appendChild(close);
-    root.appendChild(toast);
+    root.insertBefore(toast, root.firstChild);
 
     requestAnimationFrame(function () {
       toast.classList.add("toast--show");
     });
 
-    setTimeout(dismiss, 5000);
+    var ttl = kind === "error" ? 8000 : kind === "warn" ? 6000 : 4000;
+    setTimeout(dismiss, ttl);
   }
 
   window.showToast = showToast;
+
+  function initCopyTargets() {
+    document.querySelectorAll("[data-copy-target]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var targetId = btn.getAttribute("data-copy-target");
+        var input = document.getElementById(targetId);
+        if (!input) {
+          return;
+        }
+        var text = input.value || input.textContent || "";
+        var done = function () {
+          showToast(i18n.copyOk || "Copied", "success");
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(function () {
+            try {
+              input.select();
+              document.execCommand("copy");
+              done();
+            } catch (e) {
+              showToast(i18n.copyFail || "Copy failed", "error");
+            }
+          });
+        } else {
+          try {
+            input.select();
+            document.execCommand("copy");
+            done();
+          } catch (e) {
+            showToast(i18n.copyFail || "Copy failed", "error");
+          }
+        }
+      });
+    });
+  }
 
   function initToasts() {
     document.querySelectorAll("template.toast-payload").forEach(function (el) {
@@ -381,6 +424,7 @@
       var params = new URLSearchParams(window.location.search);
       if (params.has("notice")) {
         params.delete("notice");
+        params.delete("notice_v");
         var qs = params.toString();
         history.replaceState(
           {},
@@ -393,9 +437,59 @@
     }
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initToasts);
-  } else {
+  function initMoreNav() {
+    var btn = document.getElementById("more-nav-btn");
+    var sheet = document.getElementById("more-sheet");
+    if (!btn || !sheet) {
+      return;
+    }
+    var lastFocus = null;
+    var open = function () {
+      lastFocus = document.activeElement;
+      sheet.hidden = false;
+      btn.setAttribute("aria-expanded", "true");
+      document.body.classList.add("more-sheet-open");
+      var closeBtn = sheet.querySelector(".more-sheet-close");
+      if (closeBtn) {
+        closeBtn.focus();
+      }
+    };
+    var close = function () {
+      sheet.hidden = true;
+      btn.setAttribute("aria-expanded", "false");
+      document.body.classList.remove("more-sheet-open");
+      if (lastFocus && lastFocus.focus) {
+        lastFocus.focus();
+      } else {
+        btn.focus();
+      }
+    };
+    btn.addEventListener("click", function () {
+      if (sheet.hidden) {
+        open();
+      } else {
+        close();
+      }
+    });
+    sheet.querySelectorAll("[data-more-close]").forEach(function (el) {
+      el.addEventListener("click", close);
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !sheet.hidden) {
+        close();
+      }
+    });
+  }
+
+  function boot() {
     initToasts();
+    initCopyTargets();
+    initMoreNav();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
   }
 })();

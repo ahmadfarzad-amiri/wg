@@ -9,13 +9,13 @@ def handle(handler, data):
     client = safe_name(data.get("client", ""))
 
     if not client:
-        handler.flash("/active", t("msg.client_name_required"))
+        handler.flash("/active", t("msg.client_name_required"), variant="error")
         return
 
     if action == "disconnect":
         msg = live_disconnect_client(client)
         log_admin_action("disconnect_client", client)
-    else:
-        msg = t("msg.unknown_action")
+        handler.flash("/active", msg, variant="warn")
+        return
 
-    handler.flash("/active", msg)
+    handler.flash("/active", t("msg.unknown_action"), variant="error")

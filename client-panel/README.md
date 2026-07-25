@@ -59,10 +59,12 @@ Client configs use the endpoint stored in `/etc/wireguard/wg-endpoint` on the en
 
 ## Key features
 
-- **Registration and login** — with PBKDF2-SHA256 password hashing
+- **Registration and login** — with PBKDF2-SHA256 password hashing; language toggle on login
+- **Connect-first dashboard** — download, QR, and copy before usage metrics
 - **Config download** — single `.conf` file or ZIP of all assigned configs
-- **QR code** — scan directly with the WireGuard mobile app
-- **Subscription link** (`/sub/TOKEN`) — unauthenticated URL for automatic config import in compatible apps; token rotatable from Dashboard → Tools
-- **Connection test** — server-side check of WireGuard interface, exit server ping, and DNS, shown as status badges
+- **QR code** — scan directly with the WireGuard mobile app (per-config when multiple)
+- **Import / subscription link** (`/sub/TOKEN`) — unauthenticated URL for config import; rotatable from the dashboard
+- **Server status** — server-side check of WireGuard interface, exit ping, and DNS (not device connectivity)
 - **Support requests** — submit renew/enable requests; track status
+- **Optional Xray links** — copy alternative protocol URLs when enabled
 - **Bilingual** — Persian (RTL) and English (LTR) with full layout switching

@@ -4,13 +4,13 @@ from admin_panel.components.user_rows import user_list
 from admin_panel.core.i18n import t
 
 
-def body(users, msg=""):
+def body(users, msg="", variant="info"):
     listing = user_list(users)
     return f"""
 <h1>{t("users.title")}</h1>
 <p class="subtitle">{t("users.subtitle")}</p>
 <p class="hint page-glossary">{t("glossary.users")}</p>
-{notice(msg, role="alert")}
+{notice(msg, variant=variant)}
 
 <div class="page-stack">
 <section class="card card-users list-filterable">

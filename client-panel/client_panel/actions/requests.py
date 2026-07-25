@@ -16,7 +16,7 @@ def handle_request(handler, user, data):
     if action == "rotate-sub-token":
         from client_panel.core.subscription import rotate_sub_token
         rotate_sub_token(user["id"])
-        handler.flash("/sub-link", t("sub.rotated"))
+        handler.flash("/sub-link", t("sub.rotated"), variant="success")
         return
 
     if action not in ["renew", "enable"]:
@@ -49,4 +49,4 @@ def handle_request(handler, user, data):
     )
     con.commit()
     con.close()
-    handler.redirect("/support")
+    handler.flash("/support", t("request.submitted"), variant="success")

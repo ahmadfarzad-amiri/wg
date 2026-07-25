@@ -61,10 +61,10 @@ Set in `/etc/wireguard/entry-server.env` during install. See `/opt/wg-ops/config
 ## Key features
 
 - **User management** — approve registrations, assign / unassign WireGuard configs, reset passwords
-- **Client management** — create, enable/disable, set data limits and expiry, edit subscriptions
+- **Client management** — create, enable/disable, set data limits and expiry; **Edit** opens a detail page
 - **Bulk client creation** — add up to 50 clients at once from the Clients tab
 - **Support requests** — approve or reject user renew/enable requests
-- **Active connections** — live WireGuard handshake view
-- **Server tools** — change entry/exit server IP from the panel UI
-- **Audit log** — every admin action logged with actor username, source IP, and timestamp
-- **Bilingual** — Persian (RTL) and English (LTR) with full layout switching
+- **Active connections** — live WireGuard handshake view and disconnect
+- **More menu** — Tools (entry/exit + maintenance + audit), Xray, Settings
+- **Audit log** — every admin action logged with actor username, source IP, and timestamp (50 recent)
+- **Bilingual** — Persian (RTL) and English (LTR); language on login and in the header

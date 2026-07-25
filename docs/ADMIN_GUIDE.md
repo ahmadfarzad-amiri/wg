@@ -21,16 +21,16 @@ This guide is for **administrators** who manage users, WireGuard clients, and su
 
 | Tab | Use for |
 |-----|---------|
-| **Dashboard** | Quick stats, recent requests, system health |
-| **Clients** | WireGuard peers — create, bulk add, set limits, enable/disable |
+| **Dashboard** | Attention items, KPIs, recent requests, system health |
+| **Clients** | WireGuard peers — create, bulk add; open **Edit** for limits and VPN mode |
 | **Users** | Panel accounts — approve, assign configs, reset passwords |
-| **Requests** | Support tickets submitted by users |
-| **Active** | Who is currently connected (live WireGuard status) |
-| **Xray** | Xray protocol status; add/delete VLESS+Reality, WebSocket, Shadowsocks clients |
-| **Tools** | Change entry/exit server IPs, view audit log |
-| **Settings** | Change admin password |
+| **Requests** | Support tickets submitted by users (renew / enable) |
+| **Active** | Who is currently connected; **Disconnect** a live peer |
+| **More → Xray** | Xray protocol status; add/delete VLESS+Reality, WebSocket, Shadowsocks clients |
+| **More → Tools** | Change entry/exit IPs, maintenance (enforce / restart panel / import), audit log |
+| **More → Settings** | Change admin password |
 
-On mobile, use the bottom navigation bar. Filters appear below the header on list pages.
+On desktop, primary tabs sit in the sidebar; Tools, Xray, and Settings are under **More**. On mobile, the bottom bar shows the five primary tabs plus **More** (opens Tools / Xray / Settings). Language switcher is in the header (and login screen).
 
 ---
 
@@ -135,10 +135,13 @@ Each row shows: name, status (enabled/disabled), usage vs limit, expiry, assigne
 
 | Action | What it does |
 |--------|--------------|
+| **Edit** | Opens the client detail page — change days, data limit, VPN mode, device limit, reset usage |
+| **Download / Show QR** | Deliver the `.conf` or QR for that peer |
 | **Enable / Disable** | Toggles the WireGuard peer without deleting it |
-| **Disconnect** | Drops the live session by resetting the handshake |
+| **Renew** | Available when expired or over limit |
 | **Delete** | Removes the client permanently (requires confirmation) |
-| **Edit** | Opens the details row — change expiry, data limit, or days |
+
+To drop a **live** session, use **Active → Disconnect** (not the Clients list).
 
 ### CLI equivalents (SSH on entry server)
 
@@ -161,9 +164,8 @@ sudo wg show wg-clients
 
 | Request type | Admin action |
 |--------------|--------------|
-| Renew | **Clients** → extend expiry or data limit → mark request done |
-| Enable | **Clients** → enable client; **Users** → enable if the user was also disabled |
-| Custom | Follow your policy; reject if the request is invalid |
+| Renew | **Clients → Edit** → extend expiry or data limit → **Approve** the request |
+| Enable | **Clients** → enable client; **Users** → enable if the user was also disabled → **Approve** |
 
 Click **Approve** or **Reject** in the request row. The user sees the updated status in their **Support** tab.
 
@@ -174,6 +176,7 @@ Click **Approve** or **Reject** in the request row. The user sees the updated st
 **Active** lists clients with a WireGuard handshake in the last ~2 minutes.
 
 - Use it to confirm that a specific user is online.
+- **Disconnect** ends the live session for that peer.
 - For usage data (transfer totals), check the **Clients** tab.
 
 If the list is empty when clients should be connected:
@@ -206,6 +209,18 @@ Also update your cloud firewall and any DNS records. Connected users must reconn
 ```
 
 See [Operations](OPERATIONS.md) for changing entry/exit servers and other day-2 tasks.
+
+### Maintenance
+
+Also on **Tools**:
+
+| Action | Purpose |
+|--------|---------|
+| **Enforce limits** | Run expiry/usage enforcement now |
+| **Restart client panel** | Restart `wg-panel` |
+| **Import existing peers** | Import WireGuard peers that already exist on disk into panel state |
+
+The audit list shows the **50** most recent admin actions.
 
 ---
 

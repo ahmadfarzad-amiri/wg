@@ -39,10 +39,10 @@ def handle_bulk(handler, data):
     names = [n for n in names if n]
 
     if not names:
-        _render(handler, t("msg.bulk_names_required"))
+        _render(handler, t("msg.bulk_names_required"), variant="error")
         return
     if len(names) > 50:
-        _render(handler, t("msg.bulk_too_many"))
+        _render(handler, t("msg.bulk_too_many"), variant="error")
         return
 
     vpn_mode = (data.get("vpn_mode") or "twohop").strip().lower()
@@ -78,7 +78,11 @@ def handle_bulk(handler, data):
     if failed:
         parts.append(tf("msg.bulk_failed", n=len(failed), names=", ".join(failed)))
 
-    _render(handler, " ".join(parts) or t("msg.bulk_nothing"))
+    _render(
+        handler,
+        " ".join(parts) or t("msg.bulk_nothing"),
+        variant="error" if failed and not created else ("warn" if failed or skipped else "success"),
+    )
 
 
 def handle(handler, data):
@@ -87,7 +91,7 @@ def handle(handler, data):
 
     if action == "add":
         if not client:
-            _render(handler, t("msg.client_name_required"))
+            _render(handler, t("msg.client_name_required"), variant="error")
             return
         vpn_mode = (data.get("vpn_mode") or "twohop").strip().lower()
         if vpn_mode not in ("direct", "twohop"):
@@ -100,41 +104,28 @@ def handle(handler, data):
             vpn_mode=vpn_mode,
         )
         if not ok:
-            _render(handler, tail_message(out))
+            _render(handler, tail_message(out), variant="error")
             return
         _audit(handler, "add_client", client)
         _try_add_xray_client(client)
-        _render(handler, tail_message(out or tf("msg.client_ready", name=client)))
+        _render(
+            handler,
+            tail_message(out or tf("msg.client_ready", name=client)),
+            variant="success",
+            client=client,
+        )
         return
 
     if not client:
-        _render(handler, t("msg.client_name_required"))
+        _render(handler, t("msg.client_name_required"), variant="error")
         return
 
     status = find_client_status(client)
     meta_exists = any(m.get("NAME") == client for m in all_client_meta())
 
-    if action == "set-single":
-        mode = data.get("single_mode", "ip")
-        if mode not in ("off", "ip", "endpoint"):
-            _render(handler, t("msg.invalid_single_mode"))
-            return
-        out = run([WG_CLIENT_SINGLE, client, mode])
-        _render(handler, tail_message(out))
-        return
-
-    if action == "set-vpn-mode":
-        mode = (data.get("vpn_mode") or "twohop").strip().lower()
-        if mode not in ("direct", "twohop"):
-            _render(handler, t("msg.invalid_vpn_mode"))
-            return
-        out = run([WG_CLIENT, "set-mode", client, mode])
-        _render(handler, tail_message(out))
-        return
-
     if action == "update":
         if not meta_exists:
-            _render(handler, t("msg.client_not_found"))
+            _render(handler, t("msg.client_not_found"), variant="error")
             return
         cmd = [WG_CLIENT, "update", client]
         days = (data.get("days") or "").strip()
@@ -143,14 +134,14 @@ def handle(handler, data):
         single_mode = (data.get("single_mode") or "").strip()
         if days:
             if not days.isdigit():
-                _render(handler, t("msg.invalid_days"))
+                _render(handler, t("msg.invalid_days"), variant="error", client=client)
                 return
             cmd.extend(["--days", days])
         if limit:
             cmd.extend(["--limit", limit])
         if vpn_mode:
             if vpn_mode not in ("direct", "twohop"):
-                _render(handler, t("msg.invalid_vpn_mode"))
+                _render(handler, t("msg.invalid_vpn_mode"), variant="error", client=client)
                 return
             cmd.extend(["--vpn-mode", vpn_mode])
         if data.get("reset_usage"):
@@ -160,38 +151,38 @@ def handle(handler, data):
             messages.append(run(cmd, timeout=CLIENT_CMD_TIMEOUT))
         if single_mode:
             if single_mode not in ("off", "ip", "endpoint"):
-                _render(handler, t("msg.invalid_single_mode"))
+                _render(handler, t("msg.invalid_single_mode"), variant="error", client=client)
                 return
             current_single = (status.get("single") or "off") if status else None
             if single_mode != current_single:
                 messages.append(run([WG_CLIENT_SINGLE, client, single_mode]))
         if not messages:
-            _render(handler, t("msg.update_nothing"))
+            _render(handler, t("msg.update_nothing"), variant="info", client=client)
             return
         _audit(handler, "update", client)
         combined = "\n".join(m for m in messages if m)
-        _render(handler, tail_message(combined))
+        _render(handler, tail_message(combined), variant="success", client=client)
         return
 
     if not meta_exists or not status:
-        _render(handler, t("msg.client_not_found"))
+        _render(handler, t("msg.client_not_found"), variant="error")
         return
 
     if action == "enable":
         if not status["disabled"]:
-            _render(handler, t("msg.client_already_active"))
+            _render(handler, t("msg.client_already_active"), variant="info", client=client)
             return
         out = run_client_action("enable", client)
 
     elif action == "disable":
         if status["disabled"]:
-            _render(handler, t("msg.client_already_disabled"))
+            _render(handler, t("msg.client_already_disabled"), variant="info", client=client)
             return
         out = run_client_action("disable", client, ["disabled from admin panel"])
 
     elif action == "renew":
         if not (status.get("expired") or status.get("over_limit")):
-            _render(handler, t("msg.renew_only_expired"))
+            _render(handler, t("msg.renew_only_expired"), variant="error", client=client)
             return
         out = run_client_renew(
             client,
@@ -208,15 +199,20 @@ def handle(handler, data):
                 names = t("fmt.list_sep").join(detached)
                 out = (out or tf("msg.client_removed", name=client)).strip()
                 out += tf("msg.users_deactivated", names=names)
+        _audit(handler, action, client)
+        _render(handler, tail_message(out), variant="success")
+        return
 
     else:
         out = t("msg.unknown_action")
-        _render(handler, tail_message(out))
+        _render(handler, tail_message(out), variant="error")
         return
 
     _audit(handler, action, client)
-    _render(handler, tail_message(out))
+    _render(handler, tail_message(out), variant="success", client=client)
 
 
-def _render(handler, msg):
-    handler.flash("/clients", msg)
+def _render(handler, msg, *, path="/clients", variant="info", client=""):
+    if client and path == "/clients":
+        path = f"/clients/{client}"
+    handler.flash(path, msg, variant=variant)

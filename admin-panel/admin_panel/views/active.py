@@ -4,18 +4,14 @@ from admin_panel.components.notice import notice, notice_html
 from admin_panel.core.i18n import t
 
 
-def body(clients, msg="", wg_hint=""):
+def body(clients, msg="", wg_hint="", variant="info"):
     listing = active_list(clients)
     hint_block = notice_html(wg_hint, css_class="notice notice-hint") if wg_hint else ""
-    empty_block = ""
-    if not clients and not wg_hint:
-        empty_block = notice_html(t("empty.no_online"))
     return f"""
 <h1>{t("active.title")}</h1>
 <p class="subtitle">{t("active.subtitle")}</p>
 {hint_block}
-{empty_block}
-{notice(msg, role="alert")}
+{notice(msg, variant=variant)}
 
 <div class="page-stack">
 <section class="card card-active list-filterable">

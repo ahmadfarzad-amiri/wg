@@ -10,6 +10,8 @@ DEPLOY_DIR = os.environ.get("WG_DEPLOY_DIR", "/opt/wg/deploy")
 
 def handle(handler, data):
     action = data.get("action", "")
+    variant = "success"
+    out = ""
 
     if action == "enforce":
         out = run([WG_CLIENT, "enforce"], timeout=CLIENT_CMD_TIMEOUT)
@@ -29,6 +31,7 @@ def handle(handler, data):
         old_ip = (data.get("old_ip") or "").strip()
         if not new_ep:
             out = t("msg.entry_endpoint_required")
+            variant = "error"
         else:
             cmd = ["bash", os.path.join(DEPLOY_DIR, "change-entry-server.sh"), "--new", new_ep]
             if old_ip:
@@ -47,6 +50,7 @@ def handle(handler, data):
         exit_port = (data.get("exit_tunnel_port") or "51821").strip()
         if not exit_ip or not exit_pub:
             out = t("msg.exit_fields_required")
+            variant = "error"
         else:
             out = run(
                 [
@@ -63,6 +67,12 @@ def handle(handler, data):
             )
     else:
         out = t("msg.unknown_action")
+        variant = "error"
+
+    if variant == "success" and out:
+        lower = out.lower()
+        if any(x in lower for x in ("error", "fail", "failed", "denied")):
+            variant = "error"
 
     log_admin_action(f"tool_{action}", (out or "")[:500])
-    handler.flash("/tools", tail_message(out))
+    handler.flash("/tools", tail_message(out) if out else t("msg.unknown_action"), variant=variant)

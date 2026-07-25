@@ -114,12 +114,14 @@ def _user_manage_panel(
 ):
     username_esc = html.escape(u["username"])
 
+    # One-click Approve stays on the toolbar; Manage only shows Approve when a
+    # client name is still required (or when re-opening that flow from toolbar).
     approve_section = ""
-    if can_approve or needs_client or u["status"] in (UserStatus.PENDING, UserStatus.REJECTED, UserStatus.DISABLED):
+    if needs_client:
         approve_section = f"""
 <div class="user-manage-section">
   <span class="user-manage-label">{html.escape(t("user.approve"))}</span>
-  <form id="{form_id}" class="inline-form user-approve-form" method="post" action="{admin_url("/user-action")}">
+  <form class="inline-form user-approve-form" method="post" action="{admin_url("/user-action")}">
     <input type="hidden" name="action" value="approve">
     <input type="hidden" name="username" value="{username_esc}">
     {approve_client_field}
@@ -296,7 +298,11 @@ def user_list(users):
     if not users:
         return f"""
 <div class="user-list" data-list-items data-list-kind="users">
-  <div class="user-list-empty" data-list-static-empty>{html.escape(t("empty.no_users"))}</div>
+  <div class="user-list-empty" data-list-static-empty>
+    <p>{html.escape(t("empty.no_users"))}</p>
+    <p class="hint">{html.escape(t("empty.no_users_cta"))}</p>
+    <div class="actions"><a class="btn btn-sm dark" href="{admin_url("/clients")}">{html.escape(t("dashboard.manage_clients"))}</a></div>
+  </div>
 </div>
 """
 

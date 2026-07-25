@@ -5,7 +5,7 @@ from client_panel.components.brand import brand_html
 from client_panel.components.icons import nav_icon
 from client_panel.components.modal import qr_modal_html
 from client_panel.config import BRAND, VERSION
-from client_panel.core.i18n import html_dir, html_lang, js_i18n_script, t
+from client_panel.core.i18n import html_dir, html_lang, js_i18n_script, lang_toggle_html, t
 
 
 def head_assets():
@@ -17,6 +17,15 @@ def head_assets():
     )
 
 
+def _header_lang(next_path="/", *, desktop_hide=False):
+    cls = "shell-header-bar shell-header-bar--desktop-hide" if desktop_hide else "shell-header-bar"
+    return (
+        f'<div class="{cls}">'
+        f'<div class="shell-header-lang" dir="ltr">{lang_toggle_html(next_path)}</div>'
+        f"</div>"
+    )
+
+
 def page(title, body, user=None, active="dashboard", auth=False, extra_head="", next_path="/"):
     safe_title = html.escape(title)
     assets = head_assets() + extra_head
@@ -25,6 +34,7 @@ def page(title, body, user=None, active="dashboard", auth=False, extra_head="", 
     shell_class = "app-shell panel-shell" if not auth else "auth-page"
     if direction == "ltr":
         shell_class += " ltr"
+    lang_next = next_path if next_path else "/"
 
     if auth:
         return f"""<!doctype html>
@@ -39,6 +49,7 @@ def page(title, body, user=None, active="dashboard", auth=False, extra_head="", 
 </head>
 <body class="{shell_class}">
 <a class="skip-link" href="#main">{html.escape(t("skip_link"))}</a>
+{_header_lang(lang_next)}
 {body}
 <div id="toast-root" class="toast-root" aria-live="polite"></div>
 </body>
@@ -82,6 +93,9 @@ def page(title, body, user=None, active="dashboard", auth=False, extra_head="", 
   <nav class="nav nav-sidebar" id="sidebar-nav" aria-label="{html.escape(t("nav.sidebar"))}">
     {sidebar_nav()}
   </nav>
+  <div class="sidebar-footer">
+    <div class="sidebar-lang" dir="ltr">{lang_toggle_html(lang_next)}</div>
+  </div>
 </aside>
 """
 
@@ -99,7 +113,10 @@ def page(title, body, user=None, active="dashboard", auth=False, extra_head="", 
 <a class="skip-link" href="#main">{html.escape(t("skip_link"))}</a>
 <div class="layout">
 {sidebar}
-<main class="main" id="main">{body}</main>
+<main class="main" id="main">
+{_header_lang(lang_next, desktop_hide=True)}
+{body}
+</main>
 </div>
 <nav class="bottom-nav" aria-label="{html.escape(t("nav.bottom"))}">
   {bottom_nav()}

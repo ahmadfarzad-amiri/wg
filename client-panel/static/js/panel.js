@@ -20,9 +20,16 @@
       return;
     }
     var root = ensureToastRoot();
+    var existing = root.querySelectorAll(".toast");
+    while (existing.length >= 3) {
+      existing[0].remove();
+      existing = root.querySelectorAll(".toast");
+    }
     var toast = document.createElement("div");
-    toast.className = "toast toast--" + (variant || "info");
-    toast.setAttribute("role", "alert");
+    var kind = variant || "info";
+    toast.className = "toast toast--" + kind;
+    toast.setAttribute("role", kind === "error" ? "alert" : "status");
+    root.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
 
     var text = document.createElement("span");
     text.className = "toast-text";
@@ -45,13 +52,14 @@
     close.addEventListener("click", dismiss);
     toast.appendChild(text);
     toast.appendChild(close);
-    root.appendChild(toast);
+    root.insertBefore(toast, root.firstChild);
 
     requestAnimationFrame(function () {
       toast.classList.add("toast--show");
     });
 
-    setTimeout(dismiss, 5000);
+    var ttl = kind === "error" ? 8000 : kind === "warn" ? 6000 : 4000;
+    setTimeout(dismiss, ttl);
   }
 
   window.showToast = showToast;
@@ -66,6 +74,7 @@
       var params = new URLSearchParams(window.location.search);
       if (params.has("notice")) {
         params.delete("notice");
+        params.delete("notice_v");
         var qs = params.toString();
         history.replaceState(
           {},
@@ -124,7 +133,12 @@
 
   function copyFromFetch(btn) {
     setButtonLoading(btn, true);
-    return fetch("/config-text", { credentials: "same-origin" })
+    var clientName = btn.getAttribute("data-copy-client") || "";
+    var url = "/config-text";
+    if (clientName) {
+      url += "?client=" + encodeURIComponent(clientName);
+    }
+    return fetch(url, { credentials: "same-origin" })
       .then(function (r) {
         if (!r.ok) throw new Error("fetch failed");
         return r.text();
@@ -192,7 +206,7 @@
     }
   }
 
-  function openQrModal() {
+  function openQrModal(clientName) {
     lastFocus = document.activeElement;
     modal.hidden = false;
     modal.setAttribute("aria-hidden", "false");
@@ -203,7 +217,12 @@
         '<p class="modal-loading">' + (i18n.qrLoading || "") + "</p>";
     }
 
-    fetch("/config-qr.svg", { credentials: "same-origin" })
+    var qrUrl = "/config-qr.svg";
+    if (clientName) {
+      qrUrl += "?client=" + encodeURIComponent(clientName);
+    }
+
+    fetch(qrUrl, { credentials: "same-origin" })
       .then(function (r) {
         if (!r.ok) {
           return r.text().then(function (t) {
@@ -222,6 +241,7 @@
           modalBody.innerHTML = "";
         }
         setModalError(err.message || i18n.qrErrorFull || "");
+        showToast(err.message || i18n.qrError || "QR failed", "error");
       });
 
     var closeBtn = modal.querySelector(".modal-close");
@@ -229,7 +249,9 @@
   }
 
   document.querySelectorAll("[data-qr-open]").forEach(function (btn) {
-    btn.addEventListener("click", openQrModal);
+    btn.addEventListener("click", function () {
+      openQrModal(btn.getAttribute("data-qr-client") || "");
+    });
   });
 
   document.querySelectorAll("[data-qr-close]").forEach(function (el) {
@@ -295,13 +317,15 @@
             exit_ping:    (i18n.connTest && i18n.connTest.exit_ping)    || "Exit server",
             dns:          (i18n.connTest && i18n.connTest.dns)          || "DNS",
           };
+          var valueLabels = (i18n.connTest && i18n.connTest.values) || {};
           var html = "";
           Object.keys(data).forEach(function (key) {
             var val = data[key];
             var ok = val === "ok" || val === "up";
             var cls = ok ? "ok" : "bad";
+            var display = valueLabels[val] || val;
             html += '<div class="item"><span class="badge ' + cls + '">' +
-              (labels[key] || key) + ': ' + val + '</span></div>';
+              (labels[key] || key) + ': ' + display + '</span></div>';
           });
           results.innerHTML = html;
           results.hidden = false;

@@ -25,15 +25,16 @@ def _wg_health_row():
                 text=True, stderr=subprocess.DEVNULL, timeout=5,
             ).strip()
             peer_count = len(out.splitlines()) if out else 0
-            rows.append(("ok",  f"wg-clients: up ({peer_count} peers)"))
+            rows.append(("ok", tf("dashboard.health.wg_up", n=peer_count)))
         except Exception:
-            rows.append(("bad", "wg-clients: down or unreachable"))
+            rows.append(("bad", t("dashboard.health.wg_down")))
     else:
-        rows.append(("warn", "WireGuard tools not installed"))
+        rows.append(("warn", t("dashboard.health.wg_missing")))
 
     # Database
-    rows.append(("ok" if os.path.isfile(DB_PATH) else "bad",
-                 f"panel.db: {'present' if os.path.isfile(DB_PATH) else 'MISSING'}"))
+    db_ok = os.path.isfile(DB_PATH)
+    rows.append(("ok" if db_ok else "bad",
+                 t("dashboard.health.db_ok") if db_ok else t("dashboard.health.db_missing")))
 
     # Xray (optional)
     if shutil.which("xray") or os.path.exists("/usr/local/bin/xray"):
@@ -42,9 +43,9 @@ def _wg_health_row():
                 ["systemctl", "is-active", "xray"],
                 text=True, stderr=subprocess.DEVNULL, timeout=3,
             )
-            rows.append(("ok", "Xray: active"))
+            rows.append(("ok", t("dashboard.health.xray_active")))
         except Exception:
-            rows.append(("warn", "Xray: installed but not running"))
+            rows.append(("warn", t("dashboard.health.xray_inactive")))
 
     items = "".join(
         f'<div class="item"><span class="badge {cls}">{html.escape(label)}</span></div>'
@@ -104,29 +105,71 @@ def _user_breakdown(users, label_fn):
     return f'<div class="statrow">{items}</div>'
 
 
+def _attention_strip(k):
+    chips = []
+    pending_users = int(k.get("pending_users") or 0)
+    pending_requests = int(k.get("pending_requests") or 0)
+    if pending_users > 0:
+        chips.append(
+            f'<a class="attention-chip" href="{admin_url("/users")}">'
+            f'{html.escape(tf("dashboard.attention.pending_users", n=pending_users))}</a>'
+        )
+    if pending_requests > 0:
+        chips.append(
+            f'<a class="attention-chip" href="{admin_url("/requests")}">'
+            f'{html.escape(tf("dashboard.attention.open_requests", n=pending_requests))}</a>'
+        )
+    if not chips:
+        return ""
+    return f"""
+<section class="attention-strip" aria-label="{html.escape(t("dashboard.attention.title"))}">
+  <span class="attention-strip-label">{html.escape(t("dashboard.attention.title"))}</span>
+  <div class="attention-chips">{"".join(chips)}</div>
+</section>
+"""
+
+
 def _top_usage_table(top_usage):
     if not top_usage:
         return f'<p class="hint">{html.escape(t("empty.no_data"))}</p>'
     rows = ""
+    cards = ""
     for c in top_usage:
         limit = (
             f"{c['used_bytes'] * 100 // c['limit_bytes']}%"
             if c["limit_bytes"] > 0
             else "—"
         )
+        name = html.escape(c["name"])
+        used = html.escape(human_bytes(c["used_bytes"]))
+        limit_esc = html.escape(limit)
+        last = html.escape(c["last"])
         rows += f"""
 <tr>
-  <td>{html.escape(c['name'])}</td>
-  <td>{html.escape(human_bytes(c['used_bytes']))}</td>
-  <td>{html.escape(limit)}</td>
-  <td>{html.escape(c['last'])}</td>
+  <td>{name}</td>
+  <td>{used}</td>
+  <td>{limit_esc}</td>
+  <td>{last}</td>
 </tr>
 """
+        cards += f"""
+<div class="rowcard">
+  <div class="rowcard-title">{name}</div>
+  <div class="rowline"><div class="rowlabel">{html.escape(t("col.usage"))}</div><div class="rowvalue">{used}</div></div>
+  <div class="rowline"><div class="rowlabel">{html.escape(t("dashboard.top_usage.limit_pct"))}</div><div class="rowvalue">{limit_esc}</div></div>
+  <div class="rowline"><div class="rowlabel">{html.escape(t("col.last_seen"))}</div><div class="rowvalue">{last}</div></div>
+</div>
+"""
     return f"""
-<table class="table">
-  <thead><tr><th>{html.escape(t("col.client"))}</th><th>{html.escape(t("col.usage"))}</th><th>{html.escape(t("dashboard.top_usage.limit_pct"))}</th><th>{html.escape(t("col.last_seen"))}</th></tr></thead>
-  <tbody>{rows}</tbody>
-</table>
+<div class="list-items-host">
+  <div class="table-scroll desktop-table">
+    <table class="table">
+      <thead><tr><th>{html.escape(t("col.client"))}</th><th>{html.escape(t("col.usage"))}</th><th>{html.escape(t("dashboard.top_usage.limit_pct"))}</th><th>{html.escape(t("col.last_seen"))}</th></tr></thead>
+      <tbody>{rows}</tbody>
+    </table>
+  </div>
+  <div class="mobile-cards">{cards}</div>
+</div>
 """
 
 
@@ -135,27 +178,45 @@ def _recent_requests_table(recent, label_action, label_status):
         return f'<p class="hint">{html.escape(t("empty.no_requests"))}</p>'
 
     rows = ""
+    cards = ""
     for r in recent:
         badge = badge_request_status(r["status"])
         status_label = label_status(r["status"])
         action_label = label_action(r["action"])
         ts_date = time.strftime("%m/%d", time.localtime(int(r["created_at"])))
         ts_clock = time.strftime("%H:%M", time.localtime(int(r["created_at"])))
+        username = html.escape(r["username"])
+        action_esc = html.escape(action_label)
+        status_esc = html.escape(status_label)
         rows += f"""
 <tr>
   <td>#{r['id']}</td>
-  <td class="col-user">{html.escape(r['username'])}</td>
-  <td>{html.escape(action_label)}</td>
-  <td><span class="badge {badge}">{html.escape(status_label)}</span></td>
+  <td class="col-user">{username}</td>
+  <td>{action_esc}</td>
+  <td><span class="badge {badge}">{status_esc}</span></td>
   <td class="col-time"><span class="time-stack"><span>{ts_date}</span><span>{ts_clock}</span></span></td>
 </tr>
 """
+        cards += f"""
+<div class="rowcard">
+  <div class="rowcard-title">{html.escape(tf("request.row_title", id=r['id']))}</div>
+  <div class="rowline"><div class="rowlabel">{html.escape(t("col.user"))}</div><div class="rowvalue">{username}</div></div>
+  <div class="rowline"><div class="rowlabel">{html.escape(t("col.request_type"))}</div><div class="rowvalue">{action_esc}</div></div>
+  <div class="rowline"><div class="rowlabel">{html.escape(t("col.status"))}</div><div class="rowvalue"><span class="badge {badge}">{status_esc}</span></div></div>
+  <div class="rowline"><div class="rowlabel">{html.escape(t("col.date"))}</div><div class="rowvalue">{ts_date} {ts_clock}</div></div>
+</div>
+"""
 
     return f"""
-<table class="table table-recent">
-  <thead><tr><th>{html.escape(t("col.id"))}</th><th class="col-user">{html.escape(t("col.user"))}</th><th>{html.escape(t("col.request_type"))}</th><th>{html.escape(t("col.status"))}</th><th>{html.escape(t("col.date"))}</th></tr></thead>
-  <tbody>{rows}</tbody>
-</table>
+<div class="list-items-host">
+  <div class="table-scroll recent-requests-wrap desktop-table">
+    <table class="table table-recent">
+      <thead><tr><th>{html.escape(t("col.id"))}</th><th class="col-user">{html.escape(t("col.user"))}</th><th>{html.escape(t("col.request_type"))}</th><th>{html.escape(t("col.status"))}</th><th>{html.escape(t("col.date"))}</th></tr></thead>
+      <tbody>{rows}</tbody>
+    </table>
+  </div>
+  <div class="mobile-cards">{cards}</div>
+</div>
 """
 
 
@@ -169,6 +230,7 @@ def body(metrics):
 <p class="subtitle">{html.escape(t("dashboard.subtitle"))}</p>
 
 <div class="page-stack">
+{_attention_strip(k)}
 <section class="card quick-access-card">
   <h3>{html.escape(t("dashboard.quick_access"))}</h3>
   <div class="quick-actions">
@@ -230,7 +292,7 @@ def body(metrics):
 
   <section class="card">
     <h3>{html.escape(t("dashboard.top_usage.title"))}</h3>
-    <div class="table-scroll">{_top_usage_table(metrics["top_usage"])}</div>
+    {_top_usage_table(metrics["top_usage"])}
     <div class="actions card-footer-actions">
       <a class="btn dark btn-sm" href="{admin_url('/clients')}">{html.escape(t("dashboard.all_clients"))}</a>
       <a class="btn dark btn-sm" href="{admin_url('/active')}">{html.escape(tf("dashboard.online_link", n=k['active']))}</a>
@@ -240,7 +302,7 @@ def body(metrics):
 
 <section class="card">
   <h3>{html.escape(t("dashboard.recent_requests.title"))}</h3>
-  <div class="table-scroll recent-requests-wrap">{_recent_requests_table(metrics["recent_requests"], label_action_short, label_request_status_short)}</div>
+  {_recent_requests_table(metrics["recent_requests"], label_action_short, label_request_status_short)}
   <div class="actions card-footer-actions">
     <a class="btn dark btn-sm" href="{admin_url('/requests')}">{html.escape(t("dashboard.all_requests"))}</a>
   </div>

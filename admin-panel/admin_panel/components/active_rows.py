@@ -28,9 +28,8 @@ def active_list(clients):
 <form class="inline-form" method="post" action="{admin_url("/active-action")}">
   <input type="hidden" name="action" value="disconnect">
   <input type="hidden" name="client" value="{name}">
-  <button type="submit" class="bad btn-sm" data-confirm="{disconnect_confirm}">{html.escape(t("active.disconnect"))}</button>
+  <button type="submit" class="btn bad btn-sm" data-confirm="{disconnect_confirm}">{html.escape(t("active.disconnect"))}</button>
 </form>
-<p class="hint active-disconnect-hint">{html.escape(t("active.disconnect_hint"))}</p>
 """
 
         item_attrs = (
@@ -58,7 +57,10 @@ def active_list(clients):
 """
 
     if not rows:
-        empty = html.escape(t("empty.no_online"))
+        empty = (
+            f'<p>{html.escape(t("empty.no_online"))}</p>'
+            f'<p class="hint">{html.escape(t("empty.no_online_cta"))}</p>'
+        )
         rows = f'<div class="active-list-empty" data-list-static-empty>{empty}</div>'
         cards = f'<div class="rowcard empty-card">{empty}</div>'
 
