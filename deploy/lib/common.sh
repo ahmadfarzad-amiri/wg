@@ -1621,14 +1621,45 @@ wg_validate_exit_install_env() {
 }
 
 wg_validate_entry_install_env() {
-  local entry_ip="${WG_ENTRY_PUBLIC_IP:-${ENTRY_IP:-}}"
-  local exit_ip="${WG_EXIT_PUBLIC_IP:-${EXIT_IP:-}}"
-  local exit_pub="${WG_EXIT_TUNNEL_PUB:-${EXIT_TUNNEL_PUB:-}}"
-  local exit_port="${WG_EXIT_TUNNEL_PORT:-51821}"
-  local client_port="${WG_CLIENT_PORT:-51820}"
-  local cidr="${WG_CLIENT_CIDR:-10.10.10.0/24}"
-  local server_mtu="${WG_SERVER_MTU:-1420}"
-  local client_mtu="${WG_CLIENT_MTU_TWOHOP:-${WG_CLIENT_MTU:-1380}}"
+  # Accept install-time vars (WG_ENTRY_PUBLIC_IP, …) or runtime entry-server.env
+  # (WG_ENDPOINT, WG_EXIT_IP) / wg-endpoint / wg-tunnel.conf.
+  local entry_ip exit_ip exit_pub exit_port client_port cidr server_mtu client_mtu
+  local ep
+
+  entry_ip="${WG_ENTRY_PUBLIC_IP:-${ENTRY_IP:-}}"
+  if [[ -z "$entry_ip" && -n "${WG_ENDPOINT:-${WG_DEFAULT_ENDPOINT:-}}" ]]; then
+    ep="${WG_ENDPOINT:-$WG_DEFAULT_ENDPOINT}"
+    entry_ip="${ep%%:*}"
+  fi
+  if [[ -z "$entry_ip" && -f /etc/wireguard/wg-endpoint ]]; then
+    entry_ip="$(tr -d '[:space:]' </etc/wireguard/wg-endpoint | cut -d: -f1)"
+  fi
+
+  exit_ip="${WG_EXIT_PUBLIC_IP:-${EXIT_IP:-${WG_EXIT_IP:-}}}"
+  exit_pub="${WG_EXIT_TUNNEL_PUB:-${EXIT_TUNNEL_PUB:-}}"
+  if [[ -z "$exit_pub" && -f /etc/wireguard/wg-tunnel.conf ]]; then
+    exit_pub="$(awk '
+      /^\[Peer\]/ { in_peer=1; next }
+      in_peer && /^PublicKey[[:space:]]*=/ {
+        sub(/^[^=]*=[[:space:]]*/, "")
+        print
+        exit
+      }
+    ' /etc/wireguard/wg-tunnel.conf)"
+  fi
+
+  exit_port="${WG_EXIT_TUNNEL_PORT:-51821}"
+  client_port="${WG_CLIENT_PORT:-}"
+  if [[ -z "$client_port" && -n "${WG_ENDPOINT:-${WG_DEFAULT_ENDPOINT:-}}" ]]; then
+    ep="${WG_ENDPOINT:-$WG_DEFAULT_ENDPOINT}"
+    if [[ "$ep" == *:* ]]; then
+      client_port="${ep##*:}"
+    fi
+  fi
+  client_port="${client_port:-51820}"
+  cidr="${WG_CLIENT_CIDR:-10.10.10.0/24}"
+  server_mtu="${WG_SERVER_MTU:-1420}"
+  client_mtu="${WG_CLIENT_MTU_TWOHOP:-${WG_CLIENT_MTU:-1380}}"
 
   wg_require_tool wg
   wg_require_tool wg-quick
@@ -1636,18 +1667,18 @@ wg_validate_entry_install_env() {
   wg_require_tool ip
   wg_validate_kernel_wg
 
-  [[ -n "$entry_ip" ]] || die "WG_ENTRY_PUBLIC_IP is required"
-  wg_is_ipv4 "$entry_ip" || die "Invalid WG_ENTRY_PUBLIC_IP: ${entry_ip}"
-  _is_public_ipv4 "$entry_ip" || warn "WG_ENTRY_PUBLIC_IP ${entry_ip} looks private — clients may not reach it"
+  [[ -n "$entry_ip" ]] || die "Entry public IP missing (set WG_ENTRY_PUBLIC_IP or WG_ENDPOINT / wg-endpoint)"
+  wg_is_ipv4 "$entry_ip" || die "Invalid entry public IP: ${entry_ip}"
+  _is_public_ipv4 "$entry_ip" || warn "Entry public IP ${entry_ip} looks private — clients may not reach it"
 
-  [[ -n "$exit_ip" ]] || die "WG_EXIT_PUBLIC_IP is required"
-  wg_is_ipv4 "$exit_ip" || die "Invalid WG_EXIT_PUBLIC_IP: ${exit_ip}"
+  [[ -n "$exit_ip" ]] || die "Exit public IP missing (set WG_EXIT_PUBLIC_IP or WG_EXIT_IP)"
+  wg_is_ipv4 "$exit_ip" || die "Invalid exit public IP: ${exit_ip}"
 
-  [[ -n "$exit_pub" ]] || die "WG_EXIT_TUNNEL_PUB is required"
-  wg_is_wg_pubkey "$exit_pub" || die "WG_EXIT_TUNNEL_PUB does not look like a WireGuard public key"
+  [[ -n "$exit_pub" ]] || die "Exit tunnel pubkey missing (set WG_EXIT_TUNNEL_PUB or Peer PublicKey in wg-tunnel.conf)"
+  wg_is_wg_pubkey "$exit_pub" || die "Exit tunnel pubkey does not look like a WireGuard public key"
 
   wg_is_port "$exit_port" || die "Invalid WG_EXIT_TUNNEL_PORT: ${exit_port}"
-  wg_is_port "$client_port" || die "Invalid WG_CLIENT_PORT: ${client_port}"
+  wg_is_port "$client_port" || die "Invalid client ListenPort: ${client_port}"
   wg_is_cidr_v4 "$cidr" || die "Invalid WG_CLIENT_CIDR: ${cidr}"
   wg_validate_mtu "$server_mtu" "WG_SERVER_MTU"
   wg_validate_mtu "$client_mtu" "WG_CLIENT_MTU_TWOHOP"

@@ -67,6 +67,32 @@ assert_eq "server mtu default" "$(WG_SERVER_MTU= wg_server_mtu)" "1420"
 assert_eq "tunnel mtu override" "$(WG_TUNNEL_MTU=1400 wg_tunnel_mtu)" "1400"
 assert_eq "clients mtu falls back" "$(WG_CLIENTS_MTU= WG_SERVER_MTU=1410 wg_clients_mtu)" "1410"
 
+# Runtime entry-server.env uses WG_ENDPOINT / WG_EXIT_IP, not install-only names.
+_tmpdir="$(mktemp -d)"
+cat > "$_tmpdir/wg-endpoint" <<'EOF'
+203.0.113.10:51820
+EOF
+cat > "$_tmpdir/wg-tunnel.conf" <<EOF
+[Interface]
+PrivateKey = dummy
+[Peer]
+PublicKey = ${ZERO_PUB}
+Endpoint = 203.0.113.20:51821
+AllowedIPs = 0.0.0.0/0
+EOF
+# Resolve the same way validate does (without requiring live wg tools for IP parse).
+_entry="$(WG_ENDPOINT=203.0.113.10:51820 bash -c 'ep="${WG_ENDPOINT}"; echo "${ep%%:*}"')"
+_exit="$(WG_EXIT_IP=203.0.113.20 bash -c 'echo "${WG_EXIT_PUBLIC_IP:-${EXIT_IP:-${WG_EXIT_IP:-}}}"')"
+_pub="$(awk '/^\[Peer\]/{p=1;next} p && /^PublicKey[[:space:]]*=/{sub(/^[^=]*=[[:space:]]*/,""); print; exit}' "$_tmpdir/wg-tunnel.conf")"
+assert_eq "runtime entry IP from WG_ENDPOINT" "$_entry" "203.0.113.10"
+assert_eq "runtime exit IP from WG_EXIT_IP" "$_exit" "203.0.113.20"
+assert_eq "runtime exit pub from tunnel conf" "$_pub" "$ZERO_PUB"
+assert_ok "validate helper reads runtime names" \
+  grep -q 'WG_ENDPOINT:-' "$ROOT/deploy/lib/common.sh"
+assert_ok "validate helper reads WG_EXIT_IP" \
+  grep -q 'WG_EXIT_IP' "$ROOT/deploy/lib/common.sh"
+rm -rf "$_tmpdir"
+
 postup="$(wg_render_entry_tunnel_postup wg-clients wg-tunnel 10.10.10.0/24)"
 assert_ok "postup idempotent -C" sh -c "printf '%s' \"$postup\" | grep -q 'iptables -C FORWARD'"
 assert_ok "postup has table 100" sh -c "printf '%s' \"$postup\" | grep -q 'lookup 100'"
