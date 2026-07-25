@@ -330,9 +330,15 @@ clear_direct_routing_for_ip() {
   local iface="${2:-$(default_route_iface)}"
   [ -n "$ip" ] || return 0
   ip rule del from "${ip}/32" lookup main priority 90 2>/dev/null || true
-  iptables -t nat -D POSTROUTING -s "${ip}/32" -o "$iface" -j MASQUERADE 2>/dev/null || true
-  iptables -D FORWARD -i "$WG_IF" -o "$iface" -j ACCEPT 2>/dev/null || true
-  iptables -D FORWARD -i "$iface" -o "$WG_IF" -j ACCEPT 2>/dev/null || true
+  while iptables -t nat -C POSTROUTING -s "${ip}/32" -o "$iface" -j MASQUERADE 2>/dev/null; do
+    iptables -t nat -D POSTROUTING -s "${ip}/32" -o "$iface" -j MASQUERADE || break
+  done
+  while iptables -C FORWARD -i "$WG_IF" -o "$iface" -j ACCEPT 2>/dev/null; do
+    iptables -D FORWARD -i "$WG_IF" -o "$iface" -j ACCEPT || break
+  done
+  while iptables -C FORWARD -i "$iface" -o "$WG_IF" -j ACCEPT 2>/dev/null; do
+    iptables -D FORWARD -i "$iface" -o "$WG_IF" -j ACCEPT || break
+  done
 }
 
 apply_direct_routing_for_ip() {
@@ -342,12 +348,13 @@ apply_direct_routing_for_ip() {
   [ -n "$iface" ] || die "Could not detect default route interface for direct VPN"
   clear_direct_routing_for_ip "$ip" "$iface"
   ip rule add from "${ip}/32" lookup main priority 90
+  # Insert ACCEPT before entry anti-leak DROP (client → WAN).
+  iptables -C FORWARD -i "$WG_IF" -o "$iface" -j ACCEPT 2>/dev/null \
+    || iptables -I FORWARD 1 -i "$WG_IF" -o "$iface" -j ACCEPT
+  iptables -C FORWARD -i "$iface" -o "$WG_IF" -j ACCEPT 2>/dev/null \
+    || iptables -I FORWARD 1 -i "$iface" -o "$WG_IF" -j ACCEPT
   iptables -t nat -C POSTROUTING -s "${ip}/32" -o "$iface" -j MASQUERADE 2>/dev/null \
     || iptables -t nat -A POSTROUTING -s "${ip}/32" -o "$iface" -j MASQUERADE
-  iptables -C FORWARD -i "$WG_IF" -o "$iface" -j ACCEPT 2>/dev/null \
-    || iptables -A FORWARD -i "$WG_IF" -o "$iface" -j ACCEPT
-  iptables -C FORWARD -i "$iface" -o "$WG_IF" -j ACCEPT 2>/dev/null \
-    || iptables -A FORWARD -i "$iface" -o "$WG_IF" -j ACCEPT
 }
 
 apply_vpn_mode_for_loaded_client() {

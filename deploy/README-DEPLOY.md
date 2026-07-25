@@ -92,7 +92,16 @@ Note: entry servers behind NAT may connect to exit from a **different egress IP*
 ## Upgrade / repair / backup
 
 ```bash
-# Upgrade (preserve keys and client peers)
+# Dataplane migrate (existing servers — preferred after this release)
+sudo bash deploy/migrate-vpn-stack.sh --role entry --dry-run
+sudo bash deploy/migrate-vpn-stack.sh --role entry
+sudo bash deploy/migrate-vpn-stack.sh --role exit
+
+# Validate + diagnose
+sudo bash deploy/validate-config.sh --role runtime
+sudo bash deploy/diagnose-vpn.sh --role entry
+
+# Upgrade installers (preserve keys and client peers)
 curl -fsSL .../install-exit-server.sh -o /tmp/install-exit-server.sh
 sudo WG_INSTALL_MODE=upgrade WG_EXIT_PUBLIC_IP=... bash /tmp/install-exit-server.sh
 

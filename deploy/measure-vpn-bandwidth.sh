@@ -12,7 +12,7 @@ set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main}"
   _WG_INSTALLER="$(mktemp /tmp/wg-measure-bw-XXXXXX.sh)"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/measure-vpn-bandwidth.sh" -o "$_WG_INSTALLER"
   chmod 700 "$_WG_INSTALLER"
@@ -30,7 +30,7 @@ if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main}"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"
@@ -57,28 +57,34 @@ Install iperf3 on both servers:  apt-get install -y iperf3
   curl -4 -o /dev/null -w 'download_bps=%{speed_download}\n' \
     https://proof.ovh.net/files/100Mb.dat
   # Or: iperf3 -c <public-iperf-host> -P 4
+  # Watch CPU: mpstat -P ALL 1 30
 
 --- 2) Entry → exit underlay (NOT through WireGuard) ---
   # On EXIT:   iperf3 -s
   # On ENTRY:  iperf3 -c EXIT_PUBLIC_IP -P 1
   #            iperf3 -c EXIT_PUBLIC_IP -P 4
   #            iperf3 -c EXIT_PUBLIC_IP -u -b 0 -P 4
+  # Note retransmits / jitter in iperf3 output
 
 --- 3) Entry → exit through wg-tunnel ---
   # On EXIT:   iperf3 -s -B 10.200.0.1
   # On ENTRY:  iperf3 -c 10.200.0.1 -P 1
   #            iperf3 -c 10.200.0.1 -P 4
+  #            iperf3 -c 10.200.0.1 -u -b 0
+  # Compare to step 2 — large gap ⇒ MTU/CPU/WG path
 
 --- 4) Full two-hop (from CLIENT device on VPN) ---
   curl -4 https://api.ipify.org    # must show EXIT public IP
   iperf3 -c <public-iperf-host> -P 1
   iperf3 -c <public-iperf-host> -P 4
   iperf3 -c <public-iperf-host> -u -b 0
+  # Acceptance is always measured in twohop mode
 
 --- 5) Path quality ---
   # Client → entry:  mtr -rwzc 100 ENTRY_IP
   # Entry → exit:    mtr -rwzc 100 EXIT_IP
   # Via tunnel:      ping -c 50 10.200.0.1   (from entry)
+  # MTU probe:       ping -M do -s 1350 -c 3 10.200.0.1
 
 --- 6) Host counters during a speed test ---
   mpstat -P ALL 1 30
@@ -86,6 +92,8 @@ Install iperf3 on both servers:  apt-get install -y iperf3
   wg show wg-clients transfer
   nstat -az | egrep 'Udp|TcpRetrans|TcpExtListen'
   sysctl net.core.rmem_max net.core.wmem_max net.ipv4.tcp_congestion_control
+  # Softnet drops: cat /proc/net/softnet_stat
+  # Interface errors: ip -s link show wg-tunnel
 
 --- 7) Optional diagnostic A/B (NOT production) ---
   # On entry, for one test client only:
@@ -94,6 +102,9 @@ Install iperf3 on both servers:  apt-get install -y iperf3
   #   sudo wg-client set-mode TESTCLIENT twohop
   # If direct ≈ twohop ≈ slow → client↔entry path (ISP/DPI).
   # If direct ≫ twohop and step 2/3 are slow → entry↔exit or exit.
+
+Results depend on client ISP, entry/exit VPS, CPU, PPS limits, peering,
+distance, loss, and shaping — no fixed Mbps guarantee.
 
 Interpretation:
   Step1 slow          → upgrade exit plan / provider

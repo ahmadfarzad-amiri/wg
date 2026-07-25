@@ -287,19 +287,7 @@ install_certbot_https() {
 }
 
 install_exit_proxy_nginx() {
-  # Legacy: panels now run on entry server only. Kept for reference.
-  warn "install_exit_proxy_nginx is deprecated — panels run on the entry server."
-  local template="$1"
-  local out="$2"
-  local domain="$3"
-  local inside_ip="$4"
-  local client_port="$5"
-  local admin_port="$6"
-  render_template "$template" "$out" \
-    __PROXY_DOMAIN__ "$domain" \
-    __INSIDE_PANEL_IP__ "$inside_ip" \
-    __CLIENT_PORT__ "$client_port" \
-    __ADMIN_PORT__ "$admin_port"
+  die "install_exit_proxy_nginx was removed — panels run only on the entry server"
 }
 
 load_deploy_bootstrap() {
@@ -634,38 +622,86 @@ fix_entry_client_postup_in_conf() {
   local client_if="${2:-wg-clients}"
   local client_cidr="${3:-10.10.10.0/24}"
   [[ -f "$conf" ]] || return 0
+  # Migrate legacy broad FORWARD PostUp → route-only (tunnel conf owns cross-forward rules).
+  if grep -qE 'PostUp = .*iptables -A FORWARD -i' "$conf" 2>/dev/null; then
+    local tmp
+    tmp="$(mktemp)"
+    awk -v cif="$client_if" -v cidr="$client_cidr" '
+      /^PostUp[[:space:]]*=/ {
+        print "PostUp = ip route replace " cidr " dev " cif " scope link"
+        next
+      }
+      /^PostDown[[:space:]]*=/ {
+        print "PostDown = ip route del " cidr " dev " cif " scope link 2>/dev/null || true"
+        next
+      }
+      { print }
+    ' "$conf" > "$tmp"
+    chmod 600 "$tmp"
+    mv "$tmp" "$conf"
+    log "Migrated $conf PostUp to route-only (removed broad FORWARD ACCEPT)"
+    return 0
+  fi
   if grep -q 'ip route replace' "$conf" 2>/dev/null; then
     return 0
   fi
-  sed -i \
-    "s|PostUp = iptables -A FORWARD -i ${client_if} -j ACCEPT; iptables -A FORWARD -o ${client_if} -j ACCEPT|PostUp = iptables -A FORWARD -i ${client_if} -j ACCEPT; iptables -A FORWARD -o ${client_if} -j ACCEPT; ip route replace ${client_cidr} dev ${client_if} scope link|" \
-    "$conf" 2>/dev/null || true
-  sed -i \
-    's|PostUp = iptables -A FORWARD -i wg-clients -j ACCEPT; iptables -A FORWARD -o wg-clients -j ACCEPT|PostUp = iptables -A FORWARD -i wg-clients -j ACCEPT; iptables -A FORWARD -o wg-clients -j ACCEPT; ip route replace 10.10.10.0/24 dev wg-clients scope link|' \
-    "$conf" 2>/dev/null || true
-  sed -i \
-    "s|PostDown = iptables -D FORWARD -i ${client_if} -j ACCEPT; iptables -D FORWARD -o ${client_if} -j ACCEPT|PostDown = iptables -D FORWARD -i ${client_if} -j ACCEPT; iptables -D FORWARD -o ${client_if} -j ACCEPT; ip route del ${client_cidr} dev ${client_if} scope link 2>/dev/null || true|" \
-    "$conf" 2>/dev/null || true
-  log "Patched $conf (client subnet → ${client_if})"
+  # Older installs with no route in PostUp — append route after Address if PostUp missing.
+  if ! grep -q '^PostUp' "$conf" 2>/dev/null; then
+    awk -v cif="$client_if" -v cidr="$client_cidr" '
+      /^Address[[:space:]]*=/ && !done {
+        print
+        print "PostUp = ip route replace " cidr " dev " cif " scope link"
+        print "PostDown = ip route del " cidr " dev " cif " scope link 2>/dev/null || true"
+        done=1
+        next
+      }
+      { print }
+    ' "$conf" > "${conf}.tmp"
+    chmod 600 "${conf}.tmp"
+    mv "${conf}.tmp" "$conf"
+    log "Added client subnet route PostUp to $conf"
+  fi
 }
 
 wg_entry_forward_rules_up() {
   local client_if="${1:-wg-clients}"
   local tunnel_if="${2:-wg-tunnel}"
-  iptables -C FORWARD -i "$client_if" -o "$tunnel_if" -j ACCEPT 2>/dev/null \
-    || iptables -A FORWARD -i "$client_if" -o "$tunnel_if" -j ACCEPT
+  local def_if
+  def_if="$(default_route_iface)"
+  def_if="${def_if:-eth0}"
+
+  # Narrow path only: client ↔ tunnel. Do not ACCEPT all wg-clients forwards
+  # (that allows accidental WAN egress when policy routing is missing).
+  wg_iptables_ensure FORWARD -i "$client_if" -o "$tunnel_if" -j ACCEPT
   # Legacy stateful rule breaks UDP/DNS return traffic with policy routing.
-  iptables -D FORWARD -i "$tunnel_if" -o "$client_if" -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
-  iptables -C FORWARD -i "$tunnel_if" -o "$client_if" -j ACCEPT 2>/dev/null \
-    || iptables -A FORWARD -i "$tunnel_if" -o "$client_if" -j ACCEPT
+  wg_iptables_delete_all FORWARD -i "$tunnel_if" -o "$client_if" -m state --state RELATED,ESTABLISHED -j ACCEPT
+  wg_iptables_ensure FORWARD -i "$tunnel_if" -o "$client_if" -j ACCEPT
+
+  # Remove obsolete broad ACCEPT rules from older installs.
+  wg_iptables_delete_all FORWARD -i "$client_if" -j ACCEPT
+  wg_iptables_delete_all FORWARD -o "$client_if" -j ACCEPT
+
+  # Anti-leak: drop client→WAN unless a higher-priority ACCEPT exists (direct mode).
+  # Direct-mode rules are inserted at priority via wg-client apply_direct_routing_for_ip.
+  if [[ "${WG_ENTRY_ANTILEAK:-1}" != "0" && -n "$def_if" ]]; then
+    wg_iptables_ensure FORWARD -i "$client_if" -o "$def_if" -j DROP
+  fi
 }
 
 wg_entry_forward_rules_down() {
   local client_if="${1:-wg-clients}"
   local tunnel_if="${2:-wg-tunnel}"
-  iptables -D FORWARD -i "$client_if" -o "$tunnel_if" -j ACCEPT 2>/dev/null || true
-  iptables -D FORWARD -i "$tunnel_if" -o "$client_if" -j ACCEPT 2>/dev/null || true
-  iptables -D FORWARD -i "$tunnel_if" -o "$client_if" -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+  local def_if
+  def_if="$(default_route_iface)"
+  def_if="${def_if:-eth0}"
+  wg_iptables_delete_all FORWARD -i "$client_if" -o "$tunnel_if" -j ACCEPT
+  wg_iptables_delete_all FORWARD -i "$tunnel_if" -o "$client_if" -j ACCEPT
+  wg_iptables_delete_all FORWARD -i "$tunnel_if" -o "$client_if" -m state --state RELATED,ESTABLISHED -j ACCEPT
+  wg_iptables_delete_all FORWARD -i "$client_if" -j ACCEPT
+  wg_iptables_delete_all FORWARD -o "$client_if" -j ACCEPT
+  if [[ -n "$def_if" ]]; then
+    wg_iptables_delete_all FORWARD -i "$client_if" -o "$def_if" -j DROP
+  fi
 }
 
 wg_entry_docker_forward_rules_up() {
@@ -674,9 +710,9 @@ wg_entry_docker_forward_rules_up() {
   if ! iptables -L DOCKER-USER -n >/dev/null 2>&1; then
     return 0
   fi
-  # Remove duplicates from manual fixes, then insert one rule per direction at the top.
-  while iptables -D DOCKER-USER -i "$tunnel_if" -o "$client_if" -j ACCEPT 2>/dev/null; do :; done
-  while iptables -D DOCKER-USER -i "$client_if" -o "$tunnel_if" -j ACCEPT 2>/dev/null; do :; done
+  # Prefer no Docker on VPN hosts; bypass only if Docker is present.
+  wg_iptables_delete_all DOCKER-USER -i "$tunnel_if" -o "$client_if" -j ACCEPT
+  wg_iptables_delete_all DOCKER-USER -i "$client_if" -o "$tunnel_if" -j ACCEPT
   iptables -I DOCKER-USER 1 -i "$tunnel_if" -o "$client_if" -j ACCEPT
   iptables -I DOCKER-USER 1 -i "$client_if" -o "$tunnel_if" -j ACCEPT
   log "Docker DOCKER-USER bypass for ${client_if} ↔ ${tunnel_if}"
@@ -711,26 +747,103 @@ EOF
   systemctl start wg-docker-forward.service 2>/dev/null || true
 }
 
+# Idempotent iptables helpers — avoid duplicate rules after wg-quick restart + fix scripts.
+# Args: [-t table] CHAIN rule-specification...
+_wg_iptables_parse() {
+  _WG_IPT_TABLE=()
+  if [[ "${1:-}" == "-t" ]]; then
+    _WG_IPT_TABLE=("-t" "$2")
+    shift 2
+  fi
+  _WG_IPT_REST=("$@")
+}
+
+wg_iptables_has() {
+  _wg_iptables_parse "$@"
+  iptables "${_WG_IPT_TABLE[@]}" -C "${_WG_IPT_REST[@]}" 2>/dev/null
+}
+
+wg_iptables_ensure() {
+  _wg_iptables_parse "$@"
+  if iptables "${_WG_IPT_TABLE[@]}" -C "${_WG_IPT_REST[@]}" 2>/dev/null; then
+    return 0
+  fi
+  iptables "${_WG_IPT_TABLE[@]}" -A "${_WG_IPT_REST[@]}"
+}
+
+wg_iptables_ensure_insert() {
+  # Insert at position 1 if missing (high-priority ACCEPT before DROP).
+  _wg_iptables_parse "$@"
+  if iptables "${_WG_IPT_TABLE[@]}" -C "${_WG_IPT_REST[@]}" 2>/dev/null; then
+    return 0
+  fi
+  iptables "${_WG_IPT_TABLE[@]}" -I "${_WG_IPT_REST[0]}" 1 "${_WG_IPT_REST[@]:1}"
+}
+
+wg_iptables_delete_all() {
+  _wg_iptables_parse "$@"
+  while iptables "${_WG_IPT_TABLE[@]}" -C "${_WG_IPT_REST[@]}" 2>/dev/null; do
+    iptables "${_WG_IPT_TABLE[@]}" -D "${_WG_IPT_REST[@]}" || break
+  done
+}
+
+wg_iptables_count_matches() {
+  # Count rules in CHAIN whose iptables-save line matches PATTERN (grep -E).
+  local table="${1:-filter}"
+  local chain="$2"
+  local pattern="$3"
+  iptables-save -t "$table" 2>/dev/null \
+    | awk -v c="$chain" '($1=="-" || $1=="-A") && $2==c {print}' \
+    | grep -E "$pattern" \
+    | wc -l \
+    | tr -d ' '
+}
+
 wg_apply_ip_forward() {
-  sysctl -w net.ipv4.ip_forward=1
-  grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null \
-    || echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
+  sysctl -w net.ipv4.ip_forward=1 >/dev/null
+  # Managed drop-in — avoid fragile unscoped appends to /etc/sysctl.conf.
+  cat > /etc/sysctl.d/99-wg-forward.conf <<'EOF'
+# Managed by WireGuard VPN install — IPv4 forwarding for two-hop stack
+net.ipv4.ip_forward = 1
+EOF
+  sysctl -p /etc/sysctl.d/99-wg-forward.conf >/dev/null 2>&1 || true
 }
 
 wg_server_mtu() {
+  # Server WG interface MTU (payload size on wg-clients / wg-tunnel).
+  # Default 1420 = 1500 underlay − ~80 bytes headroom (WG ~60 + common VPS overhead).
   echo "${WG_SERVER_MTU:-1420}"
+}
+
+wg_tunnel_mtu() {
+  # Entry↔exit tunnel may differ from client-facing MTU; defaults to WG_SERVER_MTU.
+  echo "${WG_TUNNEL_MTU:-$(wg_server_mtu)}"
+}
+
+wg_clients_mtu() {
+  echo "${WG_CLIENTS_MTU:-$(wg_server_mtu)}"
+}
+
+wg_validate_mtu() {
+  local mtu="$1"
+  local label="${2:-MTU}"
+  if ! [[ "$mtu" =~ ^[0-9]+$ ]]; then
+    die "${label} must be an integer (got: ${mtu})"
+  fi
+  if [[ "$mtu" -lt 1280 || "$mtu" -gt 1500 ]]; then
+    die "${label}=${mtu} out of safe range 1280–1500"
+  fi
 }
 
 wg_apply_mss_clamp() {
   if [[ "${WG_ENABLE_MSS_CLAMP:-1}" == "0" ]]; then
-    iptables -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true
+    wg_iptables_delete_all -t mangle FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
     return 0
   fi
-  if iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null; then
-    return 0
-  fi
+  # Collapse duplicates to a single clamp-to-PMTU rule.
+  wg_iptables_delete_all -t mangle FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
   iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
-  log "TCP MSS clamp enabled on FORWARD chain"
+  log "TCP MSS clamp enabled on FORWARD chain (single rule)"
 }
 
 wg_install_mss_clamp_systemd() {
@@ -750,8 +863,8 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/sh -c 'iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu'
-ExecStop=/bin/sh -c 'iptables -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true'
+ExecStart=/bin/sh -c 'while iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null; do iptables -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu; done; iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu'
+ExecStop=/bin/sh -c 'while iptables -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null; do :; done'
 
 [Install]
 WantedBy=multi-user.target
@@ -799,16 +912,26 @@ wg_set_live_mtu() {
 }
 
 wg_apply_server_mtus() {
-  local mtu
-  mtu="$(wg_server_mtu)"
-  local conf
-  for conf in /etc/wireguard/wg-clients.conf /etc/wireguard/wg-tunnel.conf; do
-    [[ -f "$conf" ]] || continue
-    wg_ensure_mtu_in_conf "$conf" "$mtu"
-  done
-  wg_set_live_mtu wg-clients "$mtu"
-  wg_set_live_mtu wg-tunnel "$mtu"
-  log "Server WireGuard MTU set to ${mtu}"
+  local clients_mtu tunnel_mtu
+  clients_mtu="$(wg_clients_mtu)"
+  tunnel_mtu="$(wg_tunnel_mtu)"
+  wg_validate_mtu "$clients_mtu" "WG_CLIENTS_MTU/WG_SERVER_MTU"
+  wg_validate_mtu "$tunnel_mtu" "WG_TUNNEL_MTU"
+  if [[ -f /etc/wireguard/wg-clients.conf ]]; then
+    wg_ensure_mtu_in_conf /etc/wireguard/wg-clients.conf "$clients_mtu"
+    wg_set_live_mtu wg-clients "$clients_mtu"
+  fi
+  if [[ -f /etc/wireguard/wg-tunnel.conf ]]; then
+    wg_ensure_mtu_in_conf /etc/wireguard/wg-tunnel.conf "$tunnel_mtu"
+    wg_set_live_mtu wg-tunnel "$tunnel_mtu"
+  fi
+  log "Server WireGuard MTU: wg-clients=${clients_mtu} wg-tunnel=${tunnel_mtu}"
+}
+
+wg_bbr_available() {
+  [[ -d /sys/module/tcp_bbr ]] && return 0
+  modprobe tcp_bbr 2>/dev/null || return 1
+  [[ -d /sys/module/tcp_bbr ]]
 }
 
 wg_apply_performance_sysctl() {
@@ -817,20 +940,39 @@ wg_apply_performance_sysctl() {
     return 0
   fi
   local sysctl_file="/etc/sysctl.d/99-wg-performance.conf"
-  cat > "$sysctl_file" <<'EOF'
-# WireGuard VPN — TCP BBR and large UDP buffers for two-hop tunnel throughput
-net.core.default_qdisc = fq
-net.ipv4.tcp_congestion_control = bbr
+  local bbr_line="# BBR unavailable on this kernel — left at system default"
+  local qdisc_line="net.core.default_qdisc = fq"
+  if wg_bbr_available; then
+    bbr_line="net.ipv4.tcp_congestion_control = bbr"
+  else
+    warn "tcp_bbr not available — skipping BBR (buffers still applied)"
+    qdisc_line="# net.core.default_qdisc left unchanged (no BBR)"
+  fi
+
+  # Set socket *max* buffers high; do not raise *default* (wastes RAM on small VPS).
+  # TCP buffer triples are min/default/max. Conntrack only if nf_conntrack is loaded.
+  cat > "$sysctl_file" <<EOF
+# Managed by WireGuard VPN — two-hop throughput tuning
+${qdisc_line}
+${bbr_line}
 net.core.rmem_max = 67108864
 net.core.wmem_max = 67108864
-net.core.rmem_default = 16777216
-net.core.wmem_default = 16777216
-net.core.netdev_max_backlog = 5000
+net.ipv4.tcp_rmem = 4096 87380 67108864
+net.ipv4.tcp_wmem = 4096 65536 67108864
+net.core.netdev_max_backlog = 25000
+net.core.somaxconn = 4096
 net.ipv4.udp_rmem_min = 8192
 net.ipv4.udp_wmem_min = 8192
 EOF
+  if [[ -e /proc/sys/net/netfilter/nf_conntrack_max ]] \
+    || modprobe nf_conntrack 2>/dev/null; then
+    cat >> "$sysctl_file" <<'EOF'
+net.netfilter.nf_conntrack_max = 262144
+net.netfilter.nf_conntrack_buckets = 65536
+EOF
+  fi
   sysctl -p "$sysctl_file" 2>/dev/null || sysctl --system 2>/dev/null || true
-  log "Performance sysctl applied (BBR + 64MB UDP buffers)"
+  log "Performance sysctl applied (UDP/TCP max buffers 64MB; BBR if available)"
 }
 
 wg_apply_vpn_performance() {
@@ -981,18 +1123,19 @@ apply_exit_vpn_routing_fix() {
   def_if="${def_if:-eth0}"
 
   wg_apply_ip_forward
-  iptables -t nat -C POSTROUTING -s "$client_cidr" -o "$def_if" -j MASQUERADE 2>/dev/null \
-    || iptables -t nat -A POSTROUTING -s "$client_cidr" -o "$def_if" -j MASQUERADE
-  iptables -C FORWARD -i "$tunnel_if" -j ACCEPT 2>/dev/null \
-    || iptables -A FORWARD -i "$tunnel_if" -j ACCEPT
-  iptables -C FORWARD -o "$tunnel_if" -j ACCEPT 2>/dev/null \
-    || iptables -A FORWARD -o "$tunnel_if" -j ACCEPT
+  # Collapse duplicate NAT / FORWARD rules from older PostUp + fix runs.
+  wg_iptables_delete_all -t nat POSTROUTING -s "$client_cidr" -o "$def_if" -j MASQUERADE
+  iptables -t nat -A POSTROUTING -s "$client_cidr" -o "$def_if" -j MASQUERADE
+  wg_iptables_delete_all FORWARD -i "$tunnel_if" -j ACCEPT
+  wg_iptables_delete_all FORWARD -o "$tunnel_if" -j ACCEPT
+  iptables -A FORWARD -i "$tunnel_if" -j ACCEPT
+  iptables -A FORWARD -o "$tunnel_if" -j ACCEPT
   wg_exit_tunnel_routes_up "$client_cidr" "$tunnel_peer_ip" "$tunnel_if"
   wg_apply_vpn_performance
   ensure_wg_conf_permissions
 
   if wg_exit_route_to_client_ok "10.10.10.2" "$tunnel_if"; then
-    log "Exit routing fix applied (${client_cidr} → ${tunnel_if})"
+    log "Exit routing fix applied (${client_cidr} → ${tunnel_if}, NAT on ${def_if})"
   else
     warn "Exit: ip route get 10.10.10.2 still does not use ${tunnel_if} — check wg-tunnel peer AllowedIPs"
   fi
@@ -1369,6 +1512,7 @@ uninstall_wg_data_dirs() {
   fi
   rm -f /etc/sysctl.d/99-z-wg-entry-vpn.conf /etc/sysctl.d/99-wg-entry-vpn.conf
   rm -f /etc/sysctl.d/99-wg-performance.conf
+  rm -f /etc/sysctl.d/99-wg-forward.conf
   rm -f /tmp/wg-install-*.sh /tmp/wg-fix-routing-*.sh /tmp/wg-uninstall-*.sh /tmp/wg-tune-perf-*.sh /tmp/wg-diagnose-*.sh 2>/dev/null || true
 }
 
@@ -1389,4 +1533,151 @@ load_uninstall_env() {
       WG_CLIENT_PORT="${WG_CLIENT_PORT:-$port}"
     fi
   fi
+}
+
+# --- Configuration validation (fail early; never partially apply after failure) ---
+
+wg_is_ipv4() {
+  local ip="$1"
+  [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+  local o IFS=.
+  # shellcheck disable=SC2086
+  set -- $ip
+  for o in "$@"; do
+    [[ "$o" -ge 0 && "$o" -le 255 ]] || return 1
+  done
+  return 0
+}
+
+wg_is_cidr_v4() {
+  local cidr="$1"
+  local ip="${cidr%/*}"
+  local prefix="${cidr#*/}"
+  wg_is_ipv4 "$ip" || return 1
+  [[ "$prefix" =~ ^[0-9]+$ ]] || return 1
+  [[ "$prefix" -ge 0 && "$prefix" -le 32 ]]
+}
+
+wg_is_port() {
+  local p="$1"
+  [[ "$p" =~ ^[0-9]+$ ]] || return 1
+  [[ "$p" -ge 1 && "$p" -le 65535 ]]
+}
+
+wg_is_wg_pubkey() {
+  local key="$1"
+  # WireGuard public keys are 32-byte base64 (44 chars, often ending with =).
+  [[ "$key" =~ ^[A-Za-z0-9+/]{42,44}={0,2}$ ]]
+}
+
+wg_is_iface_name() {
+  local name="$1"
+  [[ "$name" =~ ^[a-zA-Z0-9_.:-]{1,15}$ ]]
+}
+
+wg_require_tool() {
+  local tool="$1"
+  command -v "$tool" >/dev/null 2>&1 || die "Required tool missing: ${tool}"
+}
+
+wg_validate_kernel_wg() {
+  if [[ -e /sys/module/wireguard ]]; then
+    return 0
+  fi
+  if modprobe wireguard 2>/dev/null; then
+    return 0
+  fi
+  warn "Kernel wireguard module not loaded — ensure wireguard-tools can start interfaces"
+}
+
+wg_validate_exit_install_env() {
+  local ip="${WG_EXIT_PUBLIC_IP:-${PUBLIC_IP:-}}"
+  local port="${WG_TUNNEL_PORT:-51821}"
+  local cidr="${WG_CLIENT_CIDR:-10.10.10.0/24}"
+  local mtu="${WG_TUNNEL_MTU:-${WG_SERVER_MTU:-1420}}"
+
+  wg_require_tool wg
+  wg_require_tool wg-quick
+  wg_require_tool iptables
+  wg_require_tool ip
+  wg_validate_kernel_wg
+
+  if [[ -n "$ip" && "$ip" != "127.0.0.1" ]]; then
+    wg_is_ipv4 "$ip" || die "Invalid WG_EXIT_PUBLIC_IP: ${ip}"
+  fi
+  wg_is_port "$port" || die "Invalid WG_TUNNEL_PORT: ${port}"
+  wg_is_cidr_v4 "$cidr" || die "Invalid WG_CLIENT_CIDR: ${cidr}"
+  wg_validate_mtu "$mtu" "WG_TUNNEL_MTU/WG_SERVER_MTU"
+}
+
+wg_validate_entry_install_env() {
+  local entry_ip="${WG_ENTRY_PUBLIC_IP:-${ENTRY_IP:-}}"
+  local exit_ip="${WG_EXIT_PUBLIC_IP:-${EXIT_IP:-}}"
+  local exit_pub="${WG_EXIT_TUNNEL_PUB:-${EXIT_TUNNEL_PUB:-}}"
+  local exit_port="${WG_EXIT_TUNNEL_PORT:-51821}"
+  local client_port="${WG_CLIENT_PORT:-51820}"
+  local cidr="${WG_CLIENT_CIDR:-10.10.10.0/24}"
+  local server_mtu="${WG_SERVER_MTU:-1420}"
+  local client_mtu="${WG_CLIENT_MTU_TWOHOP:-${WG_CLIENT_MTU:-1380}}"
+
+  wg_require_tool wg
+  wg_require_tool wg-quick
+  wg_require_tool iptables
+  wg_require_tool ip
+  wg_validate_kernel_wg
+
+  [[ -n "$entry_ip" ]] || die "WG_ENTRY_PUBLIC_IP is required"
+  wg_is_ipv4 "$entry_ip" || die "Invalid WG_ENTRY_PUBLIC_IP: ${entry_ip}"
+  _is_public_ipv4 "$entry_ip" || warn "WG_ENTRY_PUBLIC_IP ${entry_ip} looks private — clients may not reach it"
+
+  [[ -n "$exit_ip" ]] || die "WG_EXIT_PUBLIC_IP is required"
+  wg_is_ipv4 "$exit_ip" || die "Invalid WG_EXIT_PUBLIC_IP: ${exit_ip}"
+
+  [[ -n "$exit_pub" ]] || die "WG_EXIT_TUNNEL_PUB is required"
+  wg_is_wg_pubkey "$exit_pub" || die "WG_EXIT_TUNNEL_PUB does not look like a WireGuard public key"
+
+  wg_is_port "$exit_port" || die "Invalid WG_EXIT_TUNNEL_PORT: ${exit_port}"
+  wg_is_port "$client_port" || die "Invalid WG_CLIENT_PORT: ${client_port}"
+  wg_is_cidr_v4 "$cidr" || die "Invalid WG_CLIENT_CIDR: ${cidr}"
+  wg_validate_mtu "$server_mtu" "WG_SERVER_MTU"
+  wg_validate_mtu "$client_mtu" "WG_CLIENT_MTU_TWOHOP"
+
+  if [[ "$client_mtu" -gt "$server_mtu" ]]; then
+    die "WG_CLIENT_MTU_TWOHOP (${client_mtu}) must be <= WG_SERVER_MTU (${server_mtu})"
+  fi
+  if [[ "$client_mtu" -gt 1420 ]]; then
+    warn "Two-hop client MTU ${client_mtu} is high — expect fragmentation on 1500 underlays"
+  fi
+
+  if [[ -n "${WG_DNS:-}" ]]; then
+    local dns d
+    dns="$(echo "${WG_DNS}" | tr ',' ' ')"
+    for d in $dns; do
+      d="${d// /}"
+      [[ -z "$d" ]] && continue
+      wg_is_ipv4 "$d" || die "Invalid DNS address in WG_DNS: ${d}"
+    done
+  fi
+}
+
+wg_check_duplicate_client_addresses() {
+  local dir="${1:-/etc/wireguard/clients}"
+  [[ -d "$dir" ]] || return 0
+  local dup
+  dup="$(grep -hE '^Address[[:space:]]*=' "$dir"/*.conf 2>/dev/null \
+    | sed 's/.*=[[:space:]]*//;s|/.*||' \
+    | sort | uniq -d || true)"
+  if [[ -n "$dup" ]]; then
+    die "Duplicate client Address values detected: ${dup}"
+  fi
+}
+
+wg_render_entry_tunnel_postup() {
+  local client_if="${1:-wg-clients}"
+  local tunnel_if="${2:-wg-tunnel}"
+  local client_cidr="${3:-10.10.10.0/24}"
+  printf 'iptables -C FORWARD -i %s -o %s -j ACCEPT 2>/dev/null || iptables -A FORWARD -i %s -o %s -j ACCEPT; iptables -C FORWARD -i %s -o %s -j ACCEPT 2>/dev/null || iptables -A FORWARD -i %s -o %s -j ACCEPT; ip rule del from %s lookup 100 priority 100 2>/dev/null || true; ip rule add from %s lookup 100 priority 100; ip route del default dev %s table 100 2>/dev/null || true; ip route add default dev %s table 100\n' \
+    "$client_if" "$tunnel_if" "$client_if" "$tunnel_if" \
+    "$tunnel_if" "$client_if" "$tunnel_if" "$client_if" \
+    "$client_cidr" "$client_cidr" "$tunnel_if" "$tunnel_if"
 }

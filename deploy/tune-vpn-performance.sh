@@ -10,7 +10,7 @@ set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main}"
   _WG_INSTALLER="$(mktemp /tmp/wg-tune-perf-XXXXXX.sh)"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/tune-vpn-performance.sh" -o "$_WG_INSTALLER"
   chmod 700 "$_WG_INSTALLER"
@@ -28,7 +28,7 @@ if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main}"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"
@@ -58,6 +58,7 @@ fi
 
 log "=== Tune VPN performance (${ROLE}) ==="
 log "WG_ENABLE_BBR=${WG_ENABLE_BBR:-1} WG_ENABLE_MSS_CLAMP=${WG_ENABLE_MSS_CLAMP:-1}"
+log "Tip: for existing installs, prefer: sudo bash deploy/migrate-vpn-stack.sh --role ${ROLE}"
 
 bash "$SCRIPT_DIR/fix-vpn-routing.sh" --role "$ROLE"
 

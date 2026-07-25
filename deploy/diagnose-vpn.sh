@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
-# Deep VPN routing diagnostics for entry/exit stack.
+# Deep VPN diagnostics for the two-hop stack.
+# Read-only: does not modify routing, firewall, or sysctl.
+#
 # Usage: sudo bash deploy/diagnose-vpn.sh [--role entry|exit|auto]
+#
+# Status legend:
+#   [HEALTHY]  expected state
+#   [WARNING]  degraded or suboptimal
+#   [FAILED]   broken / must fix
+#   [N/A]      not applicable on this role/host
 set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main}"
   _WG_INSTALLER="$(mktemp /tmp/wg-diagnose-XXXXXX.sh)"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/diagnose-vpn.sh" -o "$_WG_INSTALLER"
   chmod 700 "$_WG_INSTALLER"
@@ -23,7 +31,7 @@ if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/ahmadfarzad-amiri/wg/main}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main}"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"
@@ -42,63 +50,129 @@ if [[ "$ROLE" == "auto" ]]; then
   [[ "$ROLE" != "unknown" ]] || die "Could not detect role — use: sudo bash deploy/diagnose-vpn.sh --role entry|exit"
 fi
 
-diag_performance() {
-  log "=== Performance tuning ==="
-  if [[ -f /etc/wireguard/entry-server.env ]]; then
-    # shellcheck disable=SC1091
-    source /etc/wireguard/entry-server.env
-  elif [[ -f /etc/wireguard/exit-server.env ]]; then
-    # shellcheck disable=SC1091
-    source /etc/wireguard/exit-server.env
-  fi
-  log "WG_ENABLE_BBR=${WG_ENABLE_BBR:-1} WG_ENABLE_MSS_CLAMP=${WG_ENABLE_MSS_CLAMP:-1} WG_SERVER_MTU=${WG_SERVER_MTU:-1420}"
-  if [[ -f /etc/sysctl.d/99-wg-performance.conf ]]; then
-    log "Performance sysctl file: present"
-    grep -E 'bbr|qdisc|rmem|wmem|netdev_max_backlog' /etc/sysctl.d/99-wg-performance.conf 2>/dev/null || true
+HEALTHY=0
+WARNING=0
+FAILED=0
+
+status() {
+  local level="$1"
+  local msg="$2"
+  case "$level" in
+    HEALTHY) printf '[HEALTHY] %s\n' "$msg"; HEALTHY=$((HEALTHY + 1)) ;;
+    WARNING) printf '[WARNING] %s\n' "$msg"; WARNING=$((WARNING + 1)) ;;
+    FAILED)  printf '[FAILED]  %s\n' "$msg"; FAILED=$((FAILED + 1)) ;;
+    N/A)     printf '[N/A]     %s\n' "$msg" ;;
+    *)       printf '[INFO]    %s\n' "$msg" ;;
+  esac
+}
+
+check_bool() {
+  local name="$1"
+  shift
+  if "$@" >/dev/null 2>&1; then
+    status HEALTHY "$name"
   else
-    warn "No /etc/sysctl.d/99-wg-performance.conf — run: sudo bash deploy/tune-vpn-performance.sh"
+    status FAILED "$name"
   fi
-  log "TCP congestion: $(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo unknown)"
-  log "Default qdisc: $(sysctl -n net.core.default_qdisc 2>/dev/null || echo unknown)"
-  log "UDP rmem_max: $(sysctl -n net.core.rmem_max 2>/dev/null || echo unknown)"
-  local rmem
+}
+
+iface_mtu() {
+  ip -o link show "$1" 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="mtu") print $(i+1)}'
+}
+
+iface_stats() {
+  local iface="$1"
+  if [[ -r "/sys/class/net/${iface}/statistics/rx_errors" ]]; then
+    printf 'rx_err=%s tx_err=%s rx_drop=%s tx_drop=%s' \
+      "$(cat "/sys/class/net/${iface}/statistics/rx_errors")" \
+      "$(cat "/sys/class/net/${iface}/statistics/tx_errors")" \
+      "$(cat "/sys/class/net/${iface}/statistics/rx_dropped")" \
+      "$(cat "/sys/class/net/${iface}/statistics/tx_dropped")"
+  else
+    printf 'n/a'
+  fi
+}
+
+diag_host_perf() {
+  status INFO "=== Host / kernel ==="
+  local cc qdisc rmem steal softirq
+  cc="$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo unknown)"
+  qdisc="$(sysctl -n net.core.default_qdisc 2>/dev/null || echo unknown)"
   rmem="$(sysctl -n net.core.rmem_max 2>/dev/null || echo 0)"
-  if [[ "${rmem:-0}" -lt 16777216 ]]; then
-    warn "UDP rmem_max is low (${rmem}) — expect burst drops; run tune-vpn-performance.sh"
+  if [[ "$cc" == "bbr" ]]; then
+    status HEALTHY "TCP congestion=${cc} qdisc=${qdisc}"
+  else
+    status WARNING "TCP congestion=${cc} (expected bbr when WG_ENABLE_BBR=1)"
+  fi
+  if [[ "${rmem:-0}" -ge 16777216 ]]; then
+    status HEALTHY "UDP/TCP rmem_max=${rmem}"
+  else
+    status WARNING "rmem_max=${rmem} is low — run tune-vpn-performance.sh"
+  fi
+  if [[ -f /etc/sysctl.d/99-wg-performance.conf ]]; then
+    status HEALTHY "Performance sysctl file present"
+  else
+    status WARNING "Missing /etc/sysctl.d/99-wg-performance.conf"
   fi
   if systemctl is-enabled wg-mss-clamp.service >/dev/null 2>&1; then
-    log "TCP MSS clamp unit: enabled"
+    status HEALTHY "wg-mss-clamp.service enabled"
   else
-    warn "TCP MSS clamp unit missing — run: sudo bash deploy/tune-vpn-performance.sh"
+    status WARNING "wg-mss-clamp.service not enabled"
   fi
   if iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null; then
-    log "TCP MSS clamp rule: enabled"
+    local mss_count
+    mss_count="$(iptables-save -t mangle 2>/dev/null | grep -c 'TCPMSS.*clamp' || true)"
+    if [[ "${mss_count:-0}" -gt 1 ]]; then
+      status WARNING "Duplicate MSS clamp rules (${mss_count}) — run migrate-vpn-stack.sh"
+    else
+      status HEALTHY "TCP MSS clamp rule present"
+    fi
   else
-    warn "TCP MSS clamp rule missing — run: sudo bash deploy/tune-vpn-performance.sh"
+    status FAILED "TCP MSS clamp rule missing"
   fi
-  for iface in wg-clients wg-tunnel; do
-    if ip link show "$iface" >/dev/null 2>&1; then
-      log "${iface} MTU: $(ip -o link show "$iface" | awk '{for(i=1;i<=NF;i++) if($i=="mtu") print $(i+1)}')"
+  if [[ -e /proc/sys/net/netfilter/nf_conntrack_count ]]; then
+    local used max
+    used="$(cat /proc/sys/net/netfilter/nf_conntrack_count)"
+    max="$(cat /proc/sys/net/netfilter/nf_conntrack_max)"
+    status INFO "Conntrack ${used}/${max}"
+    if [[ "$max" -gt 0 && $((used * 100 / max)) -gt 80 ]]; then
+      status WARNING "Conntrack usage >80%"
+    else
+      status HEALTHY "Conntrack usage OK"
     fi
+  else
+    status N/A "Conntrack not loaded"
+  fi
+  steal="$(awk '/cpu /{s=$9; t=$2+$3+$4+$5+$6+$7+$8+$9+$10+$11; if(t>0) printf "%.1f", 100*s/t; else print 0}' /proc/stat 2>/dev/null || echo n/a)"
+  status INFO "CPU steal≈${steal}% (cumulative since boot — interpret carefully)"
+  if command -v mpstat >/dev/null 2>&1; then
+    softirq="$(mpstat 1 1 2>/dev/null | awk '/Average:.*all/{print $(NF-1)}' || true)"
+    status INFO "SoftIRQ sample (mpstat %irq/%soft): ${softirq:-n/a}"
+  else
+    status N/A "mpstat not installed (apt install sysstat)"
+  fi
+  echo
+}
+
+diag_wg_ifaces() {
+  status INFO "=== WireGuard interfaces ==="
+  local iface
+  for iface in "$@"; do
+    if ! ip link show "$iface" >/dev/null 2>&1; then
+      status FAILED "${iface} missing"
+      continue
+    fi
+    local mtu
+    mtu="$(iface_mtu "$iface")"
+    status HEALTHY "${iface} up MTU=${mtu} $(iface_stats "$iface")"
+    wg show "$iface" 2>/dev/null | head -20 || status FAILED "wg show ${iface} failed"
+    echo
+    status INFO "${iface} transfer:"
+    wg show "$iface" transfer 2>/dev/null || true
+    status INFO "${iface} latest-handshakes:"
+    wg show "$iface" latest-handshakes 2>/dev/null || true
+    echo
   done
-  if [[ -d /etc/wireguard/clients ]]; then
-    local sample
-    sample="$(find /etc/wireguard/clients -name '*.conf' 2>/dev/null | head -1)"
-    if [[ -n "$sample" ]]; then
-      log "Sample client MTU: $(grep -E '^MTU' "$sample" 2>/dev/null || echo 'not set')"
-    fi
-  fi
-  if [[ -f /etc/wireguard/entry-server.env ]]; then
-    log "Configured MTU defaults: WG_CLIENT_MTU=${WG_CLIENT_MTU:-1380} direct=${WG_CLIENT_MTU_DIRECT:-1420} twohop=${WG_CLIENT_MTU_TWOHOP:-1380} server=${WG_SERVER_MTU:-1420}"
-  fi
-  echo
-  log "Tunnel transfer counters (reset on reboot):"
-  wg show wg-tunnel transfer 2>/dev/null || true
-  if wg show wg-clients >/dev/null 2>&1; then
-    wg show wg-clients transfer 2>/dev/null | head -5 || true
-  fi
-  echo
-  log "Hop bandwidth plan: sudo bash deploy/measure-vpn-bandwidth.sh --role guide"
 }
 
 diag_exit() {
@@ -109,29 +183,50 @@ diag_exit() {
     client_cidr="${WG_CLIENT_CIDR:-10.10.10.0/24}"
   fi
 
-  log "=== EXIT diagnostics ==="
-  printf 'Public IP: '; curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null || echo FAIL
-  echo
-  wg show wg-tunnel 2>/dev/null || warn "wg-tunnel down"
-  echo
-  log "Routes (must use dev wg-tunnel for client subnet):"
+  status INFO "=== EXIT diagnostics ==="
+  local pub
+  pub="$(curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null || true)"
+  if [[ -n "$pub" ]]; then
+    status HEALTHY "Public egress IP=${pub}"
+  else
+    status FAILED "Cannot reach api.ipify.org from exit"
+  fi
+
+  diag_wg_ifaces wg-tunnel
+
+  if wg_exit_route_to_client_ok "10.10.10.2"; then
+    status HEALTHY "Route 10.10.10.2 → wg-tunnel"
+  else
+    status FAILED "Route 10.10.10.2 not via wg-tunnel — fix-vpn-routing.sh --role exit"
+  fi
   ip route get 10.10.10.2 2>/dev/null || true
   ip route get 10.200.0.2 2>/dev/null || true
-  echo
-  log "Reachability:"
-  ping -c 2 -W 2 10.200.0.2 2>/dev/null || warn "cannot ping entry tunnel IP 10.200.0.2"
-  ping -c 2 -W 2 10.10.10.1 2>/dev/null || warn "cannot ping entry wg-clients gateway 10.10.10.1"
-  echo
-  log "NAT / FORWARD:"
-  iptables -t nat -L POSTROUTING -n -v | grep -E 'MASQUERADE|10.10.10' || true
-  iptables -L FORWARD -n -v | head -10
-  echo
-  if wg_exit_route_to_client_ok "10.10.10.2"; then
-    log "Route check: 10.10.10.2 → wg-tunnel OK"
+
+  if ping -c 2 -W 2 10.200.0.2 >/dev/null 2>&1; then
+    status HEALTHY "Ping entry tunnel IP 10.200.0.2"
   else
-    warn "Route check FAIL — run: sudo bash deploy/fix-vpn-routing.sh --role exit"
+    status WARNING "Cannot ping 10.200.0.2 (peer may be down)"
   fi
-  diag_performance
+
+  if iptables -t nat -S POSTROUTING 2>/dev/null | grep -qE -- "-s ${client_cidr}.*MASQUERADE"; then
+    local nat_count
+    nat_count="$(iptables-save -t nat 2>/dev/null | grep -cE -- "-A POSTROUTING -s ${client_cidr}.*MASQUERADE" || true)"
+    if [[ "${nat_count:-0}" -gt 1 ]]; then
+      status WARNING "Duplicate MASQUERADE rules (${nat_count}) — run migrate-vpn-stack.sh"
+    else
+      status HEALTHY "NAT MASQUERADE for ${client_cidr}"
+    fi
+  else
+    status FAILED "Missing MASQUERADE for ${client_cidr}"
+  fi
+
+  check_bool "IP forwarding on" sh -c '[ "$(sysctl -n net.ipv4.ip_forward)" = "1" ]'
+  if systemctl is-active --quiet "wg-quick@wg-tunnel" 2>/dev/null; then
+    status HEALTHY "wg-quick@wg-tunnel active"
+  else
+    status WARNING "wg-quick@wg-tunnel not active via systemd"
+  fi
+  diag_host_perf
 }
 
 diag_entry() {
@@ -142,75 +237,151 @@ diag_entry() {
     client_cidr="${WG_CLIENT_CIDR:-10.10.10.0/24}"
   fi
 
-  log "=== ENTRY diagnostics ==="
-  printf 'Public IP: '; curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null || echo FAIL
-  echo
-  printf 'Client endpoint file: '; cat /etc/wireguard/wg-endpoint 2>/dev/null || echo MISSING
-  echo
-  wg show wg-clients 2>/dev/null || warn "wg-clients down"
-  echo
-  wg show wg-tunnel 2>/dev/null || warn "wg-tunnel down"
-  echo
-  log "Routes (10.10.10.2 must use dev wg-clients; client egress uses table 100):"
-  ip route get 10.10.10.2 2>/dev/null || true
-  ip route get 10.10.10.2 from 1.1.1.1 iif wg-tunnel 2>/dev/null || true
+  status INFO "=== ENTRY diagnostics ==="
+  if [[ -f /etc/wireguard/wg-endpoint ]]; then
+    status HEALTHY "Client endpoint=$(cat /etc/wireguard/wg-endpoint)"
+  else
+    status FAILED "Missing /etc/wireguard/wg-endpoint"
+  fi
+
+  diag_wg_ifaces wg-clients wg-tunnel
+
+  if wg_entry_client_subnet_route_ok "10.10.10.2"; then
+    status HEALTHY "Route 10.10.10.2 → wg-clients"
+  else
+    status FAILED "Route 10.10.10.2 not via wg-clients"
+  fi
+  if ip rule show | grep -q 'lookup 100'; then
+    status HEALTHY "Policy rule lookup 100 present"
+  else
+    status FAILED "Missing policy rule lookup 100"
+  fi
+  if ip route show table 100 2>/dev/null | grep -q 'default'; then
+    status HEALTHY "Table 100 default via wg-tunnel"
+  else
+    status FAILED "Table 100 missing default route"
+  fi
   ip rule show | grep -E '100|10.10.10' || true
   ip route show table 100 2>/dev/null || true
-  echo
-  log "rp_filter (both wg interfaces must be 0):"
-  sysctl net.ipv4.conf.wg-tunnel.rp_filter net.ipv4.conf.wg-clients.rp_filter 2>/dev/null || true
-  echo
-  log "Reachability:"
-  ping -c 2 -W 2 10.200.0.1 2>/dev/null || warn "cannot ping exit tunnel IP 10.200.0.1"
-  echo
-  log "FORWARD / Docker:"
-  iptables -L FORWARD -n -v --line-numbers | head -15
-  iptables -L DOCKER-USER -n -v 2>/dev/null | head -8 || echo "no DOCKER-USER"
-  echo
-  if wg_entry_client_subnet_route_ok "10.10.10.2"; then
-    log "Route check: 10.10.10.2 → wg-clients OK"
+
+  local rp_c rp_t
+  rp_c="$(sysctl -n net.ipv4.conf.wg-clients.rp_filter 2>/dev/null || echo missing)"
+  rp_t="$(sysctl -n net.ipv4.conf.wg-tunnel.rp_filter 2>/dev/null || echo missing)"
+  if [[ "$rp_c" == "0" && "$rp_t" == "0" ]]; then
+    status HEALTHY "rp_filter=0 on wg-clients and wg-tunnel"
   else
-    warn "Route check FAIL — provider may route ${client_cidr} via LAN; run: sudo bash deploy/fix-vpn-routing.sh --role entry"
+    status FAILED "rp_filter wg-clients=${rp_c} wg-tunnel=${rp_t} (need 0)"
   fi
+
+  if tunnel_handshake_recent 180; then
+    status HEALTHY "Tunnel handshake to exit ≤180s"
+  else
+    status FAILED "Tunnel handshake stale/missing — check exit peer + UDP ${WG_EXIT_TUNNEL_PORT:-51821}"
+  fi
+  if ping -c 2 -W 2 10.200.0.1 >/dev/null 2>&1; then
+    status HEALTHY "Ping exit tunnel IP 10.200.0.1"
+    local rtt
+    rtt="$(ping -c 5 -W 2 10.200.0.1 2>/dev/null | awk -F'/' '/rtt|round-trip/{print $5}')"
+    status INFO "Entry→exit tunnel RTT avg=${rtt:-n/a} ms"
+  else
+    status WARNING "Cannot ping 10.200.0.1"
+  fi
+
+  if iptables -C FORWARD -i wg-clients -o wg-tunnel -j ACCEPT 2>/dev/null; then
+    status HEALTHY "FORWARD client→tunnel"
+  else
+    status FAILED "Missing FORWARD client→tunnel"
+  fi
+  if iptables -C FORWARD -i wg-tunnel -o wg-clients -j ACCEPT 2>/dev/null; then
+    status HEALTHY "FORWARD tunnel→client"
+  else
+    status FAILED "Missing FORWARD tunnel→client"
+  fi
+  if iptables -C FORWARD -i wg-clients -j ACCEPT 2>/dev/null; then
+    status WARNING "Legacy broad FORWARD -i wg-clients ACCEPT still present — migrate-vpn-stack.sh"
+  else
+    status HEALTHY "No broad wg-clients FORWARD ACCEPT"
+  fi
+  local def_if
+  def_if="$(default_route_iface)"
+  if [[ -n "$def_if" ]] && iptables -C FORWARD -i wg-clients -o "$def_if" -j DROP 2>/dev/null; then
+    status HEALTHY "Anti-leak DROP client→${def_if}"
+  else
+    status WARNING "Anti-leak DROP missing (set WG_ENTRY_ANTILEAK=1 and migrate)"
+  fi
+  if iptables -t nat -S POSTROUTING 2>/dev/null | grep -qE -- "-s ${client_cidr}.*MASQUERADE"; then
+    status WARNING "Subnet MASQUERADE on entry for ${client_cidr} — double-NAT risk"
+  else
+    status HEALTHY "No subnet MASQUERADE on entry (NAT belongs on exit)"
+  fi
+
   if iptables -L DOCKER-USER -n >/dev/null 2>&1; then
-    if iptables -C DOCKER-USER -i wg-tunnel -o wg-clients -j ACCEPT 2>/dev/null; then
-      log "Docker bypass: wg-tunnel → wg-clients OK"
+    status WARNING "Docker present — prefer bare metal for VPN dataplane"
+    if iptables -C DOCKER-USER -i wg-clients -o wg-tunnel -j ACCEPT 2>/dev/null; then
+      status HEALTHY "DOCKER-USER bypass present"
     else
-      warn "Docker bypass missing — run: sudo bash deploy/fix-vpn-routing.sh --role entry"
+      status FAILED "DOCKER-USER bypass missing"
     fi
+  else
+    status HEALTHY "No Docker DOCKER-USER chain"
   fi
-  echo
-  log "Client peers (handshake + transfer while a device is connected):"
-  wg show wg-clients latest-handshakes 2>/dev/null || true
-  wg show wg-clients transfer 2>/dev/null || true
-  echo
+
+  if [[ -f /etc/wireguard/wg-clients.conf ]] \
+    && grep -qE 'iptables -A FORWARD -i wg-clients -j ACCEPT' /etc/wireguard/wg-clients.conf; then
+    status WARNING "wg-clients.conf still has legacy broad PostUp FORWARD"
+  fi
+
   local direct=0 twohop=0
   if [[ -d /etc/wireguard/client-state ]]; then
+    local f
     for f in /etc/wireguard/client-state/*.meta; do
       [[ -f "$f" ]] || continue
-      if grep -q '^VPN_MODE=direct' "$f" 2>/dev/null || grep -q "^VPN_MODE='direct'" "$f" 2>/dev/null; then
+      if grep -qE "^VPN_MODE=('direct'|direct)" "$f" 2>/dev/null; then
         direct=$((direct + 1))
       else
         twohop=$((twohop + 1))
       fi
     done
   fi
-  log "VPN modes: direct=${direct} twohop=${twohop} (direct clients egress via entry NAT; twohop via exit)"
-  echo
-  log "End-to-end test: on a connected client device run: curl -4 https://api.ipify.org"
-  log "Expected: exit server public IP for twohop clients; entry server public IP for direct clients"
-  diag_performance
+  status INFO "VPN modes: twohop=${twohop} direct=${direct} (direct is diagnostic-only)"
+  if [[ "$direct" -gt 0 ]]; then
+    status WARNING "${direct} client(s) in direct mode — production should use twohop"
+  fi
+
+  check_bool "IP forwarding on" sh -c '[ "$(sysctl -n net.ipv4.ip_forward)" = "1" ]'
+  if systemctl is-active --quiet wg-panel 2>/dev/null; then
+    status HEALTHY "wg-panel active"
+  else
+    status WARNING "wg-panel not active"
+  fi
+  if systemctl is-active --quiet wg-admin-panel 2>/dev/null; then
+    status HEALTHY "wg-admin-panel active"
+  else
+    status WARNING "wg-admin-panel not active"
+  fi
+
+  local sample
+  sample="$(find /etc/wireguard/clients -name '*.conf' 2>/dev/null | head -1 || true)"
+  if [[ -n "$sample" ]]; then
+    status INFO "Sample client MTU: $(grep -E '^MTU' "$sample" 2>/dev/null || echo 'not set')"
+  fi
+  status INFO "Configured MTU: server=${WG_SERVER_MTU:-1420} clients_if=${WG_CLIENTS_MTU:-} tunnel=${WG_TUNNEL_MTU:-} twohop_client=${WG_CLIENT_MTU_TWOHOP:-1380}"
+
+  status INFO "From a twohop client: curl -4 https://api.ipify.org  # must equal EXIT public IP"
+  diag_host_perf
 }
 
 case "$ROLE" in
   exit) diag_exit ;;
   entry) diag_entry ;;
-  *)
-    die "Usage: sudo bash deploy/diagnose-vpn.sh [--role entry|exit|auto]"
-    ;;
+  *) die "Usage: sudo bash deploy/diagnose-vpn.sh [--role entry|exit|auto]" ;;
 esac
 
-if [[ -f "$SCRIPT_DIR/test-connectivity.sh" ]]; then
-  echo ""
-  bash "$SCRIPT_DIR/test-connectivity.sh" --role "$ROLE" || true
+echo
+status INFO "Summary: healthy=${HEALTHY} warning=${WARNING} failed=${FAILED}"
+if [[ "$FAILED" -gt 0 ]]; then
+  status INFO "Fix: sudo bash deploy/migrate-vpn-stack.sh --role ${ROLE}"
+  status INFO "Then: sudo bash deploy/fix-vpn-routing.sh --role ${ROLE}"
+  exit 1
 fi
+exit 0

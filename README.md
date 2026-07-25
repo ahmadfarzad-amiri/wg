@@ -128,13 +128,20 @@ Or use **Admin panel → Tools** for the same operations without SSH.
 
 | Mode | Egress IP | Use when |
 |------|-----------|----------|
-| `twohop` (default) | Exit VPS | User needs privacy, separate egress IP |
-| `direct` | Entry VPS | User needs lower latency |
+| `twohop` (default) | Exit VPS | **Production** — required architecture |
+| `direct` | Entry VPS | Diagnostic A/B only (not a speed fix) |
 
 ```bash
+sudo wg-client set-mode alice twohop
+# Diagnostic only:
 sudo wg-client set-mode alice direct
-sudo wg-client set-mode bob twohop
 sudo wg-client sync-vpn-modes
+```
+
+```bash
+# Migrate / repair dataplane after upgrades
+sudo bash deploy/migrate-vpn-stack.sh --role entry
+sudo bash deploy/diagnose-vpn.sh --role entry
 ```
 
 ---
@@ -149,4 +156,6 @@ sudo wg-client sync-vpn-modes
 | **[docs/OPERATIONS.md](docs/OPERATIONS.md)** | Server install, backup, migration |
 | **[docs/PERFORMANCE.md](docs/PERFORMANCE.md)** | Two-hop throughput — MTU, BBR, hop measurements |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | How the two-hop stack works |
+| **[docs/ASSESSMENT.md](docs/ASSESSMENT.md)** | Packet path and bottleneck analysis |
+| **[docs/FRESH_DEPLOYMENT.md](docs/FRESH_DEPLOYMENT.md)** | Clean entry/exit install procedure |
 | **[deploy/README-DEPLOY.md](deploy/README-DEPLOY.md)** | Detailed script reference |
