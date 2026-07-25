@@ -286,6 +286,47 @@ diag_entry() {
     status FAILED "Missing /etc/wireguard/wg-endpoint"
   fi
 
+  # Pubkey triple: clients-server.pub / live iface / sample client .conf Peer PublicKey
+  local file_pub live_pub sample_pub sample_ep sample_conf
+  file_pub=""
+  live_pub=""
+  sample_pub=""
+  sample_ep=""
+  if [[ -f /etc/wireguard/clients-server.pub ]]; then
+    file_pub="$(tr -d '[:space:]' </etc/wireguard/clients-server.pub)"
+  fi
+  live_pub="$(wg show wg-clients public-key 2>/dev/null | tr -d '[:space:]' || true)"
+  sample_conf="$(ls -1 /etc/wireguard/clients/*.conf 2>/dev/null | head -1 || true)"
+  if [[ -n "$sample_conf" ]]; then
+    sample_pub="$(awk -F'= *' '/^\[Peer\]/{p=1;next} p && /^PublicKey[[:space:]]*=/{print $2; exit}' "$sample_conf" | tr -d '[:space:]')"
+    sample_ep="$(awk -F'= *' '/^\[Peer\]/{p=1;next} p && /^Endpoint[[:space:]]*=/{print $2; exit}' "$sample_conf" | tr -d '[:space:]')"
+  fi
+  if [[ -n "$file_pub" && -n "$live_pub" && "$file_pub" == "$live_pub" ]]; then
+    status HEALTHY "Server pubkey file == live wg-clients (${file_pub:0:20}…)"
+  elif [[ -z "$file_pub" ]]; then
+    status FAILED "Missing /etc/wireguard/clients-server.pub"
+  elif [[ -z "$live_pub" ]]; then
+    status WARNING "wg-clients not up — cannot verify clients-server.pub vs live key"
+  else
+    status FAILED "Server pubkey mismatch: clients-server.pub != live wg-clients (configs will never handshake)"
+  fi
+  if [[ -n "$sample_pub" && -n "$live_pub" ]]; then
+    if [[ "$sample_pub" == "$live_pub" ]]; then
+      status HEALTHY "Sample client conf Peer PublicKey matches live server"
+    else
+      status FAILED "Sample client conf Peer PublicKey != live server — re-create/renew configs"
+    fi
+  fi
+  if [[ -n "$sample_ep" && -f /etc/wireguard/wg-endpoint ]]; then
+    local want_ep
+    want_ep="$(tr -d '[:space:]' </etc/wireguard/wg-endpoint)"
+    if [[ "$sample_ep" == "$want_ep" ]]; then
+      status HEALTHY "Sample client conf Endpoint matches wg-endpoint"
+    else
+      status WARNING "Sample client Endpoint=${sample_ep} != wg-endpoint=${want_ep} — run fix-endpoint / re-import"
+    fi
+  fi
+
   wg_ensure_clients_udp_input 2>/dev/null || true
   local client_port="${WG_CLIENT_PORT:-51820}"
   if [[ -f /etc/wireguard/wg-endpoint ]]; then
@@ -300,15 +341,38 @@ diag_entry() {
     status WARNING "No INPUT ACCEPT for udp/${client_port} — run: sudo wg-ops open-ports --role entry"
   fi
 
-  local peer_count=0 live_hs=0
+  local peer_count=0 live_hs=0 oneway=0 never_rx=0 hs_epoch=""
   peer_count="$(wg show wg-clients peers 2>/dev/null | wc -l | tr -d ' ')"
   peer_count="${peer_count:-0}"
   if [[ "$peer_count" -gt 0 ]]; then
     status HEALTHY "wg-clients has ${peer_count} configured peer(s)"
     live_hs="$(wg show wg-clients latest-handshakes 2>/dev/null | awk '$2+0 > 0 {n++} END{print n+0}')"
+    # Classify: rx>0 && tx>0 && hs==0 → server answered, client never completed
+    while read -r _pub rx tx; do
+      [[ -n "${_pub:-}" ]] || continue
+      rx="${rx:-0}"; tx="${tx:-0}"
+      hs_epoch="$(wg show wg-clients latest-handshakes 2>/dev/null | awk -v k="$_pub" '$1==k {print $2+0; exit}')"
+      hs_epoch="${hs_epoch:-0}"
+      if [[ "$hs_epoch" -gt 0 ]]; then
+        continue
+      fi
+      if [[ "$rx" -gt 0 && "$tx" -gt 0 ]]; then
+        oneway=$((oneway + 1))
+      elif [[ "$rx" -eq 0 ]]; then
+        never_rx=$((never_rx + 1))
+      fi
+    done < <(wg show wg-clients transfer 2>/dev/null || true)
+
     if [[ "${live_hs:-0}" -gt 0 ]]; then
       status HEALTHY "${live_hs} peer(s) with a handshake"
-    else
+    fi
+    if [[ "${oneway:-0}" -gt 0 ]]; then
+      status FAILED "${oneway} peer(s) ONE-WAY answered (rx+tx>0, handshake=0): server sent response; client did not complete"
+      status INFO "Check conf Peer PublicKey vs live server key, re-import current .conf, try another network or Xray"
+      status INFO "Detail: sudo wg-ops check-client"
+    elif [[ "${live_hs:-0}" -eq 0 && "${never_rx:-0}" -gt 0 ]]; then
+      status WARNING "No client handshakes yet (no RX) — import .conf on a device, then check cloud firewall UDP ${client_port}"
+    elif [[ "${live_hs:-0}" -eq 0 ]]; then
       status WARNING "No client handshakes yet — import .conf on a device, then check cloud firewall UDP ${client_port}"
     fi
   else

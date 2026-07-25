@@ -41,9 +41,9 @@ Default CDN base (latest release):
 Pin a specific release when needed:
 
 ```bash
-sudo WG_VERSION=1.0.25 wg-ops pull
+sudo WG_VERSION=1.0.28 wg-ops pull
 # or
-sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.25' wg-ops pull
+sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.28' wg-ops pull
 ```
 
 ---
@@ -270,6 +270,35 @@ sudo wg-ops restart
 
 ---
 
+## Troubleshooting: client handshake stays 0 (RX/TX grow)
+
+Symptom: device imports a `.conf` and activates WireGuard, but `latest-handshakes` stays `0`. On entry, `wg show wg-clients` shows **transfer growing** (e.g. RX multiples of 148 B, TX multiples of 92 B).
+
+That pattern means **the entry answered** (handshake response left the host). It is not a closed cloud inbound firewall (initiations already arrived).
+
+```bash
+sudo wg-ops check-client
+sudo wg-ops diagnose --role entry
+```
+
+| Check | Expected |
+|-------|----------|
+| `clients-server.pub` vs `wg show wg-clients public-key` | Identical |
+| Sample `/etc/wireguard/clients/*.conf` Peer `PublicKey` | Same as live server |
+| Sample conf `Endpoint` | Matches `/etc/wireguard/wg-endpoint` |
+| tcpdump on WAN `udp port 51820` | `148` in, then `92` out to the client |
+
+Fixes:
+
+1. Re-import the **current** `.conf` from the panel (not an old QR after renew/password rotate).
+2. If pubkey file ≠ live iface: repair `clients-server.pub`, then renew clients.
+3. Test the same `.conf` on another network (Mac/PC vs phone, Wi‑Fi ↔ mobile).
+4. If responses leave the VPS but every client network fails: path/DPI — use `sudo wg-ops install-xray` for alternative protocols.
+
+If transfer stays **RX=0**, then check cloud + host UDP `51820` (`sudo wg-ops open-ports --role entry`).
+
+---
+
 ## Troubleshooting: connected but no internet
 
 Symptom: `wg show wg-clients` shows TX/RX, but the client has no web access.
@@ -295,6 +324,7 @@ sudo wg-ops diagnose --role entry
 | Check | Command | Expected |
 |-------|---------|----------|
 | Clients interface | `sudo wg show wg-clients` | Peers listed |
+| Client handshake | `sudo wg-ops check-client` | Peer HS OK or clear one-way/never class |
 | Tunnel | `sudo wg show wg-tunnel` | Recent handshake |
 | Panels | `systemctl is-active wg-panel wg-admin-panel` | `active` |
 | Endpoint file | `cat /etc/wireguard/wg-endpoint` | `IP:51820` |
@@ -356,12 +386,12 @@ Install and `wg-ops pull` / `update` resolve **`WG_VERSION`** from the environme
 
 For each release:
 
-1. Commit on `main`, then `git tag` / `git push` the new semver (e.g. `v1.0.25`).
+1. Commit on `main`, then `git tag` / `git push` the new semver (e.g. `v1.0.28`).
 2. No version bump is required inside the repo — servers pick up the new tag automatically.
 3. To pin a server to a specific release:
 
 ```bash
-sudo WG_VERSION=1.0.25 wg-ops pull
+sudo WG_VERSION=1.0.28 wg-ops pull
 sudo wg-ops update
 ```
 

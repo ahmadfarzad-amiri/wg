@@ -1,34 +1,49 @@
 #!/usr/bin/env python3
-import os, sys, shlex, subprocess, time
+"""Rotate a client's WireGuard keys; keep parity with wg-client config rules."""
+import os
+import shlex
+import subprocess
+import sys
+import time
 
 WG_IF = "wg-clients"
 WG_CONF = "/etc/wireguard/wg-clients.conf"
 STATE_DIR = "/etc/wireguard/client-state"
 CLIENT_DIR = "/etc/wireguard/clients"
 SERVER_PUBLIC_KEY_FILE = "/etc/wireguard/clients-server.pub"
+ENTRY_ENV = "/etc/wireguard/entry-server.env"
+ENDPOINT_FILE = "/etc/wireguard/wg-endpoint"
 
+META_KEYS = [
+    "NAME",
+    "IP",
+    "PUBLIC_KEY",
+    "LIMIT_BYTES",
+    "EXPIRES_AT",
+    "CREATED_AT",
+    "USED_BYTES",
+    "LAST_TOTAL",
+    "SINGLE_MODE",
+    "LOCKED_ENDPOINT",
+    "LOCKED_IP",
+    "DISABLED",
+    "DISABLED_REASON",
+    "VPN_MODE",
+    "UPDATED_AT",
+]
 
-def read_default_endpoint():
-    path = "/etc/wireguard/wg-endpoint"
-    if os.path.isfile(path):
-        with open(path, "r", encoding="utf-8", errors="ignore") as handle:
-            value = handle.read().strip()
-            if value:
-                return value
-    return os.environ.get("WG_DEFAULT_ENDPOINT", "127.0.0.1:51820")
-
-
-DEFAULT_ENDPOINT = read_default_endpoint()
 
 def die(msg):
     print(f"ERROR: {msg}", file=sys.stderr)
     sys.exit(1)
+
 
 def run(cmd, input_text=None, check=True):
     p = subprocess.run(cmd, input=input_text, text=True, capture_output=True)
     if check and p.returncode != 0:
         die(p.stderr.strip() or p.stdout.strip() or f"Command failed: {' '.join(cmd)}")
     return p.stdout.strip()
+
 
 def parse_meta(path):
     data = {}
@@ -45,16 +60,14 @@ def parse_meta(path):
                 data[k] = v.strip().strip("'\"")
     return data
 
+
 def write_meta(path, data):
     with open(path, "w", encoding="utf-8") as f:
-        for k in [
-            "NAME","IP","PUBLIC_KEY","LIMIT_BYTES","EXPIRES_AT","CREATED_AT",
-            "USED_BYTES","LAST_TOTAL","SINGLE_MODE","LOCKED_ENDPOINT",
-            "LOCKED_IP","DISABLED","DISABLED_REASON","UPDATED_AT"
-        ]:
+        for k in META_KEYS:
             v = str(data.get(k, ""))
             f.write(f"{k}={shlex.quote(v)}\n")
     os.chmod(path, 0o600)
+
 
 def remove_block(conf, name):
     if not os.path.exists(conf):
@@ -76,6 +89,7 @@ def remove_block(conf, name):
         f.writelines(out)
     os.chmod(conf, 0o600)
 
+
 def append_peer(conf, name, pub, ip):
     with open(conf, "a", encoding="utf-8") as f:
         f.write(f"\n# BEGIN CLIENT {name}\n")
@@ -85,15 +99,145 @@ def append_peer(conf, name, pub, ip):
         f.write(f"# END CLIENT {name}\n")
     os.chmod(conf, 0o600)
 
+
+def endpoint_host(ep):
+    if not ep or ep == "(none)":
+        return ""
+    if ep.startswith("[") and "]:" in ep:
+        return ep[1 : ep.index("]:")]
+    if ":" in ep:
+        return ep.rsplit(":", 1)[0]
+    return ep
+
+
+def is_public_endpoint_host(host):
+    if not host:
+        return False
+    low = host.lower()
+    if low == "localhost" or low.startswith("localhost."):
+        return False
+    parts = host.split(".")
+    if len(parts) != 4 or not all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
+        return True  # hostname
+    a, b = int(parts[0]), int(parts[1])
+    if host in ("127.0.0.1", "0.0.0.0"):
+        return False
+    if a == 10:
+        return False
+    if a == 172 and 16 <= b <= 31:
+        return False
+    if a == 192 and b == 168:
+        return False
+    if a == 169 and b == 254:
+        return False
+    if a == 100 and 64 <= b <= 127:
+        return False
+    return True
+
+
+def validate_client_endpoint(endpoint):
+    if not endpoint:
+        die(
+            "Client Endpoint is empty — set /etc/wireguard/wg-endpoint "
+            "or pass a public ENTRY_IP:51820"
+        )
+    if ":" not in endpoint:
+        die(f"Client Endpoint must be HOST:PORT (got: {endpoint})")
+    host = endpoint_host(endpoint)
+    if endpoint.startswith("127.0.0.1:") or endpoint.startswith("localhost:") or not is_public_endpoint_host(host):
+        die(
+            f"Client Endpoint is {endpoint} — set a public ENTRY_IP in "
+            "/etc/wireguard/wg-endpoint (sudo wg-ops change-entry --new ENTRY_IP:51820)"
+        )
+
+
+def read_wg_endpoint():
+    if os.path.isfile(ENDPOINT_FILE):
+        with open(ENDPOINT_FILE, "r", encoding="utf-8", errors="ignore") as handle:
+            value = handle.read().strip()
+            if value:
+                return value
+    env_ep = os.environ.get("WG_DEFAULT_ENDPOINT", "").strip()
+    if env_ep:
+        return env_ep
+    return ""
+
+
 def get_endpoint_from_old_config(name):
     path = os.path.join(CLIENT_DIR, f"{name}.conf")
     if not os.path.exists(path):
-        return DEFAULT_ENDPOINT
+        return ""
     with open(path, "r", encoding="utf-8", errors="ignore") as f:
         for line in f:
             if line.strip().startswith("Endpoint"):
                 return line.split("=", 1)[1].strip()
-    return DEFAULT_ENDPOINT
+    return ""
+
+
+def resolve_endpoint(name):
+    # Prefer live server endpoint file over a possibly stale conf value.
+    ep = read_wg_endpoint()
+    if not ep:
+        ep = get_endpoint_from_old_config(name)
+    if not ep:
+        ep = os.environ.get("WG_DEFAULT_ENDPOINT", "")
+    validate_client_endpoint(ep)
+    return ep
+
+
+def load_entry_dns():
+    if os.path.isfile(ENTRY_ENV):
+        with open(ENTRY_ENV, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("WG_DNS=") and "=" in line:
+                    val = line.split("=", 1)[1].strip().strip("'\"")
+                    if val:
+                        return val
+    env_dns = os.environ.get("WG_DNS", "").strip()
+    if env_dns:
+        return env_dns
+    return "8.8.8.8, 8.8.4.4"
+
+
+def assert_server_pubkey_sync():
+    if not os.path.isfile(SERVER_PUBLIC_KEY_FILE):
+        die(f"{SERVER_PUBLIC_KEY_FILE} not found")
+    with open(SERVER_PUBLIC_KEY_FILE, "r", encoding="utf-8", errors="ignore") as f:
+        file_pub = f.read().strip()
+    if not file_pub:
+        die(f"{SERVER_PUBLIC_KEY_FILE} is empty")
+    p = subprocess.run(
+        ["wg", "show", WG_IF, "public-key"],
+        text=True,
+        capture_output=True,
+    )
+    if p.returncode != 0:
+        return file_pub
+    live_pub = (p.stdout or "").strip()
+    if live_pub and live_pub != file_pub:
+        die(
+            f"Server pubkey mismatch: {SERVER_PUBLIC_KEY_FILE} ({file_pub}) != "
+            f"live {WG_IF} ({live_pub}). Repair: printf '%s\\n' \"$(wg show {WG_IF} public-key)\" "
+            f"| sudo tee {SERVER_PUBLIC_KEY_FILE} >/dev/null && re-create/renew client configs."
+        )
+    return file_pub
+
+
+def add_live_peer(public_key, ip):
+    p = subprocess.run(["wg", "show", WG_IF], capture_output=True)
+    if p.returncode != 0:
+        print(f"WARNING: {WG_IF} is not running. Peer saved to config only.")
+        print(f"Start it with: systemctl restart wg-quick@{WG_IF}")
+        return
+    run(["wg", "set", WG_IF, "peer", public_key, "allowed-ips", f"{ip}/32"])
+    peers = run(["wg", "show", WG_IF, "peers"], check=False)
+    if public_key not in peers.splitlines():
+        die(
+            f"Failed to add live peer on {WG_IF} — is the interface up? "
+            f"Try: systemctl restart wg-quick@{WG_IF}"
+        )
+
 
 def main():
     if os.geteuid() != 0:
@@ -115,30 +259,25 @@ def main():
     if not ip or not old_pub:
         die("Client metadata missing IP or PUBLIC_KEY")
 
-    endpoint = get_endpoint_from_old_config(name)
+    endpoint = resolve_endpoint(name)
+    server_pub = assert_server_pubkey_sync()
+    dns_servers = load_entry_dns()
 
     private_key = run(["wg", "genkey"])
     public_key = run(["wg", "pubkey"], input_text=private_key + "\n")
 
-    server_pub = open(SERVER_PUBLIC_KEY_FILE).read().strip()
-
     os.makedirs(CLIENT_DIR, exist_ok=True)
     os.chmod(CLIENT_DIR, 0o700)
 
-    # Remove old live peer.
     run(["wg", "set", WG_IF, "peer", old_pub, "remove"], check=False)
 
-    # Update server config.
     backup = f"{WG_CONF}.bak.rotate.{int(time.time())}"
     subprocess.run(["cp", WG_CONF, backup], check=False)
 
     remove_block(WG_CONF, name)
     append_peer(WG_CONF, name, public_key, ip)
+    add_live_peer(public_key, ip)
 
-    # Add new live peer.
-    run(["wg", "set", WG_IF, "peer", public_key, "allowed-ips", f"{ip}/32"], check=False)
-
-    # Preserve MTU from existing config when rotating keys.
     client_conf = os.path.join(CLIENT_DIR, f"{name}.conf")
     mtu = "1380"
     if os.path.isfile(client_conf):
@@ -148,12 +287,11 @@ def main():
                     mtu = line.split("=", 1)[1].strip()
                     break
 
-    # Write new client config.
     with open(client_conf, "w", encoding="utf-8") as f:
         f.write("[Interface]\n")
         f.write(f"PrivateKey = {private_key}\n")
         f.write(f"Address = {ip}/32\n")
-        f.write("DNS = 1.1.1.1, 8.8.8.8\n")
+        f.write(f"DNS = {dns_servers}\n")
         f.write(f"MTU = {mtu}\n\n")
         f.write("[Peer]\n")
         f.write(f"PublicKey = {server_pub}\n")
@@ -162,16 +300,20 @@ def main():
         f.write("PersistentKeepalive = 25\n")
     os.chmod(client_conf, 0o600)
 
-    # Preserve usage/expiry/limit and admin disable state.
     data["PUBLIC_KEY"] = public_key
     data["LAST_TOTAL"] = "0"
     data["LOCKED_ENDPOINT"] = ""
     data["LOCKED_IP"] = ""
     data["UPDATED_AT"] = str(int(time.time()))
+    if "VPN_MODE" not in data or not data.get("VPN_MODE"):
+        data["VPN_MODE"] = "direct" if not os.path.isfile("/etc/wireguard/wg-tunnel.conf") else "twohop"
+    # Preserve existing VPN_MODE (already in data if present).
     write_meta(meta_path, data)
 
     print(f"Rotated keys for: {name}")
     print(f"Config: {client_conf}")
+    print(f"Endpoint: {endpoint}")
+
 
 if __name__ == "__main__":
     main()

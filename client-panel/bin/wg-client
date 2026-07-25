@@ -487,6 +487,98 @@ endpoint_ip() {
   fi
 }
 
+# Reject loopback / RFC1918 / link-local / CGNAT for client Endpoint host part.
+# Hostnames (non-IPv4 literals) are allowed.
+is_public_endpoint_host() {
+  local host="$1"
+  [[ -n "$host" ]] || return 1
+  case "$host" in
+    localhost|localhost.*) return 1 ;;
+  esac
+  # IPv4 literal only — hostnames pass.
+  [[ "$host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0
+  [[ "$host" != "127.0.0.1" ]] || return 1
+  [[ "$host" != "0.0.0.0" ]] || return 1
+  [[ "$host" =~ ^10\. ]] && return 1
+  [[ "$host" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && return 1
+  [[ "$host" =~ ^192\.168\. ]] && return 1
+  [[ "$host" =~ ^169\.254\. ]] && return 1
+  [[ "$host" =~ ^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\. ]] && return 1
+  return 0
+}
+
+validate_client_endpoint() {
+  local endpoint="$1"
+  local host
+  [ -n "$endpoint" ] || die "Client Endpoint is empty — set /etc/wireguard/wg-endpoint or pass --endpoint ENTRY_IP:51820"
+  [[ "$endpoint" == *:* ]] || die "Client Endpoint must be HOST:PORT (got: ${endpoint})"
+  host="$(endpoint_ip "$endpoint")"
+  if [[ "$endpoint" == 127.0.0.1:* || "$endpoint" == localhost:* ]] || ! is_public_endpoint_host "$host"; then
+    die "Client Endpoint is ${endpoint} — set a public ENTRY_IP in /etc/wireguard/wg-endpoint (sudo wg-ops change-entry --new ENTRY_IP:51820)"
+  fi
+}
+
+# File used in client .conf Peer PublicKey must match the live wg-clients key.
+assert_server_pubkey_sync() {
+  local file_pub live_pub
+  [ -f "$SERVER_PUBLIC_KEY_FILE" ] || die "$SERVER_PUBLIC_KEY_FILE not found"
+  file_pub="$(tr -d '[:space:]' < "$SERVER_PUBLIC_KEY_FILE")"
+  [ -n "$file_pub" ] || die "$SERVER_PUBLIC_KEY_FILE is empty"
+  if ! wg show "$WG_IF" >/dev/null 2>&1; then
+    return 0
+  fi
+  live_pub="$(wg show "$WG_IF" public-key 2>/dev/null | tr -d '[:space:]')"
+  [ -n "$live_pub" ] || return 0
+  if [ "$file_pub" != "$live_pub" ]; then
+    die "Server pubkey mismatch: ${SERVER_PUBLIC_KEY_FILE} (${file_pub}) != live ${WG_IF} (${live_pub}). Repair: printf '%s\\n' \"\$(wg show ${WG_IF} public-key)\" | sudo tee ${SERVER_PUBLIC_KEY_FILE} >/dev/null && re-create/renew client configs."
+  fi
+}
+
+# True for routable public IPv4 (not loopback / RFC1918 / link-local / CGNAT).
+is_public_ipv4() {
+  local ip="$1"
+  [[ -n "$ip" && "$ip" != "127.0.0.1" && "$ip" != "0.0.0.0" ]] || return 1
+  [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+  [[ "$ip" =~ ^10\. ]] && return 1
+  [[ "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && return 1
+  [[ "$ip" =~ ^192\.168\. ]] && return 1
+  [[ "$ip" =~ ^169\.254\. ]] && return 1
+  [[ "$ip" =~ ^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\. ]] && return 1
+  return 0
+}
+
+require_public_endpoint() {
+  local endpoint="$1"
+  local host
+  [ -n "$endpoint" ] || die "Client Endpoint is empty — set /etc/wireguard/wg-endpoint or pass --endpoint ENTRY_IP:51820"
+  if [[ "$endpoint" != *:* ]]; then
+    die "Client Endpoint must be HOST:PORT (got: ${endpoint})"
+  fi
+  host="$(endpoint_ip "$endpoint")"
+  host="$(echo "$host" | tr '[:upper:]' '[:lower:]')"
+  if [ -z "$host" ] || [ "$host" = "127.0.0.1" ] || [ "$host" = "localhost" ] || [ "$host" = "0.0.0.0" ] || [ "$host" = "::1" ]; then
+    die "Client Endpoint is ${endpoint} — set a public ENTRY_IP in /etc/wireguard/wg-endpoint (sudo wg-ops change-entry --new ENTRY_IP:51820)"
+  fi
+  # Hostname / FQDN is allowed; reject private literal IPv4.
+  if [[ "$host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && ! is_public_ipv4 "$host"; then
+    die "Client Endpoint IP ${host} is not publicly routable — set ENTRY public IP in /etc/wireguard/wg-endpoint (sudo wg-ops change-entry --new ENTRY_IP:51820)"
+  fi
+}
+
+require_server_pubkey_sync() {
+  local file_pub live_pub
+  file_pub="$(tr -d '[:space:]' < "$SERVER_PUBLIC_KEY_FILE")"
+  [ -n "$file_pub" ] || die "$SERVER_PUBLIC_KEY_FILE is empty"
+  if ! wg show "$WG_IF" >/dev/null 2>&1; then
+    return 0
+  fi
+  live_pub="$(wg show "$WG_IF" public-key 2>/dev/null | tr -d '[:space:]')"
+  [ -n "$live_pub" ] || return 0
+  if [ "$file_pub" != "$live_pub" ]; then
+    die "Server pubkey mismatch: $SERVER_PUBLIC_KEY_FILE (${file_pub:0:20}…) != live ${WG_IF} (${live_pub:0:20}…). Repair: printf '%s\\n' \"\$(wg show ${WG_IF} public-key)\" | sudo tee $SERVER_PUBLIC_KEY_FILE && re-create/renew clients"
+  fi
+}
+
 get_transfer_total() {
   local public_key="$1"
   local rx tx
@@ -533,10 +625,8 @@ create_client_config() {
   mkdir -p "$CLIENT_DIR"
   chmod 700 "$CLIENT_DIR"
 
-  [ -n "$endpoint" ] || die "Client Endpoint is empty — set /etc/wireguard/wg-endpoint or pass --endpoint ENTRY_IP:51820"
-  if [[ "$endpoint" == 127.0.0.1:* || "$endpoint" == localhost:* ]]; then
-    die "Client Endpoint is ${endpoint} — set a public ENTRY_IP in /etc/wireguard/wg-endpoint (sudo wg-ops change-entry --new ENTRY_IP:51820)"
-  fi
+  validate_client_endpoint "$endpoint"
+  assert_server_pubkey_sync
 
   local mtu
   mtu="$(resolve_mtu "$vpn_mode" "$mtu_override")"

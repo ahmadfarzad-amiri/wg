@@ -452,6 +452,18 @@ _is_public_ipv4() {
   return 0
 }
 
+# Host part of a client Endpoint (HOST:PORT). Hostnames pass; private IPv4 literals fail.
+wg_is_public_endpoint_host() {
+  local host="$1"
+  [[ -n "$host" ]] || return 1
+  case "$host" in
+    localhost|localhost.*) return 1 ;;
+  esac
+  [[ "$host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0
+  [[ "$host" != "0.0.0.0" ]] || return 1
+  _is_public_ipv4 "$host"
+}
+
 detect_public_ip() {
   local ip=""
 

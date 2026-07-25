@@ -65,6 +65,15 @@ assert_ok "mtu 1420" wg_validate_mtu 1420 test
 assert_fail "mtu too low" wg_validate_mtu 1000 test
 assert_fail "mtu too high" wg_validate_mtu 9000 test
 
+echo
+echo "=== public endpoint host ==="
+assert_ok "public ipv4 endpoint host" wg_is_public_endpoint_host 203.0.113.10
+assert_ok "hostname endpoint host" wg_is_public_endpoint_host vpn.example.com
+assert_fail "rfc1918 endpoint host" wg_is_public_endpoint_host 10.0.0.1
+assert_fail "loopback endpoint host" wg_is_public_endpoint_host 127.0.0.1
+assert_fail "cgnat endpoint host" wg_is_public_endpoint_host 100.64.0.1
+assert_fail "localhost endpoint host" wg_is_public_endpoint_host localhost
+
 assert_eq "server mtu default" "$(WG_SERVER_MTU= wg_server_mtu)" "1420"
 assert_eq "tunnel mtu override" "$(WG_TUNNEL_MTU=1400 wg_tunnel_mtu)" "1400"
 assert_eq "clients mtu falls back" "$(WG_CLIENTS_MTU= WG_SERVER_MTU=1410 wg_clients_mtu)" "1410"
@@ -241,6 +250,12 @@ assert_ok "wg-ops list-menu none hides add peer" \
   bash -c "! bash '$ROOT/deploy/wg-ops' list-menu none | grep -q 'Add entry peer'"
 assert_ok "wg-ops list-menu entry shows panels" \
   bash -c "bash '$ROOT/deploy/wg-ops' list-menu entry | grep -q 'Update panels only'"
+assert_ok "wg-ops list-menu entry shows check-client" \
+  bash -c "bash '$ROOT/deploy/wg-ops' list-menu entry | grep -q 'Check client handshake'"
+assert_ok "wg-ops maps check-client" \
+  bash -c "bash '$ROOT/deploy/wg-ops' help | grep -q check-client"
+assert_ok "check-client-handshake script present" \
+  test -f "$ROOT/deploy/check-client-handshake.sh"
 assert_ok "wg-ops list-menu entry hides add peer" \
   bash -c "! bash '$ROOT/deploy/wg-ops' list-menu entry | grep -q 'Add entry peer'"
 assert_ok "wg-ops list-menu entry hides install exit" \
@@ -252,6 +267,37 @@ assert_ok "wg-ops list-menu exit hides panels" \
 assert_ok "wg-ops list-menu both shows add peer and panels" \
   bash -c "out=\$(bash '$ROOT/deploy/wg-ops' list-menu both); echo \"\$out\" | grep -q 'Add entry peer' && echo \"\$out\" | grep -q 'Update panels only'"
 assert_ok "set-admin-password syntax" python3 -m py_compile "$ROOT/deploy/set-admin-password.py"
+assert_ok "wg-client-rotate-keys syntax" python3 -m py_compile "$ROOT/client-panel/bin/wg-client-rotate-keys"
+
+echo
+echo "=== client config / rotate-keys guards ==="
+assert_ok "wg-client rejects private endpoint helper" \
+  grep -q 'is_public_endpoint_host' "$ROOT/client-panel/bin/wg-client"
+assert_ok "wg-client asserts server pubkey sync" \
+  grep -q 'assert_server_pubkey_sync' "$ROOT/client-panel/bin/wg-client"
+assert_ok "rotate-keys preserves VPN_MODE" \
+  grep -q '"VPN_MODE"' "$ROOT/client-panel/bin/wg-client-rotate-keys"
+assert_ok "rotate-keys prefers wg-endpoint" \
+  grep -q 'ENDPOINT_FILE' "$ROOT/client-panel/bin/wg-client-rotate-keys"
+assert_ok "rotate-keys validates public endpoint" \
+  env ROTATE_KEYS="$ROOT/client-panel/bin/wg-client-rotate-keys" python3 -c '
+import os, sys
+from importlib.machinery import SourceFileLoader
+mod = SourceFileLoader("rotate_keys", os.environ["ROTATE_KEYS"]).load_module()
+assert mod.is_public_endpoint_host("203.0.113.10")
+assert not mod.is_public_endpoint_host("10.1.2.3")
+assert not mod.is_public_endpoint_host("127.0.0.1")
+for bad in ("127.0.0.1:51820", "10.0.0.5:51820"):
+    try:
+        mod.validate_client_endpoint(bad)
+    except SystemExit:
+        pass
+    else:
+        sys.exit(f"expected die for {bad}")
+mod.validate_client_endpoint("203.0.113.10:51820")
+'
+assert_ok "diagnose classifies one-way client handshake" \
+  grep -q 'ONE-WAY answered' "$ROOT/deploy/diagnose-vpn.sh"
 
 echo
 echo "=== shell syntax ==="
