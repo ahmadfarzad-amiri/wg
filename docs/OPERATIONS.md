@@ -207,6 +207,10 @@ sudo wg-ops start
 
 Or: `sudo wg-ops restart` (clears orphans automatically on current `wg-ops`).
 
+### `wg-clients` fails on `ip route replace … scope link`
+
+`Address = 10.10.10.1/24` already installs the connected route. A clients `PostUp` that repeats `ip route replace 10.10.10.0/24 dev wg-clients` often fails and leaves an orphan. Remove those hooks (or run `sudo wg-ops fix-routing --role entry` / `sudo wg-ops restart` on v1.0.4+), then start again.
+
 ---
 
 ## Troubleshooting: connected but no internet

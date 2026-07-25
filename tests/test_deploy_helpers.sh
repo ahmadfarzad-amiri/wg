@@ -84,10 +84,14 @@ PostUp = iptables -A FORWARD -i wg-clients -j ACCEPT; iptables -A FORWARD -o wg-
 PostDown = iptables -D FORWARD -i wg-clients -j ACCEPT; iptables -D FORWARD -o wg-clients -j ACCEPT; ip route del 10.10.10.0/24 dev wg-clients scope link 2>/dev/null || true
 EOF
 ensure_entry_client_postup_in_conf "$_tmpdir/wg-clients.conf" wg-clients 10.10.10.0/24
-assert_ok "rewrites broad FORWARD PostUp" \
-  grep -q 'PostUp = ip route replace 10.10.10.0/24 dev wg-clients scope link' "$_tmpdir/wg-clients.conf"
-assert_fail "no FORWARD left in clients PostUp" \
-  grep -qE 'PostUp = .*iptables .*FORWARD' "$_tmpdir/wg-clients.conf"
+assert_fail "strips PostUp entirely" \
+  grep -qE '^PostUp[[:space:]]*=' "$_tmpdir/wg-clients.conf"
+assert_fail "strips PostDown entirely" \
+  grep -qE '^PostDown[[:space:]]*=' "$_tmpdir/wg-clients.conf"
+assert_fail "no FORWARD left in clients conf" \
+  grep -qE 'iptables .*FORWARD' "$_tmpdir/wg-clients.conf"
+assert_ok "keeps Address" \
+  grep -q 'Address = 10.10.10.1/24' "$_tmpdir/wg-clients.conf"
 rm -rf "$_tmpdir"
 
 echo
@@ -176,8 +180,8 @@ echo
 echo "=== install template checks ==="
 assert_ok "entry install has idempotent forward" \
   grep -q 'iptables -C FORWARD -i ${CLIENT_IF} -o ${TUNNEL_IF}' "$ROOT/deploy/install-entry-server.sh"
-assert_ok "entry clients PostUp route-only" \
-  grep -q 'PostUp = ip route replace ${CLIENT_CIDR} dev ${CLIENT_IF} scope link' "$ROOT/deploy/install-entry-server.sh"
+assert_fail "entry clients no redundant route PostUp" \
+  grep -q 'PostUp = ip route replace ${CLIENT_CIDR} dev ${CLIENT_IF}' "$ROOT/deploy/install-entry-server.sh"
 assert_fail "entry clients no broad FORWARD" \
   grep -q 'FORWARD -i ${CLIENT_IF} -j ACCEPT' "$ROOT/deploy/install-entry-server.sh"
 assert_ok "exit install idempotent NAT" \

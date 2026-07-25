@@ -656,40 +656,25 @@ wg_entry_client_subnet_route_ok() {
 }
 
 ensure_entry_client_postup_in_conf() {
-  # Ensure wg-clients PostUp is route-only (FORWARD rules live in wg-tunnel PostUp).
+  # wg-clients Address=/24 already installs the connected subnet route.
+  # A PostUp `ip route replace …` is redundant and fails on many kernels
+  # (RTNETLINK Invalid argument / File exists) → wg-quick exits 1 and leaves
+  # an orphan interface. Strip any PostUp/PostDown (including old FORWARD).
   local conf="${1:-/etc/wireguard/wg-clients.conf}"
   local client_if="${2:-wg-clients}"
   local client_cidr="${3:-10.10.10.0/24}"
-  local needs_rewrite=0
   [[ -f "$conf" ]] || return 0
-  if grep -qE 'PostUp = .*iptables .*FORWARD' "$conf" 2>/dev/null; then
-    needs_rewrite=1
-  elif ! grep -q 'ip route replace' "$conf" 2>/dev/null; then
-    needs_rewrite=1
+  if ! grep -qE '^Post(Up|Down)[[:space:]]*=' "$conf" 2>/dev/null; then
+    return 0
   fi
-  [[ "$needs_rewrite" == "1" ]] || return 0
-  awk -v cif="$client_if" -v cidr="$client_cidr" '
-    BEGIN { posted=0 }
+  awk '
     /^PostUp[[:space:]]*=/ { next }
     /^PostDown[[:space:]]*=/ { next }
-    /^Address[[:space:]]*=/ && !posted {
-      print
-      print "PostUp = ip route replace " cidr " dev " cif " scope link"
-      print "PostDown = ip route del " cidr " dev " cif " scope link 2>/dev/null || true"
-      posted=1
-      next
-    }
     { print }
-    END {
-      if (!posted) {
-        print "PostUp = ip route replace " cidr " dev " cif " scope link"
-        print "PostDown = ip route del " cidr " dev " cif " scope link 2>/dev/null || true"
-      }
-    }
   ' "$conf" > "${conf}.tmp"
   chmod 600 "${conf}.tmp"
   mv "${conf}.tmp" "$conf"
-  log "Normalized client subnet route PostUp in $conf (FORWARD belongs on wg-tunnel)"
+  log "Removed PostUp/PostDown from $conf (Address=${client_cidr} via ${client_if} is enough)"
 }
 
 wg_entry_forward_rules_up() {

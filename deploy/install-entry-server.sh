@@ -185,8 +185,6 @@ Address = ${VPN_PREFIX}.1/24
 ListenPort = ${CLIENT_PORT_WG}
 PrivateKey = ${CLIENT_PRIV}
 MTU = ${WG_CLIENTS_MTU:-${WG_SERVER_MTU:-1420}}
-PostUp = ip route replace ${CLIENT_CIDR} dev ${CLIENT_IF} scope link
-PostDown = ip route del ${CLIENT_CIDR} dev ${CLIENT_IF} scope link 2>/dev/null || true
 EOF
 printf '%s\n' "$CLIENT_PUB" > /etc/wireguard/clients-server.pub
 chmod 600 "$CLIENT_CONF" /etc/wireguard/clients-server.pub
