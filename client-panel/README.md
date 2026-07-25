@@ -10,7 +10,7 @@ WireGuard user-facing web panel. Runs on the **entry** server (where client devi
 ## Install (production)
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.14/deploy/wg-ops \
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.15/deploy/wg-ops \
   -o /usr/local/bin/wg-ops && sudo chmod 755 /usr/local/bin/wg-ops
 sudo wg-ops pull
 
@@ -47,7 +47,7 @@ journalctl -u wg-panel -f
 
 ## Environment variables
 
-Set in `/etc/wireguard/entry-server.env` during install. See `/opt/wg-ops/config.env.example` or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.14/deploy/config.env.example
+Set in `/etc/wireguard/entry-server.env` during install. See `/opt/wg-ops/config.env.example` or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.15/deploy/config.env.example
 
 | Variable | Default | Purpose |
 |----------|---------|---------|

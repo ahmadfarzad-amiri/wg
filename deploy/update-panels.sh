@@ -6,7 +6,7 @@ set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.14}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.15}"
   _WG_INSTALLER="$(mktemp /tmp/wg-update-panels-XXXXXX.sh)"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/update-panels.sh" -o "$_WG_INSTALLER"
   chmod 700 "$_WG_INSTALLER"
@@ -24,7 +24,7 @@ if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.14}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.15}"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"
@@ -71,6 +71,16 @@ install_bin_tools "$REPO_DIR/client-panel/bin"
 install_wg_ops "$REPO_DIR/deploy"
 
 systemctl restart wg-panel wg-admin-panel
+sleep 1
+if ! systemctl is-active --quiet wg-panel; then
+  warn "wg-panel failed to start — last logs:"
+  journalctl -u wg-panel -n 30 --no-pager || true
+fi
+if ! systemctl is-active --quiet wg-admin-panel; then
+  warn "wg-admin-panel failed to start — last logs:"
+  journalctl -u wg-admin-panel -n 40 --no-pager || true
+  die "wg-admin-panel is not active after update (import/runtime error). Fix and re-run: sudo wg-ops update"
+fi
 log "Panels restarted."
 if [[ -f "$INSTALL_DIR/client-panel/client_panel/config/settings.py" ]]; then
   _ver="$(grep -E '^VERSION[[:space:]]*=' "$INSTALL_DIR/client-panel/client_panel/config/settings.py" \

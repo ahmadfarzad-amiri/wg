@@ -1,6 +1,6 @@
 from admin_panel.core.audit import log_admin_action
 from admin_panel.core.client_ops import (
-    _client_action_applied,
+    client_action_applied,
     run_client_action,
     run_client_renew,
 )
@@ -56,7 +56,7 @@ def _approve_request(rid):
         if status and not status.get("disabled"):
             return tf("msg.client_already_active_short", client=client)
         out = run_client_action("enable", client)
-        ok = _client_action_applied("enable", client) or "Enabled client" in (out or "")
+        ok = client_action_applied("enable", client) or "Enabled client" in (out or "")
     elif req_action == "renew":
         out = run_client_renew(
             client,
