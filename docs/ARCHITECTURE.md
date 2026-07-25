@@ -57,7 +57,7 @@ Install: [DEPLOYMENT.md](DEPLOYMENT.md). Day-2 ops: [OPERATIONS.md](OPERATIONS.m
 Set when creating a client in the admin panel **Clients** tab, or via CLI:
 
 ```bash
-sudo wg-client set-mode alice twohop
+sudo wg-client set-mode CLIENT_NAME twohop
 sudo wg-client sync-vpn-modes   # apply routing after bulk mode changes
 ```
 

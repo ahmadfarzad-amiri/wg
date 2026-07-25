@@ -2,14 +2,14 @@
 # Point entry server wg-tunnel at a new exit VPS.
 #
 # Usage:
-#   sudo WG_EXIT_PUBLIC_IP=203.0.113.50 \
-#        WG_EXIT_TUNNEL_PUB='base64key=' \
+#   sudo WG_EXIT_PUBLIC_IP=EXIT_IP \
+#        WG_EXIT_TUNNEL_PUB='EXIT_TUNNEL_PUBKEY' \
 #        WG_EXIT_TUNNEL_PORT=51821 \
 #        wg-ops change-exit
 #
 # Or:
-#   sudo wg-ops change-exit --exit-ip 203.0.113.50 --tunnel-pub '...' [--port 51821]
-#   sudo bash /opt/wg-ops/change-exit-server.sh --exit-ip 203.0.113.50 --tunnel-pub '...'
+#   sudo wg-ops change-exit --exit-ip EXIT_IP --tunnel-pub 'EXIT_TUNNEL_PUBKEY' [--port 51821]
+#   sudo bash /opt/wg-ops/change-exit-server.sh --exit-ip EXIT_IP --tunnel-pub 'EXIT_TUNNEL_PUBKEY'
 set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then

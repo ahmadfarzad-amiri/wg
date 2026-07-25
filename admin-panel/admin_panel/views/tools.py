@@ -92,11 +92,11 @@ def body(msg="", variant="info"):
     <h4>{html.escape(t("tools.change_entry"))}</h4>
     <div class="field">
       <label class="field-label" for="new_endpoint">{html.escape(t("tools.new_endpoint"))}</label>
-      <input id="new_endpoint" name="new_endpoint" class="field-input ltr-value" value="{_field_value(infra, "entry_endpoint")}" placeholder="198.51.100.10:51820" required>
+      <input id="new_endpoint" name="new_endpoint" class="field-input ltr-value" value="{_field_value(infra, "entry_endpoint")}" placeholder="ENTRY_IP:51820" required>
     </div>
     <div class="field">
       <label class="field-label" for="old_ip">{html.escape(t("tools.old_ip"))}</label>
-      <input id="old_ip" name="old_ip" class="field-input ltr-value" value="{_field_value(infra, "entry_old_ip")}" placeholder="198.51.100.20">
+      <input id="old_ip" name="old_ip" class="field-input ltr-value" value="{_field_value(infra, "entry_old_ip")}" placeholder="OLD_ENTRY_IP">
     </div>
     <button type="submit" class="btn" data-confirm="{html.escape(t("tools.change_entry_confirm"), quote=True)}">{html.escape(t("tools.change_entry_btn"))}</button>
   </form>
@@ -105,7 +105,7 @@ def body(msg="", variant="info"):
     <h4>{html.escape(t("tools.change_exit"))}</h4>
     <div class="field">
       <label class="field-label" for="exit_ip">{html.escape(t("tools.exit_ip"))}</label>
-      <input id="exit_ip" name="exit_ip" class="field-input ltr-value" value="{_field_value(infra, "exit_ip")}" placeholder="203.0.113.50" required>
+      <input id="exit_ip" name="exit_ip" class="field-input ltr-value" value="{_field_value(infra, "exit_ip")}" placeholder="EXIT_IP" required>
     </div>
     <div class="field">
       <label class="field-label" for="exit_tunnel_pub">{html.escape(t("tools.exit_tunnel_pub"))}</label>

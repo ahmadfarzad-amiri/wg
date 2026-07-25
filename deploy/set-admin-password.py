@@ -3,7 +3,7 @@
 
 Usage:
   sudo python3 set-admin-password.py
-  sudo WG_ADMIN_USER=admin WG_ADMIN_PASS='secretpass' python3 set-admin-password.py
+  sudo WG_ADMIN_USER=admin WG_ADMIN_PASS='ADMIN_PASSWORD' python3 set-admin-password.py
 """
 import getpass
 import json

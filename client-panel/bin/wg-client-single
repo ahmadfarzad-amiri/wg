@@ -88,9 +88,9 @@ Modes:
   endpoint  lock by first IP:port, stricter
 
 Examples:
-  wg-client-single alice ip
-  wg-client-single alice endpoint
-  wg-client-single alice off
+  wg-client-single CLIENT_NAME ip
+  wg-client-single CLIENT_NAME endpoint
+  wg-client-single CLIENT_NAME off
 """.strip())
 
 def main():
