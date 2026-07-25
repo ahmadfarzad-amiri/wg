@@ -23,6 +23,10 @@
     if (textValue.length > 280) {
       textValue = textValue.slice(0, 279).replace(/\s+\S*$/, "") + "…";
     }
+    var kind = String(variant || "info").toLowerCase();
+    if (kind !== "success" && kind !== "error" && kind !== "info" && kind !== "warn") {
+      kind = "info";
+    }
     var root = ensureToastRoot();
     var existing = root.querySelectorAll(".toast");
     while (existing.length >= 3) {
@@ -30,7 +34,6 @@
       existing = root.querySelectorAll(".toast");
     }
     var toast = document.createElement("div");
-    var kind = variant || "info";
     toast.className = "toast toast--" + kind;
     toast.setAttribute("role", kind === "error" ? "alert" : "status");
     root.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");

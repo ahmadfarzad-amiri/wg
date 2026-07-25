@@ -71,7 +71,11 @@ def handle(handler, data):
 
     if variant == "success" and out:
         lower = out.lower()
-        if any(x in lower for x in ("error", "fail", "failed", "denied")):
+        # Prefer explicit failure markers — avoid flipping on benign text.
+        if any(
+            x in lower
+            for x in ("error:", "failed", "denied", "not found", "fatal:")
+        ):
             variant = "error"
 
     log_admin_action(f"tool_{action}", (out or "")[:500])

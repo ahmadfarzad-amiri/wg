@@ -137,4 +137,7 @@ def handle(handler, data):
 
 def _looks_failed(out):
     lower = (out or "").lower()
-    return any(x in lower for x in ("error", "fail", "failed", "not found", "invalid"))
+    return any(
+        x in lower
+        for x in ("error:", "failed", "not found", "invalid", "denied", "fatal:")
+    )

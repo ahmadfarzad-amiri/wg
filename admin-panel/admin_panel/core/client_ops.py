@@ -43,7 +43,7 @@ def run_client_remove(name):
     return output
 
 
-def _client_action_applied(action, name):
+def client_action_applied(action, name):
     """Return True when a wg-client action succeeded for the given client."""
     meta = find_client_meta_by_name(name)
     if not meta:
@@ -85,6 +85,17 @@ def ensure_client(name, *, days=None, limit=None, single=None, vpn_mode=None):
         ],
         timeout=CLIENT_CMD_TIMEOUT,
     )
-    if find_client_meta_by_name(name):
+    if client_exists(name, output):
         return True, True, output
     return False, False, output
+
+
+def client_exists(name, output=""):
+    """True when meta, conf, or CLI success text shows the client exists/was created."""
+    if find_client_meta_by_name(name):
+        return True
+    conf_path = os.path.join(CLIENT_DIR, f"{name}.conf")
+    if os.path.isfile(conf_path):
+        return True
+    text = output or ""
+    return f"Created client: {name}" in text

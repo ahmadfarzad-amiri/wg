@@ -1,6 +1,7 @@
 from admin_panel.config import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_SINGLE, WG_CLIENT, WG_CLIENT_SINGLE
 from admin_panel.core.audit import log_admin_action
 from admin_panel.core.client_ops import (
+    client_action_applied,
     client_was_removed,
     ensure_client,
     run_client_action,
@@ -108,11 +109,11 @@ def handle(handler, data):
             return
         _audit(handler, "add_client", client)
         _try_add_xray_client(client)
+        # Stay on the clients list with an explicit success toast.
         _render(
             handler,
             tf("msg.client_ready", name=client),
             variant="success",
-            client=client,
         )
         return
 
@@ -198,14 +199,22 @@ def handle(handler, data):
 
     elif action == "remove":
         out = run_client_remove(client)
-        if client_was_removed(client):
+        removed = client_was_removed(client) or "Removed client:" in (out or "")
+        if removed:
             detached = detach_users_from_client(client)
+            msg = tail_message(out) or tf("msg.client_removed", name=client)
             if detached:
                 names = t("fmt.list_sep").join(detached)
-                out = (out or tf("msg.client_removed", name=client)).strip()
-                out += tf("msg.users_deactivated", names=names)
-        _audit(handler, action, client)
-        _render(handler, tail_message(out), variant="success")
+                msg = f"{msg}{tf('msg.users_deactivated', names=names)}"
+            _audit(handler, action, client)
+            _render(handler, msg, variant="success")
+        else:
+            _audit(handler, action, client)
+            _render(
+                handler,
+                tail_message(out) or t("msg.client_not_found"),
+                variant="error",
+            )
         return
 
     else:
@@ -214,10 +223,21 @@ def handle(handler, data):
         return
 
     _audit(handler, action, client)
+    applied = True
+    lower = (out or "").lower()
+    if action in ("enable", "disable"):
+        applied = client_action_applied(action, client)
+    elif action == "renew":
+        applied = "renewed client:" in lower and not any(
+            x in lower for x in ("error:", "failed", "not found", "die")
+        )
+        if not applied and client_action_applied("enable", client):
+            # Renew may have succeeded even if banner text was truncated.
+            applied = "error:" not in lower and "not found" not in lower
     _render(
         handler,
         tail_message(out) or tf("msg.client_ready", name=client),
-        variant="success",
+        variant="success" if applied else "error",
         client=client,
     )
 

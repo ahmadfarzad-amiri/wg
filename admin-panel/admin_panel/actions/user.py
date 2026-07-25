@@ -359,5 +359,14 @@ def _msg_failed(out):
     lower = (out or "").lower()
     return any(
         x in lower
-        for x in ("error", "fail", "failed", "not found", "invalid", "required", "wrong")
+        for x in (
+            "error:",
+            "failed",
+            "not found",
+            "invalid",
+            "required",
+            "wrong",
+            "denied",
+            "fatal:",
+        )
     )
