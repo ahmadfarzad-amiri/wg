@@ -41,9 +41,9 @@ Default CDN base (latest release):
 Pin a specific release when needed:
 
 ```bash
-sudo WG_VERSION=1.0.23 wg-ops pull
+sudo WG_VERSION=1.0.24 wg-ops pull
 # or
-sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.23' wg-ops pull
+sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.24' wg-ops pull
 ```
 
 ---
@@ -356,12 +356,12 @@ Install and `wg-ops pull` / `update` resolve **`WG_VERSION`** from the environme
 
 For each release:
 
-1. Commit on `main`, then `git tag` / `git push` the new semver (e.g. `v1.0.23`).
+1. Commit on `main`, then `git tag` / `git push` the new semver (e.g. `v1.0.24`).
 2. No version bump is required inside the repo — servers pick up the new tag automatically.
 3. To pin a server to a specific release:
 
 ```bash
-sudo WG_VERSION=1.0.23 wg-ops pull
+sudo WG_VERSION=1.0.24 wg-ops pull
 sudo wg-ops update
 ```
 

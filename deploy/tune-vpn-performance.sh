@@ -84,5 +84,9 @@ fi
 echo ""
 bash "$SCRIPT_DIR/diagnose-vpn.sh" --role "$ROLE"
 
-log "Done. Confirm exit IP from a twohop client: curl -4 https://api.ipify.org"
+if [[ "$ROLE" == "entry" ]] && wg_entry_is_standalone; then
+  log "Done. Confirm entry IP from a client: curl -4 https://api.ipify.org"
+else
+  log "Done. Confirm exit IP from a twohop client: curl -4 https://api.ipify.org"
+fi
 log "Hop bandwidth plan: sudo wg-ops measure --role guide"

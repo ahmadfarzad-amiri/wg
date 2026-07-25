@@ -153,12 +153,11 @@ wg_entry_resolve_exit_pub() {
 }
 
 # True when entry has a configured exit (two-hop capable).
+# Requires real exit IP + tunnel pubkey (from env or wg-tunnel.conf Peer).
+# WG_ENTRY_MODE=standalone always wins; mode=twohop alone is not enough.
 wg_entry_has_exit() {
   if [[ "${WG_ENTRY_MODE:-}" == "standalone" ]]; then
     return 1
-  fi
-  if [[ "${WG_ENTRY_MODE:-}" == "twohop" ]]; then
-    return 0
   fi
   local exit_ip exit_pub
   exit_ip="$(wg_entry_resolve_exit_ip)"

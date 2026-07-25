@@ -96,13 +96,19 @@ assert_ok "validate helper reads WG_EXIT_IP" \
 assert_ok "standalone helper defined" type wg_entry_is_standalone
 assert_ok "has_exit helper defined" type wg_entry_has_exit
 assert_eq "default mode twohop with exit" \
-  "$(WG_ENTRY_MODE=twohop wg_entry_default_vpn_mode)" "twohop"
+  "$(WG_ENTRY_MODE=twohop WG_EXIT_PUBLIC_IP=203.0.113.10 WG_EXIT_TUNNEL_PUB="$ZERO_PUB" wg_entry_default_vpn_mode)" "twohop"
 assert_eq "default mode direct standalone" \
   "$(WG_ENTRY_MODE=standalone wg_entry_default_vpn_mode)" "direct"
+assert_eq "default mode direct when twohop label but no exit" \
+  "$(WG_ENTRY_MODE=twohop wg_entry_default_vpn_mode)" "direct"
 assert_ok "standalone when mode set" \
   bash -c 'source "'"$ROOT"'/deploy/lib/common.sh"; WG_ENTRY_MODE=standalone; wg_entry_is_standalone'
-assert_fail "not standalone when twohop" \
+assert_ok "standalone when twohop label but no exit" \
   bash -c 'source "'"$ROOT"'/deploy/lib/common.sh"; WG_ENTRY_MODE=twohop; wg_entry_is_standalone'
+assert_fail "not standalone when twohop with exit" \
+  bash -c 'source "'"$ROOT"'/deploy/lib/common.sh"; WG_ENTRY_MODE=twohop; WG_EXIT_PUBLIC_IP=203.0.113.10; WG_EXIT_TUNNEL_PUB=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=; wg_entry_is_standalone'
+assert_ok "test-connectivity sources common.sh" \
+  grep -q 'source .*lib/common.sh' "$ROOT/deploy/test-connectivity.sh"
 assert_ok "entry install mentions standalone" \
   grep -q 'standalone' "$ROOT/deploy/install-entry-server.sh"
 assert_ok "change-exit can attach from scratch" \

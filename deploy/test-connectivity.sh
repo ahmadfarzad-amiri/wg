@@ -3,9 +3,50 @@
 # Usage: sudo wg-ops test --role exit|entry|all
 set -eo pipefail
 
-log() { printf '[wg-deploy] %s\n' "$*"; }
-warn() { printf '[wg-deploy] WARN: %s\n' "$*" >&2; }
-die() { printf '[wg-deploy] ERROR: %s\n' "$*" >&2; exit 1; }
+if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
+  export WG_DEPLOY_REEXEC=1
+  if [[ -z "${GITHUB_RAW_BASE:-}" ]]; then
+    if [[ -n "${WG_RAW_BASE:-}" ]]; then
+      GITHUB_RAW_BASE="$WG_RAW_BASE"
+    elif [[ -n "${WG_VERSION:-}" ]]; then
+      GITHUB_RAW_BASE="https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v${WG_VERSION#v}"
+    else
+      GITHUB_RAW_BASE="https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest"
+    fi
+  fi
+  _WG_INSTALLER="$(mktemp /tmp/wg-test-XXXXXX.sh)"
+  curl -fsSL "$GITHUB_RAW_BASE/deploy/test-connectivity.sh" -o "$_WG_INSTALLER"
+  chmod 700 "$_WG_INSTALLER"
+  exec bash "$_WG_INSTALLER" "$@"
+fi
+
+_WG_SCRIPT=""
+if [[ "${BASH_SOURCE[0]+set}" == "set" ]]; then
+  _WG_SCRIPT="${BASH_SOURCE[0]}"
+fi
+if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "$_WG_SCRIPT")" && pwd)"
+  # shellcheck source=lib/common.sh
+  source "$SCRIPT_DIR/lib/common.sh"
+else
+  _BOOT="$(mktemp -d)"
+  mkdir -p "$_BOOT/deploy/lib"
+  if [[ -z "${GITHUB_RAW_BASE:-}" ]]; then
+    if [[ -n "${WG_RAW_BASE:-}" ]]; then
+      GITHUB_RAW_BASE="$WG_RAW_BASE"
+    elif [[ -n "${WG_VERSION:-}" ]]; then
+      GITHUB_RAW_BASE="https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v${WG_VERSION#v}"
+    else
+      GITHUB_RAW_BASE="https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest"
+    fi
+  fi
+  curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
+  curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
+  SCRIPT_DIR="$_BOOT/deploy"
+  # shellcheck source=lib/common.sh
+  source "$SCRIPT_DIR/lib/common.sh"
+fi
+set -u
 
 ROLE="${1:-}"
 if [[ "$ROLE" == "--role" ]]; then
@@ -96,7 +137,7 @@ test_entry() {
   fi
 
   local standalone=0
-  if wg_entry_is_standalone 2>/dev/null; then
+  if wg_entry_is_standalone; then
     standalone=1
     log "Mode: standalone (direct egress)"
   else
