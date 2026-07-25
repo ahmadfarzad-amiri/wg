@@ -96,6 +96,37 @@ The interactive menu (`sudo wg-ops`) detects the host role automatically (`none`
 | `exit` | Add peer, exit VPN ops |
 | `both` | Combined entry + exit options |
 
+### Panel source clone (entry install)
+
+Entry install clones the repo into `/opt/wg-src` (then syncs panels to `/opt/wg`). Attempt order:
+
+1. Direct GitHub (`WG_GITHUB_REPO` / default repo URL)
+2. `gh-proxy.com` mirror
+
+Each attempt times out after `WG_GIT_CLONE_TIMEOUT` seconds (default `5`).
+
+```bash
+# Force a reachable mirror
+sudo WG_GITHUB_REPO='https://gh-proxy.com/https://github.com/ahmadfarzad-amiri/wg.git' \
+  wg-ops install-entry
+```
+
+### Alternatives (no GitHub clone)
+
+If GitHub/git clone is blocked or unreliable:
+
+1. **Pre-seed `/opt/wg-src`** — copy the full repo onto the server first (`scp`, `rsync`, or a tarball). If `client-panel/bin/wg-client` is already present, install skips clone.
+   ```bash
+   # From your workstation
+   rsync -a ./ root@ENTRY:/opt/wg-src/
+   # Then on ENTRY
+   sudo wg-ops install-entry
+   ```
+2. **Run from a local checkout** — clone/copy the repo on the server and run installers from that tree; `update-panels` can use the parent of `deploy/`.
+3. **Scripts-only CDN** — `wg-ops pull` fetches deploy scripts via jsDelivr (`GITHUB_RAW_BASE`). That does **not** replace cloning for panel install into `/opt/wg`; use (1) or (2) for panels.
+
+Useful env vars: `WG_GITHUB_REPO`, `WG_GITHUB_BRANCH`, `WG_REPO_DIR` (default `/opt/wg-src`), `WG_GIT_CLONE_TIMEOUT`.
+
 ---
 
 ## 5. Configuration and secrets
