@@ -183,6 +183,32 @@ On a 1500-byte path: `1500 − 60 − 60 ≈ 1380`. Raise only after path-MTU te
 
 ---
 
+## Troubleshooting: `wg-quick: already exists` / status shows Stopped
+
+Symptom: menu shows `wg-tunnel` / `wg-clients` as **Stopped** (or **Orphan**), but `systemctl start` fails with `wg-quick: '…' already exists`.
+
+The interface is still up outside systemd. Clear it, then start:
+
+**Entry:**
+```bash
+sudo wg-quick down wg-clients; sudo wg-quick down wg-tunnel
+sudo ip link del wg-clients 2>/dev/null; sudo ip link del wg-tunnel 2>/dev/null
+sudo systemctl reset-failed 'wg-quick@wg-clients' 'wg-quick@wg-tunnel'
+sudo wg-ops start
+```
+
+**Exit:**
+```bash
+sudo wg-quick down wg-tunnel
+sudo ip link del wg-tunnel 2>/dev/null
+sudo systemctl reset-failed 'wg-quick@wg-tunnel'
+sudo wg-ops start
+```
+
+Or: `sudo wg-ops restart` (clears orphans automatically on current `wg-ops`).
+
+---
+
 ## Troubleshooting: connected but no internet
 
 Symptom: `wg show wg-clients` shows TX/RX, but the client has no web access.
