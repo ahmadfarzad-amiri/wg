@@ -445,47 +445,47 @@ source_deploy_lib() {
 
 _git_clone_with_fallback() {
   local repo_url="$1" branch="$2" dest="$3"
-  local clone_timeout="${WG_GIT_CLONE_TIMEOUT:-45}"
+  # Keep each attempt short — hung mirrors used to burn minutes during install.
+  local clone_timeout="${WG_GIT_CLONE_TIMEOUT:-15}"
 
   _git_clone_once() {
     local url="$1"
-    # Fail fast on hung mirrors (default 45s) instead of waiting on TCP retries.
     if command -v timeout >/dev/null 2>&1; then
       GIT_TERMINAL_PROMPT=0 timeout "$clone_timeout" \
-        git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=10 \
-        clone --depth 1 --branch "$branch" "$url" "$dest" 2>/dev/null
+        git -c http.version=HTTP/1.1 \
+        -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=8 \
+        clone --depth 1 --branch "$branch" --single-branch "$url" "$dest" 2>/dev/null
     else
       GIT_TERMINAL_PROMPT=0 \
-        git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=10 \
-        clone --depth 1 --branch "$branch" "$url" "$dest" 2>/dev/null
+        git -c http.version=HTTP/1.1 \
+        -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=8 \
+        clone --depth 1 --branch "$branch" --single-branch "$url" "$dest" 2>/dev/null
     fi
   }
 
-  # Try direct clone first
-  if _git_clone_once "$repo_url"; then
-    return 0
-  fi
-
-  # GitHub is blocked in some regions (e.g. Iran). Keep the proxy list short so
-  # installs fail fast; gh-proxy.com is tried second (was last historically).
-  log "Direct git clone failed — trying GitHub proxy mirrors (timeout ${clone_timeout}s each)"
+  # Order: direct → gh-proxy (usually works when GitHub is blocked) → one backup.
   local gh_path
   gh_path="$(echo "$repo_url" | sed 's|.*github\.com/||')"
-  local proxy
-  for proxy in \
-    "https://ghfast.top/https://github.com/${gh_path}" \
-    "https://gh-proxy.com/https://github.com/${gh_path}"; do
-    log "Trying: $proxy"
+  local url
+  for url in \
+    "$repo_url" \
+    "https://gh-proxy.com/https://github.com/${gh_path}" \
+    "https://ghfast.top/https://github.com/${gh_path}"; do
+    if [[ "$url" == "$repo_url" ]]; then
+      log "Trying direct clone (timeout ${clone_timeout}s)"
+    else
+      log "Trying proxy: $url (timeout ${clone_timeout}s)"
+    fi
     rm -rf "$dest" 2>/dev/null || true
-    if _git_clone_once "$proxy"; then
-      log "Cloned via proxy: $proxy"
+    if _git_clone_once "$url"; then
+      [[ "$url" != "$repo_url" ]] && log "Cloned via proxy: $url"
       return 0
     fi
   done
 
   warn "All git clone attempts failed. Options:"
   warn "  Set WG_GITHUB_REPO to a reachable proxy:"
-  warn "    WG_GITHUB_REPO='https://ghfast.top/https://github.com/${gh_path}'"
+  warn "    WG_GITHUB_REPO='https://gh-proxy.com/https://github.com/${gh_path}'"
   return 1
 }
 
