@@ -445,25 +445,39 @@ source_deploy_lib() {
 
 _git_clone_with_fallback() {
   local repo_url="$1" branch="$2" dest="$3"
+  local clone_timeout="${WG_GIT_CLONE_TIMEOUT:-45}"
+
+  _git_clone_once() {
+    local url="$1"
+    # Fail fast on hung mirrors (default 45s) instead of waiting on TCP retries.
+    if command -v timeout >/dev/null 2>&1; then
+      GIT_TERMINAL_PROMPT=0 timeout "$clone_timeout" \
+        git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=10 \
+        clone --depth 1 --branch "$branch" "$url" "$dest" 2>/dev/null
+    else
+      GIT_TERMINAL_PROMPT=0 \
+        git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=10 \
+        clone --depth 1 --branch "$branch" "$url" "$dest" 2>/dev/null
+    fi
+  }
 
   # Try direct clone first
-  if git clone --depth 1 --branch "$branch" "$repo_url" "$dest" 2>/dev/null; then
+  if _git_clone_once "$repo_url"; then
     return 0
   fi
 
-  # GitHub is blocked in some regions (e.g. Iran). Try known CDN proxy services that
-  # forward HTTPS git traffic. These are community-run and may change — order matters.
-  log "Direct git clone failed — trying GitHub proxy mirrors (GitHub may be blocked)"
+  # GitHub is blocked in some regions (e.g. Iran). Keep the proxy list short so
+  # installs fail fast; gh-proxy.com is tried second (was last historically).
+  log "Direct git clone failed — trying GitHub proxy mirrors (timeout ${clone_timeout}s each)"
   local gh_path
   gh_path="$(echo "$repo_url" | sed 's|.*github\.com/||')"
   local proxy
   for proxy in \
     "https://ghfast.top/https://github.com/${gh_path}" \
-    "https://mirror.ghproxy.com/https://github.com/${gh_path}" \
-    "https://ghproxy.com/https://github.com/${gh_path}" \
     "https://gh-proxy.com/https://github.com/${gh_path}"; do
     log "Trying: $proxy"
-    if git clone --depth 1 --branch "$branch" "$proxy" "$dest" 2>/dev/null; then
+    rm -rf "$dest" 2>/dev/null || true
+    if _git_clone_once "$proxy"; then
       log "Cloned via proxy: $proxy"
       return 0
     fi

@@ -96,18 +96,16 @@ install_xray_binary() {
     warn "GitHub API unreachable — falling back to pinned Xray version ${version}"
   fi
 
-  # Try multiple download sources in order; stop at the first that works.
-  # GitHub is often blocked in Iran; ghfast.top and ghproxy.com are CDN proxies.
+  # Try a short mirror list; gh-proxy.com is second (was last). Fail fast on each URL.
   local base_gh="https://github.com/XTLS/Xray-core/releases/download/${version}"
   local downloaded=0
   local src
   for src in \
     "${base_gh}/${filename}" \
-    "https://ghfast.top/${base_gh}/${filename}" \
-    "https://mirror.ghproxy.com/${base_gh}/${filename}" \
-    "https://gh-proxy.com/${base_gh}/${filename}"; do
+    "https://gh-proxy.com/${base_gh}/${filename}" \
+    "https://ghfast.top/${base_gh}/${filename}"; do
     log "Trying: $src"
-    if curl -fsSL --connect-timeout 12 --max-time 120 "$src" -o "$tmp_dir/xray.zip" 2>/dev/null; then
+    if curl -fsSL --connect-timeout 8 --max-time 60 "$src" -o "$tmp_dir/xray.zip" 2>/dev/null; then
       downloaded=1
       break
     fi
