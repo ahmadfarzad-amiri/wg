@@ -10,7 +10,7 @@ set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19}"
   _WG_INSTALLER="$(mktemp /tmp/wg-fix-routing-XXXXXX.sh)"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/fix-vpn-routing.sh" -o "$_WG_INSTALLER"
   chmod 700 "$_WG_INSTALLER"
@@ -28,7 +28,7 @@ if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19}"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"
@@ -71,7 +71,9 @@ fix_entry() {
     source /etc/wireguard/entry-server.env
   fi
   apply_entry_vpn_routing_fix
-  if ! tunnel_handshake_recent 180 2>/dev/null; then
+  if wg_entry_is_standalone; then
+    log "Standalone entry routing re-applied (direct NAT)"
+  elif ! tunnel_handshake_recent 180 2>/dev/null; then
     warn "Entry: wg-tunnel handshake to exit is stale or missing — check exit peer + UDP ${WG_EXIT_TUNNEL_PORT:-51821}"
   fi
   log "Re-test from a connected client after this fix (ping 1.1.1.1, open a website)"

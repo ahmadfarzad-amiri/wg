@@ -55,7 +55,7 @@ On desktop, primary tabs sit in the sidebar; Tools, Xray, and Settings are under
    | Name | Required. Letters, numbers, hyphens. E.g. `CLIENT_NAME` |
    | Data limit | E.g. `20G` or leave blank for unlimited |
    | Days | Subscription length; blank = unlimited |
-   | VPN mode | `twohop` (exit IP — **production default**) or `direct` (entry IP — diagnostic only) |
+   | VPN mode | With exit: `twohop` (exit IP, default) or `direct` (entry IP). Standalone: **direct only**. |
 
 4. Click **Add client**. The client appears in the list.
 
@@ -199,14 +199,16 @@ Use when the entry VPS IP or port changes.
 
 Also update your cloud firewall and any DNS records. Connected users must reconnect.
 
-### Change exit server
+### Change or attach exit server
 
-1. **Tools → Change exit**.
-2. Enter the new exit server IP and its tunnel public key.
-3. Then on the **new exit** server, run:
+1. **Tools → Change exit** (or **Attach exit** on a standalone install).
+2. Enter the exit server IP and its tunnel public key.
+3. Then on the **exit** server, run:
 ```bash
    sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
 ```
+
+Attaching an exit to a standalone entry creates the tunnel and unlocks the Standard (`twohop`) path.
 
 See [Operations](OPERATIONS.md) for changing entry/exit servers and other day-2 tasks.
 
@@ -303,7 +305,7 @@ On small screens, tables become **cards** with the same action buttons in expand
 ## Best practices
 
 1. Always create or choose a valid client **before** approving a user.
-2. Keep clients on **twohop** (exit IP). Use **direct** only for short hop-isolation tests — not as a production speed fix.
+2. With an exit: prefer **twohop** (exit IP) for production. On standalone, only **direct** is available.
 3. **Disable** rather than **delete** when suspending service temporarily — deletion cannot be undone.
 4. Keep the admin panel behind nginx + HTTPS. Do not expose port `8090` to the public internet directly.
 5. Take an operational backup before bulk destructive operations:

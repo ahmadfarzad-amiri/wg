@@ -17,7 +17,7 @@ set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19}"
   _WG_INSTALLER="$(mktemp /tmp/wg-change-exit-XXXXXX.sh)"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/change-exit-server.sh" -o "$_WG_INSTALLER"
   chmod 700 "$_WG_INSTALLER"
@@ -35,7 +35,7 @@ if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19}"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"
@@ -114,86 +114,122 @@ fi
 [[ -n "$EXIT_PUB" ]] || die "Set WG_EXIT_TUNNEL_PUB or --tunnel-pub (from install-exit-server.sh on new exit)"
 wg_is_port "$EXIT_PORT" || die "Invalid exit tunnel port: ${EXIT_PORT}"
 
-[[ -f "$TUNNEL_CONF" ]] || die "Missing $TUNNEL_CONF — run install-entry-server.sh first"
+CLIENT_IF="${WG_IF:-wg-clients}"
+CLIENT_CIDR="${WG_CLIENT_CIDR:-10.10.10.0/24}"
+TUNNEL_LISTEN_PORT="${WG_TUNNEL_LISTEN_PORT:-51822}"
+TUNNEL_LOCAL="10.200.0.2/30"
+ATTACHING_FROM_STANDALONE=0
 
-log "=== Change exit server ==="
-log "New exit endpoint: ${EXIT_IP}:${EXIT_PORT}"
-log "New tunnel pubkey: ${EXIT_PUB:0:20}..."
+if [[ ! -f "$TUNNEL_CONF" ]]; then
+  ATTACHING_FROM_STANDALONE=1
+  log "=== Attach exit server (upgrade standalone → twohop) ==="
+  log "Creating ${TUNNEL_CONF}..."
+  TUNNEL_PRIV="$(wg genkey)"
+  TUNNEL_PUB="$(printf '%s' "$TUNNEL_PRIV" | wg pubkey)"
+  umask 077
+  cat > "$TUNNEL_CONF" <<EOF
+[Interface]
+Address = ${TUNNEL_LOCAL}
+ListenPort = ${TUNNEL_LISTEN_PORT}
+PrivateKey = ${TUNNEL_PRIV}
+MTU = ${WG_TUNNEL_MTU:-${WG_SERVER_MTU:-1420}}
+Table = off
+PostUp = iptables -C FORWARD -i ${CLIENT_IF} -o ${TUNNEL_IF} -j ACCEPT 2>/dev/null || iptables -A FORWARD -i ${CLIENT_IF} -o ${TUNNEL_IF} -j ACCEPT; iptables -C FORWARD -i ${TUNNEL_IF} -o ${CLIENT_IF} -j ACCEPT 2>/dev/null || iptables -A FORWARD -i ${TUNNEL_IF} -o ${CLIENT_IF} -j ACCEPT; ip rule del from ${CLIENT_CIDR} lookup 100 priority 100 2>/dev/null || true; ip rule add from ${CLIENT_CIDR} lookup 100 priority 100; ip route del default dev ${TUNNEL_IF} table 100 2>/dev/null || true; ip route add default dev ${TUNNEL_IF} table 100
+PostDown = iptables -D FORWARD -i ${CLIENT_IF} -o ${TUNNEL_IF} -j ACCEPT 2>/dev/null || true; iptables -D FORWARD -i ${TUNNEL_IF} -o ${CLIENT_IF} -j ACCEPT 2>/dev/null || true; ip rule del from ${CLIENT_CIDR} lookup 100 priority 100 2>/dev/null || true; ip route del default dev ${TUNNEL_IF} table 100 2>/dev/null || true
+
+[Peer]
+PublicKey = ${EXIT_PUB}
+Endpoint = ${EXIT_IP}:${EXIT_PORT}
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
+EOF
+  printf '%s\n' "$TUNNEL_PUB" > /etc/wireguard/tunnel-entry.pub
+  chmod 600 "$TUNNEL_CONF" /etc/wireguard/tunnel-entry.pub
+else
+  log "=== Change exit server ==="
+  log "New exit endpoint: ${EXIT_IP}:${EXIT_PORT}"
+  log "New tunnel pubkey: ${EXIT_PUB:0:20}..."
+fi
 
 backup_wg_configs "change-exit"
 
 OLD_PEER_PUB=""
-OLD_PEER_PUB="$(awk '
-  /^\[Peer\]/ { p=1; next }
-  p && /^PublicKey[[:space:]]*=/ {
-    sub(/^[^=]*=[[:space:]]*/, "")
-    gsub(/[[:space:]]/, "")
-    print
-    exit
-  }
-' "$TUNNEL_CONF")"
-
-# Update only the first [Peer] PublicKey + Endpoint (exit peer on entry).
-awk -v pub="$EXIT_PUB" -v ep="${EXIT_IP}:${EXIT_PORT}" '
-  BEGIN { in_peer=0; peer_done=0; saw_endpoint=0 }
-  /^\[Peer\]/ {
-    if (!peer_done) { in_peer=1 } else { in_peer=0 }
-    print
-    next
-  }
-  /^\[/ {
-    if (in_peer && !peer_done) {
-      if (!saw_endpoint) print "Endpoint = " ep
-      peer_done=1
-      in_peer=0
+if [[ "$ATTACHING_FROM_STANDALONE" -eq 0 ]]; then
+  OLD_PEER_PUB="$(awk '
+    /^\[Peer\]/ { p=1; next }
+    p && /^PublicKey[[:space:]]*=/ {
+      sub(/^[^=]*=[[:space:]]*/, "")
+      gsub(/[[:space:]]/, "")
+      print
+      exit
     }
-    print
-    next
-  }
-  in_peer && !peer_done && /^PublicKey[[:space:]]*=/ {
-    print "PublicKey = " pub
-    next
-  }
-  in_peer && !peer_done && /^Endpoint[[:space:]]*=/ {
-    print "Endpoint = " ep
-    saw_endpoint=1
-    next
-  }
-  { print }
-  END {
-    if (in_peer && !peer_done && !saw_endpoint) print "Endpoint = " ep
-  }
-' "$TUNNEL_CONF" > "${TUNNEL_CONF}.tmp"
-chmod 600 "${TUNNEL_CONF}.tmp"
-mv "${TUNNEL_CONF}.tmp" "$TUNNEL_CONF"
+  ' "$TUNNEL_CONF")"
 
-if ! grep -qF "PublicKey = ${EXIT_PUB}" "$TUNNEL_CONF"; then
-  die "Failed to write new exit PublicKey into $TUNNEL_CONF"
-fi
-if ! grep -qF "Endpoint = ${EXIT_IP}:${EXIT_PORT}" "$TUNNEL_CONF"; then
-  die "Failed to write new exit Endpoint into $TUNNEL_CONF"
+  # Update only the first [Peer] PublicKey + Endpoint (exit peer on entry).
+  awk -v pub="$EXIT_PUB" -v ep="${EXIT_IP}:${EXIT_PORT}" '
+    BEGIN { in_peer=0; peer_done=0; saw_endpoint=0 }
+    /^\[Peer\]/ {
+      if (!peer_done) { in_peer=1 } else { in_peer=0 }
+      print
+      next
+    }
+    /^\[/ {
+      if (in_peer && !peer_done) {
+        if (!saw_endpoint) print "Endpoint = " ep
+        peer_done=1
+        in_peer=0
+      }
+      print
+      next
+    }
+    in_peer && !peer_done && /^PublicKey[[:space:]]*=/ {
+      print "PublicKey = " pub
+      next
+    }
+    in_peer && !peer_done && /^Endpoint[[:space:]]*=/ {
+      print "Endpoint = " ep
+      saw_endpoint=1
+      next
+    }
+    { print }
+    END {
+      if (in_peer && !peer_done && !saw_endpoint) print "Endpoint = " ep
+    }
+  ' "$TUNNEL_CONF" > "${TUNNEL_CONF}.tmp"
+  chmod 600 "${TUNNEL_CONF}.tmp"
+  mv "${TUNNEL_CONF}.tmp" "$TUNNEL_CONF"
+
+  if ! grep -qF "PublicKey = ${EXIT_PUB}" "$TUNNEL_CONF"; then
+    die "Failed to write new exit PublicKey into $TUNNEL_CONF"
+  fi
+  if ! grep -qF "Endpoint = ${EXIT_IP}:${EXIT_PORT}" "$TUNNEL_CONF"; then
+    die "Failed to write new exit Endpoint into $TUNNEL_CONF"
+  fi
 fi
 
 if [[ -f "$ENV_FILE" ]]; then
-  if grep -q '^WG_EXIT_IP=' "$ENV_FILE"; then
-    sed -i "s|^WG_EXIT_IP=.*|WG_EXIT_IP=${EXIT_IP}|" "$ENV_FILE"
-  else
-    echo "WG_EXIT_IP=${EXIT_IP}" >> "$ENV_FILE"
-  fi
-  if grep -q '^WG_EXIT_TUNNEL_PORT=' "$ENV_FILE"; then
-    sed -i "s|^WG_EXIT_TUNNEL_PORT=.*|WG_EXIT_TUNNEL_PORT=${EXIT_PORT}|" "$ENV_FILE"
-  else
-    echo "WG_EXIT_TUNNEL_PORT=${EXIT_PORT}" >> "$ENV_FILE"
-  fi
-  if grep -q '^WG_EXIT_TUNNEL_PUB=' "$ENV_FILE"; then
-    sed -i "s|^WG_EXIT_TUNNEL_PUB=.*|WG_EXIT_TUNNEL_PUB=${EXIT_PUB}|" "$ENV_FILE"
-  else
-    echo "WG_EXIT_TUNNEL_PUB=${EXIT_PUB}" >> "$ENV_FILE"
-  fi
+  _set_env_kv() {
+    local key="$1" val="$2"
+    if grep -q "^${key}=" "$ENV_FILE"; then
+      sed -i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
+    else
+      echo "${key}=${val}" >> "$ENV_FILE"
+    fi
+  }
+  _set_env_kv WG_EXIT_IP "$EXIT_IP"
+  _set_env_kv WG_EXIT_PUBLIC_IP "$EXIT_IP"
+  _set_env_kv WG_EXIT_TUNNEL_PORT "$EXIT_PORT"
+  _set_env_kv WG_EXIT_TUNNEL_PUB "$EXIT_PUB"
+  _set_env_kv WG_ENTRY_MODE twohop
+  _set_env_kv WG_ENTRY_ANTILEAK "${WG_ENTRY_ANTILEAK:-1}"
   log "Updated ${ENV_FILE}"
 fi
 
 export WG_TUNNEL_IF="$TUNNEL_IF"
+export WG_ENTRY_MODE=twohop
+export WG_EXIT_IP="$EXIT_IP"
+export WG_EXIT_PUBLIC_IP="$EXIT_IP"
+export WG_EXIT_TUNNEL_PUB="$EXIT_PUB"
 if [[ -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
   source "$ENV_FILE"
@@ -206,6 +242,7 @@ wg_apply_entry_exit_peer_live() {
   if ! ip link show "$ifname" >/dev/null 2>&1; then
     log "Starting ${ifname}..."
     wg-quick up "$conf"
+    systemctl enable "wg-quick@${ifname}" 2>/dev/null || true
     return 0
   fi
 
@@ -229,6 +266,7 @@ wg_apply_entry_exit_peer_live() {
   wg-quick down "$ifname" 2>/dev/null || true
   ip link del "$ifname" 2>/dev/null || true
   wg-quick up "$conf"
+  systemctl enable "wg-quick@${ifname}" 2>/dev/null || true
 }
 
 wg_apply_entry_exit_peer_live "$TUNNEL_CONF" "$TUNNEL_IF" "$EXIT_PUB" "${EXIT_IP}:${EXIT_PORT}"
@@ -262,7 +300,8 @@ fi
 
 cat <<EOF
 
-=== Exit server change applied on entry ===
+=== Exit server $([ "$ATTACHING_FROM_STANDALONE" -eq 1 ] && echo "attached" || echo "change applied") on entry ===
+Mode           : twohop
 Tunnel peer now: ${EXIT_IP}:${EXIT_PORT}
 Handshake      : $([[ "$HANDSHAKE_OK" -eq 1 ]] && echo OK || echo PENDING)
 
@@ -278,6 +317,8 @@ Then on entry verify:
 
 Cloud firewall on NEW exit: allow UDP ${EXIT_PORT} from entry egress IP.
 Entry cloud firewall: allow UDP ${WG_TUNNEL_LISTEN_PORT:-51822} (tunnel return path).
+
+Clients stay on their current VPN mode; switch to Standard (twohop) in the admin panel when ready.
 
 EOF
 

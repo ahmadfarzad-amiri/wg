@@ -10,7 +10,7 @@ set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19}"
   _WG_INSTALLER="$(mktemp /tmp/wg-validate-XXXXXX.sh)"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/validate-config.sh" -o "$_WG_INSTALLER"
   chmod 700 "$_WG_INSTALLER"
@@ -28,7 +28,7 @@ if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19}"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"
@@ -104,15 +104,23 @@ case "$ROLE" in
       source /etc/wireguard/entry-server.env
       wg_validate_entry_install_env
       wg_check_duplicate_client_addresses /etc/wireguard/clients
-      ip rule show | grep -q 'lookup 100' \
-        || die "Missing policy rule lookup 100 (two-hop egress)"
-      iptables -C FORWARD -i wg-clients -o wg-tunnel -j ACCEPT 2>/dev/null \
-        || die "Missing client→tunnel FORWARD rule"
-      iptables -C FORWARD -i wg-tunnel -o wg-clients -j ACCEPT 2>/dev/null \
-        || die "Missing tunnel→client FORWARD rule"
-      # NAT must not masquerade the whole client subnet on entry (exit owns internet NAT).
-      if iptables -t nat -S POSTROUTING 2>/dev/null | grep -qE "\-s ${WG_CLIENT_CIDR:-10.10.10.0/24} .*-j MASQUERADE"; then
-        warn "Entry has subnet MASQUERADE for ${WG_CLIENT_CIDR:-10.10.10.0/24} — unexpected double-NAT risk (per-IP direct-mode NAT is OK)"
+      if wg_entry_is_standalone; then
+        iptables -C FORWARD -i wg-clients -o "$(default_route_iface 2>/dev/null || echo eth0)" -j ACCEPT 2>/dev/null \
+          || warn "Standalone: missing client→WAN FORWARD (run: sudo wg-ops fix-routing)"
+        if ! iptables -t nat -S POSTROUTING 2>/dev/null | grep -qE "\-s ${WG_CLIENT_CIDR:-10.10.10.0/24} .*-j MASQUERADE"; then
+          die "Standalone entry missing subnet MASQUERADE for ${WG_CLIENT_CIDR:-10.10.10.0/24}"
+        fi
+      else
+        ip rule show | grep -q 'lookup 100' \
+          || die "Missing policy rule lookup 100 (two-hop egress)"
+        iptables -C FORWARD -i wg-clients -o wg-tunnel -j ACCEPT 2>/dev/null \
+          || die "Missing client→tunnel FORWARD rule"
+        iptables -C FORWARD -i wg-tunnel -o wg-clients -j ACCEPT 2>/dev/null \
+          || die "Missing tunnel→client FORWARD rule"
+        # NAT must not masquerade the whole client subnet on entry (exit owns internet NAT).
+        if iptables -t nat -S POSTROUTING 2>/dev/null | grep -qE "\-s ${WG_CLIENT_CIDR:-10.10.10.0/24} .*-j MASQUERADE"; then
+          warn "Entry has subnet MASQUERADE for ${WG_CLIENT_CIDR:-10.10.10.0/24} — unexpected double-NAT risk (per-IP direct-mode NAT is OK)"
+        fi
       fi
     else
       # shellcheck disable=SC1091

@@ -28,11 +28,14 @@ def body(client, msg="", variant="info", assigned_users=None):
         if assigned_users
         else f"<p class='hint'>{html.escape(t('client.no_assigned_users'))}</p>"
     )
-    vpn_hint = (
-        f"<p class='field-hint field-hint--warn'>{html.escape(t('client.vpn_direct_hint'))}</p>"
-        if client.get("vpn_mode") == "direct"
-        else f"<p class='field-hint'>{html.escape(t('client.vpn_mode_hint'))}</p>"
-    )
+    from wg_common.entry_mode import is_standalone_entry
+
+    if is_standalone_entry():
+        vpn_hint = f"<p class='field-hint'>{html.escape(t('client.vpn_standalone_hint'))}</p>"
+    elif client.get("vpn_mode") == "direct":
+        vpn_hint = f"<p class='field-hint field-hint--warn'>{html.escape(t('client.vpn_direct_hint'))}</p>"
+    else:
+        vpn_hint = f"<p class='field-hint'>{html.escape(t('client.vpn_mode_hint'))}</p>"
 
     return f"""
 <p class="back-link"><a class="btn ghost btn-sm" href="{admin_url('/clients')}">{html.escape(t("client.back_to_list"))}</a></p>

@@ -13,6 +13,12 @@ def _infra_current_summary(state):
     import html
 
     parts = []
+    mode = state.get("entry_mode") or ("standalone" if state.get("standalone") else "twohop")
+    mode_label = t("tools.mode_standalone") if mode == "standalone" else t("tools.mode_twohop")
+    parts.append(
+        f"{html.escape(t('tools.current_mode'))}: "
+        f"<code class='ltr-value'>{html.escape(mode_label)}</code>"
+    )
     if state.get("entry_endpoint"):
         parts.append(
             f"{html.escape(t('tools.current_entry'))}: "
@@ -102,7 +108,8 @@ def body(msg="", variant="info"):
   </form>
   <form class="form-stack infra-form" method="post" action="{admin_url("/tool-action")}">
     <input type="hidden" name="action" value="change-exit">
-    <h4>{html.escape(t("tools.change_exit"))}</h4>
+    <h4>{html.escape(t("tools.attach_exit") if infra.get("standalone") else t("tools.change_exit"))}</h4>
+    <p class="hint">{html.escape(t("tools.attach_exit_hint") if infra.get("standalone") else t("tools.change_exit_hint"))}</p>
     <div class="field">
       <label class="field-label" for="exit_ip">{html.escape(t("tools.exit_ip"))}</label>
       <input id="exit_ip" name="exit_ip" class="field-input ltr-value" value="{_field_value(infra, "exit_ip")}" placeholder="EXIT_IP" required>
@@ -115,7 +122,7 @@ def body(msg="", variant="info"):
       <label class="field-label" for="exit_tunnel_port">{html.escape(t("tools.exit_tunnel_port"))}</label>
       <input id="exit_tunnel_port" name="exit_tunnel_port" class="field-input ltr-value" value="{_field_value(infra, "exit_tunnel_port")}">
     </div>
-    <button type="submit" class="btn dark" data-confirm="{html.escape(t("tools.change_exit_confirm"), quote=True)}">{html.escape(t("tools.change_exit_btn"))}</button>
+    <button type="submit" class="btn dark" data-confirm="{html.escape(t('tools.attach_exit_confirm') if infra.get('standalone') else t('tools.change_exit_confirm'), quote=True)}">{html.escape(t("tools.attach_exit_btn") if infra.get("standalone") else t("tools.change_exit_btn"))}</button>
   </form>
 </section>
 

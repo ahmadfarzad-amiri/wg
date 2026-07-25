@@ -442,16 +442,21 @@ class Handler(BaseHTTPRequestHandler):
         else:
             results["wg_interface"] = "not_installed"
 
-        # Exit server reachability via the tunnel IP (10.200.0.1 is exit side)
-        exit_ip = os.environ.get("WG_EXIT_IP", "10.200.0.1")
-        try:
-            ret = sp.call(
-                ["ping", "-c", "1", "-W", "3", exit_ip],
-                stdout=sp.DEVNULL, stderr=sp.DEVNULL, timeout=6,
-            )
-            results["exit_ping"] = "ok" if ret == 0 else "unreachable"
-        except Exception:
-            results["exit_ping"] = "error"
+        # Exit reachability (two-hop only — skipped on standalone entry)
+        from wg_common.entry_mode import is_standalone_entry
+
+        if is_standalone_entry():
+            results["exit_ping"] = "skipped"
+        else:
+            exit_ip = os.environ.get("WG_EXIT_IP", "10.200.0.1")
+            try:
+                ret = sp.call(
+                    ["ping", "-c", "1", "-W", "3", exit_ip],
+                    stdout=sp.DEVNULL, stderr=sp.DEVNULL, timeout=6,
+                )
+                results["exit_ping"] = "ok" if ret == 0 else "unreachable"
+            except Exception:
+                results["exit_ping"] = "error"
 
         # DNS resolution check via the tunnel
         try:

@@ -10,7 +10,7 @@ set -euo pipefail
 
 OPS_NAME="wg-ops"
 OPS_DIR="${WG_OPS_DIR:-/opt/wg-ops}"
-RAW_BASE="${WG_RAW_BASE:-${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18}}"
+RAW_BASE="${WG_RAW_BASE:-${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19}}"
 BIN_PATH="${WG_OPS_BIN:-/usr/local/bin/wg-ops}"
 
 log() { printf '[%s] %s\n' "$OPS_NAME" "$*"; }
@@ -420,7 +420,7 @@ Usage:
 
 CDN / source:
   Default script base: $RAW_BASE
-  Override: WG_RAW_BASE=https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18
+  Override: WG_RAW_BASE=https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19
   Panel git clone still uses branch main (WG_GITHUB_BRANCH).
 
 Role detection (automatic):
@@ -550,8 +550,14 @@ run_install_entry() {
     die "Existing install detected. Uninstall first (sudo wg-ops uninstall), then install."
   fi
   if [[ -z "${WG_INSTALL_INTERACTIVE:-}" ]]; then
-    if [[ -n "${WG_EXIT_PUBLIC_IP:-}" && -n "${WG_EXIT_TUNNEL_PUB:-}" && -n "${WG_ADMIN_PASS:-}${WG_ADMIN_PASS_FILE:-}" ]]; then
-      export WG_INSTALL_INTERACTIVE=0
+    if [[ -n "${WG_ADMIN_PASS:-}${WG_ADMIN_PASS_FILE:-}" ]]; then
+      # Both exit fields set → twohop; both empty → standalone; partial → prompt.
+      if { [[ -n "${WG_EXIT_PUBLIC_IP:-}" && -n "${WG_EXIT_TUNNEL_PUB:-}" ]] \
+        || [[ -z "${WG_EXIT_PUBLIC_IP:-}" && -z "${WG_EXIT_TUNNEL_PUB:-}" ]]; }; then
+        export WG_INSTALL_INTERACTIVE=0
+      else
+        export WG_INSTALL_INTERACTIVE=1
+      fi
     else
       export WG_INSTALL_INTERACTIVE=1
     fi
@@ -784,10 +790,16 @@ build_menu() {
       menu_add update-panels "Update panels only"
       menu_add uninstall "Uninstall this server"
       menu_add uninstall-xray "Uninstall Xray only"
+      if [[ -f /etc/wireguard/entry-server.env ]]; then
+        # shellcheck disable=SC1091
+        source /etc/wireguard/entry-server.env 2>/dev/null || true
+      fi
       menu_section "VPN ops [entry]"
       menu_add test "Test connectivity"
       menu_add diagnose "Diagnose VPN"
-      menu_add check-tunnel "Check tunnel handshake (UDP)"
+      if ! wg_entry_is_standalone 2>/dev/null; then
+        menu_add check-tunnel "Check tunnel handshake (UDP)"
+      fi
       menu_add validate "Validate config"
       menu_add fix-routing "Fix routing"
       menu_add tune "Tune performance"
@@ -798,7 +810,11 @@ build_menu() {
       menu_add fix-panels "Fix panel services"
       menu_add styles "Sync panel styles"
       menu_add change-entry "Change entry endpoint"
-      menu_add change-exit "Change exit server"
+      if wg_entry_is_standalone 2>/dev/null; then
+        menu_add change-exit "Attach exit server"
+      else
+        menu_add change-exit "Change exit server"
+      fi
       menu_add show-admin "View admin username"
       menu_add set-admin-pass "Set admin password"
       menu_add install-xray "Install / reinstall Xray"
@@ -844,10 +860,16 @@ build_menu() {
       menu_add update-panels "Update panels only"
       menu_add uninstall "Uninstall this server"
       menu_add uninstall-xray "Uninstall Xray only"
+      if [[ -f /etc/wireguard/entry-server.env ]]; then
+        # shellcheck disable=SC1091
+        source /etc/wireguard/entry-server.env 2>/dev/null || true
+      fi
       menu_section "VPN ops [both]"
       menu_add test "Test connectivity"
       menu_add diagnose "Diagnose VPN"
-      menu_add check-tunnel "Check tunnel handshake (UDP)"
+      if ! wg_entry_is_standalone 2>/dev/null; then
+        menu_add check-tunnel "Check tunnel handshake (UDP)"
+      fi
       menu_add validate "Validate config"
       menu_add fix-routing "Fix routing"
       menu_add tune "Tune performance"
@@ -859,7 +881,11 @@ build_menu() {
       menu_add fix-panels "Fix panel services"
       menu_add styles "Sync panel styles"
       menu_add change-entry "Change entry endpoint"
-      menu_add change-exit "Change exit server"
+      if wg_entry_is_standalone 2>/dev/null; then
+        menu_add change-exit "Attach exit server"
+      else
+        menu_add change-exit "Change exit server"
+      fi
       menu_add show-admin "View admin username"
       menu_add set-admin-pass "Set admin password"
       menu_add install-xray "Install / reinstall Xray"

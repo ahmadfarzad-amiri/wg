@@ -72,18 +72,38 @@ def _option_tabs(name, options, selected_value, group_label):
     )
 
 
+def _vpn_mode_tabs(selected=None, *, include_hint=False):
+    from wg_common.entry_mode import default_vpn_mode, is_standalone_entry
+
+    selected = selected or default_vpn_mode()
+    if is_standalone_entry():
+        tabs = _option_tabs(
+            "vpn_mode",
+            [("direct", label_vpn_mode("direct"))],
+            "direct",
+            t("client.vpn_mode"),
+        )
+        hint = t("client.vpn_standalone_hint")
+    else:
+        tabs = _option_tabs(
+            "vpn_mode",
+            [("twohop", label_vpn_mode("twohop")), ("direct", label_vpn_mode("direct"))],
+            selected,
+            t("client.vpn_mode"),
+        )
+        hint = t("client.vpn_mode_hint")
+    if include_hint:
+        return tabs, hint
+    return tabs
+
+
 def client_update_form(c):
     name = html.escape(c["name"])
-    vpn_mode = c.get("vpn_mode", "twohop")
+    vpn_mode = c.get("vpn_mode") or default_vpn_mode_safe()
     single = c.get("single", "off")
     days_val = html.escape(c.get("update_days") or "", quote=True)
     limit_val = html.escape(c.get("update_limit") or "", quote=True)
-    vpn_tabs = _option_tabs(
-        "vpn_mode",
-        [("twohop", label_vpn_mode("twohop")), ("direct", label_vpn_mode("direct"))],
-        vpn_mode,
-        t("client.vpn_mode"),
-    )
+    vpn_tabs, vpn_hint = _vpn_mode_tabs(vpn_mode, include_hint=True)
     single_tabs = _option_tabs(
         "single_mode",
         [
@@ -111,7 +131,7 @@ def client_update_form(c):
     <div class="field field--full">
       <span class="field-label">{html.escape(t("client.vpn_mode"))}</span>
       {vpn_tabs}
-      <p class="field-hint field-hint--warn">{html.escape(t("client.vpn_direct_hint"))}</p>
+      <p class="field-hint field-hint--warn">{html.escape(vpn_hint)}</p>
     </div>
     <div class="field field--full">
       <span class="field-label">{html.escape(t("client.device_limit"))}</span>
@@ -129,6 +149,12 @@ def client_update_form(c):
   </div>
 </form>
 """
+
+
+def default_vpn_mode_safe():
+    from wg_common.entry_mode import default_vpn_mode
+
+    return default_vpn_mode()
 
 
 def _client_update_form(c):
@@ -301,12 +327,7 @@ def client_list(clients, assigned_names=None, users_by_client_map=None):
 
 
 def bulk_add_client_form():
-    vpn_tabs = _option_tabs(
-        "vpn_mode",
-        [("twohop", label_vpn_mode("twohop")), ("direct", label_vpn_mode("direct"))],
-        "twohop",
-        t("client.vpn_mode"),
-    )
+    vpn_tabs, vpn_hint = _vpn_mode_tabs(include_hint=True)
     return f"""
 <form method="post" action="{admin_url("/client-bulk")}" class="add-client-form">
   <div class="add-client-fields">
@@ -320,6 +341,7 @@ def bulk_add_client_form():
     <div class="field field-vpn">
       <span class="field-label">{html.escape(t("client.vpn_mode"))}</span>
       {vpn_tabs}
+      <span class="field-hint">{html.escape(vpn_hint)}</span>
     </div>
     <label class="field field-days">
       <span class="field-label">{html.escape(t("client.days"))}</span>
@@ -353,12 +375,7 @@ def add_client_form():
         f"<span>{html.escape(label)}</span></label>"
         for value, label in single_opts
     )
-    vpn_tabs = _option_tabs(
-        "vpn_mode",
-        [("twohop", label_vpn_mode("twohop")), ("direct", label_vpn_mode("direct"))],
-        "twohop",
-        t("client.vpn_mode"),
-    )
+    vpn_tabs, vpn_hint = _vpn_mode_tabs(include_hint=True)
     device_limit = html.escape(t("client.device_limit"))
     vpn_mode_label = html.escape(t("client.vpn_mode"))
     return f"""
@@ -372,7 +389,7 @@ def add_client_form():
     <div class="field field-vpn">
       <span class="field-label">{vpn_mode_label}</span>
       {vpn_tabs}
-      <span class="field-hint">{html.escape(t("client.vpn_mode_hint"))}</span>
+      <span class="field-hint">{html.escape(vpn_hint)}</span>
     </div>
     <label class="field field-days">
       <span class="field-label">{html.escape(t("client.days"))}</span>

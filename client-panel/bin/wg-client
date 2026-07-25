@@ -32,6 +32,26 @@ load_entry_env() {
   fi
 }
 
+entry_is_standalone() {
+  load_entry_env
+  if [[ "${WG_ENTRY_MODE:-}" == "standalone" ]]; then
+    return 0
+  fi
+  if [[ "${WG_ENTRY_MODE:-}" == "twohop" ]]; then
+    return 1
+  fi
+  # Infer: no exit configured.
+  [[ -z "${WG_EXIT_IP:-${WG_EXIT_PUBLIC_IP:-}}" || -z "${WG_EXIT_TUNNEL_PUB:-}" ]]
+}
+
+default_vpn_mode() {
+  if entry_is_standalone; then
+    echo direct
+  else
+    echo twohop
+  fi
+}
+
 # DNS used in generated client configs. Override with WG_DNS in entry-server.env.
 # 1.1.1.1 and 8.8.8.8 are often blocked in Iran — operators should set WG_DNS
 # to the exit server IP (running a local resolver) or another reachable server.
@@ -93,7 +113,7 @@ Options for add/renew/update:
   --days DAYS              Expire after X days. Example: --days 30
   --limit SIZE             Total data limit. Examples: 5G, 500M, 20GB
   --endpoint HOST:PORT     Default: from /etc/wireguard/wg-endpoint
-  --vpn-mode direct|twohop Default: twohop (production path; direct is diagnostic-only egress via entry)
+  --vpn-mode direct|twohop Default: twohop with exit, direct when standalone
   --mtu SIZE               WireGuard MTU in client .conf (default: twohop 1380 / direct 1420 from env)
   --single-ip              Lock to first source IP
   --single-endpoint        Lock to first source IP:port, stricter but may break on mobile networks
@@ -307,14 +327,21 @@ load_meta() {
   LOCKED_IP="${LOCKED_IP:-}"
   DISABLED="${DISABLED:-0}"
   DISABLED_REASON="${DISABLED_REASON:-}"
-  VPN_MODE="${VPN_MODE:-twohop}"
+  VPN_MODE="${VPN_MODE:-$(default_vpn_mode)}"
 }
 
 normalize_vpn_mode() {
-  local m="${1:-twohop}"
+  local m="${1:-$(default_vpn_mode)}"
   m="$(echo "$m" | tr '[:upper:]' '[:lower:]')"
   case "$m" in
-    direct|twohop) echo "$m" ;;
+    direct|twohop)
+      if [[ "$m" == "twohop" ]] && entry_is_standalone; then
+        echo "WARN: twohop requires an exit server — using direct (standalone)" >&2
+        echo direct
+      else
+        echo "$m"
+      fi
+      ;;
     *) die "Invalid vpn-mode: $1 (use direct or twohop)" ;;
   esac
 }
@@ -359,7 +386,7 @@ apply_direct_routing_for_ip() {
 
 apply_vpn_mode_for_loaded_client() {
   local mode
-  mode="$(normalize_vpn_mode "${VPN_MODE:-twohop}")"
+  mode="$(normalize_vpn_mode "${VPN_MODE:-$(default_vpn_mode)}")"
   VPN_MODE="$mode"
   if [ "$mode" = "direct" ]; then
     apply_direct_routing_for_ip "$IP"
@@ -415,7 +442,7 @@ save_meta() {
     echo "LOCKED_IP=$(q "$LOCKED_IP")"
     echo "DISABLED=$(q "$DISABLED")"
     echo "DISABLED_REASON=$(q "$DISABLED_REASON")"
-    echo "VPN_MODE=$(q "$(normalize_vpn_mode "${VPN_MODE:-twohop}")")"
+    echo "VPN_MODE=$(q "$(normalize_vpn_mode "${VPN_MODE:-$(default_vpn_mode)}")")"
     echo "UPDATED_AT=$(q "$(now_epoch)")"
   } > "$f"
 
@@ -497,7 +524,7 @@ create_client_config() {
   local ip="$2"
   local private_key="$3"
   local endpoint="$4"
-  local vpn_mode="${5:-twohop}"
+  local vpn_mode="${5:-$(default_vpn_mode)}"
   local mtu_override="${6:-}"
 
   mkdir -p "$CLIENT_DIR"
@@ -704,7 +731,7 @@ add_client() {
 
   local single_mode="${OP_SINGLE_MODE:-off}"
   local vpn_mode
-  vpn_mode="$(normalize_vpn_mode "${OP_VPN_MODE:-twohop}")"
+  vpn_mode="$(normalize_vpn_mode "${OP_VPN_MODE:-$(default_vpn_mode)}")"
 
   local private_key public_key
   private_key="$(wg genkey)"
@@ -943,7 +970,7 @@ status_client() {
   echo "Limit: $( [ "$LIMIT_BYTES" = "0" ] && echo unlimited || human_bytes "$LIMIT_BYTES" )"
   echo "Expires: $(human_time "$EXPIRES_AT")"
   echo "Single-device mode: $SINGLE_MODE"
-  echo "VPN mode: ${VPN_MODE:-twohop}"
+  echo "VPN mode: ${VPN_MODE:-$(default_vpn_mode)}"
   echo "Locked endpoint: ${LOCKED_ENDPOINT:-none}"
   echo "Locked IP: ${LOCKED_IP:-none}"
   echo "Current endpoint: ${endpoint:-none}"
@@ -977,7 +1004,7 @@ list_clients() {
     expires="$(human_time "$EXPIRES_AT")"
 
     printf "%-22s %-15s %-8s %-11s %-12s %-12s %-20s %-10s\n" \
-      "$NAME" "$IP" "${VPN_MODE:-twohop}" "$status" "$(human_bytes "$USED_BYTES")" "$limit" "$expires" "$SINGLE_MODE"
+      "$NAME" "$IP" "${VPN_MODE:-$(default_vpn_mode)}" "$status" "$(human_bytes "$USED_BYTES")" "$limit" "$expires" "$SINGLE_MODE"
   done
 }
 

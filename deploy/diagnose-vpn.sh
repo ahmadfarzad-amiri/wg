@@ -13,7 +13,7 @@ set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19}"
   _WG_INSTALLER="$(mktemp /tmp/wg-diagnose-XXXXXX.sh)"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/diagnose-vpn.sh" -o "$_WG_INSTALLER"
   chmod 700 "$_WG_INSTALLER"
@@ -31,7 +31,7 @@ if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19}"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"
@@ -248,101 +248,139 @@ diag_entry() {
     client_cidr="${WG_CLIENT_CIDR:-10.10.10.0/24}"
   fi
 
+  local standalone=0
+  if wg_entry_is_standalone; then
+    standalone=1
+  fi
+
   status INFO "=== ENTRY diagnostics ==="
+  if [[ "$standalone" -eq 1 ]]; then
+    status INFO "Mode: standalone (direct egress; no exit tunnel)"
+  else
+    status INFO "Mode: twohop (tunnel to exit)"
+  fi
   if [[ -f /etc/wireguard/wg-endpoint ]]; then
     status HEALTHY "Client endpoint=$(cat /etc/wireguard/wg-endpoint)"
   else
     status FAILED "Missing /etc/wireguard/wg-endpoint"
   fi
 
-  diag_wg_ifaces wg-clients wg-tunnel
+  if [[ "$standalone" -eq 1 ]]; then
+    diag_wg_ifaces wg-clients
+  else
+    diag_wg_ifaces wg-clients wg-tunnel
+  fi
 
   if wg_entry_client_subnet_route_ok "10.10.10.2"; then
     status HEALTHY "Route 10.10.10.2 → wg-clients"
   else
     status FAILED "Route 10.10.10.2 not via wg-clients"
   fi
-  if ip rule show | grep -q 'lookup 100'; then
-    status HEALTHY "Policy rule lookup 100 present"
-  else
-    status FAILED "Missing policy rule lookup 100"
-  fi
-  if ip route show table 100 2>/dev/null | grep -q 'default'; then
-    status HEALTHY "Table 100 default via wg-tunnel"
-  else
-    status FAILED "Table 100 missing default route"
-  fi
-  ip rule show | grep -E '100|10.10.10' || true
-  ip route show table 100 2>/dev/null || true
 
-  local rp_c rp_t
-  rp_c="$(sysctl -n net.ipv4.conf.wg-clients.rp_filter 2>/dev/null || echo missing)"
-  rp_t="$(sysctl -n net.ipv4.conf.wg-tunnel.rp_filter 2>/dev/null || echo missing)"
-  if [[ "$rp_c" == "0" && "$rp_t" == "0" ]]; then
-    status HEALTHY "rp_filter=0 on wg-clients and wg-tunnel"
+  if [[ "$standalone" -eq 1 ]]; then
+    local def_if
+    def_if="$(default_route_iface)"
+    def_if="${def_if:-eth0}"
+    if iptables -C FORWARD -i wg-clients -o "$def_if" -j ACCEPT 2>/dev/null; then
+      status HEALTHY "FORWARD client→${def_if}"
+    else
+      status FAILED "Missing FORWARD client→WAN"
+    fi
+    if iptables -t nat -S POSTROUTING 2>/dev/null | grep -qE -- "-s ${client_cidr}.*MASQUERADE"; then
+      status HEALTHY "Subnet MASQUERADE on entry for ${client_cidr}"
+    else
+      status FAILED "Missing subnet MASQUERADE for standalone NAT"
+    fi
+    local rp_c
+    rp_c="$(sysctl -n net.ipv4.conf.wg-clients.rp_filter 2>/dev/null || echo missing)"
+    if [[ "$rp_c" == "0" ]]; then
+      status HEALTHY "rp_filter=0 on wg-clients"
+    else
+      status FAILED "rp_filter wg-clients=${rp_c} (need 0)"
+    fi
   else
-    status FAILED "rp_filter wg-clients=${rp_c} wg-tunnel=${rp_t} (need 0)"
-  fi
+    if ip rule show | grep -q 'lookup 100'; then
+      status HEALTHY "Policy rule lookup 100 present"
+    else
+      status FAILED "Missing policy rule lookup 100"
+    fi
+    if ip route show table 100 2>/dev/null | grep -q 'default'; then
+      status HEALTHY "Table 100 default via wg-tunnel"
+    else
+      status FAILED "Table 100 missing default route"
+    fi
+    ip rule show | grep -E '100|10.10.10' || true
+    ip route show table 100 2>/dev/null || true
 
-  if tunnel_handshake_recent 180; then
-    status HEALTHY "Tunnel handshake to exit ≤180s"
-  else
-    status FAILED "Tunnel handshake stale/missing — check exit peer + UDP ${WG_EXIT_TUNNEL_PORT:-51821}"
-    local rx tx
-    rx="$(wg show wg-tunnel transfer 2>/dev/null | awk 'NF>=3 {r+=$2} END{print r+0}')"
-    tx="$(wg show wg-tunnel transfer 2>/dev/null | awk 'NF>=3 {t+=$3} END{print t+0}')"
-    if [[ "${tx:-0}" -gt 0 && "${rx:-0}" -eq 0 ]]; then
-      status FAILED "ONE-WAY tunnel (tx=${tx} rx=0): exit not answering WireGuard UDP"
-      status INFO "On exit run: wg-ops add-peer \$(cat entry:/etc/wireguard/tunnel-entry.pub) ENTRY_IP"
-      status INFO "Open UDP ${WG_EXIT_TUNNEL_PORT:-51821} on exit and UDP ${WG_TUNNEL_LISTEN_PORT:-51822} on entry"
+    local rp_c rp_t
+    rp_c="$(sysctl -n net.ipv4.conf.wg-clients.rp_filter 2>/dev/null || echo missing)"
+    rp_t="$(sysctl -n net.ipv4.conf.wg-tunnel.rp_filter 2>/dev/null || echo missing)"
+    if [[ "$rp_c" == "0" && "$rp_t" == "0" ]]; then
+      status HEALTHY "rp_filter=0 on wg-clients and wg-tunnel"
+    else
+      status FAILED "rp_filter wg-clients=${rp_c} wg-tunnel=${rp_t} (need 0)"
+    fi
+
+    if tunnel_handshake_recent 180; then
+      status HEALTHY "Tunnel handshake to exit ≤180s"
+    else
+      status FAILED "Tunnel handshake stale/missing — check exit peer + UDP ${WG_EXIT_TUNNEL_PORT:-51821}"
+      local rx tx
+      rx="$(wg show wg-tunnel transfer 2>/dev/null | awk 'NF>=3 {r+=$2} END{print r+0}')"
+      tx="$(wg show wg-tunnel transfer 2>/dev/null | awk 'NF>=3 {t+=$3} END{print t+0}')"
+      if [[ "${tx:-0}" -gt 0 && "${rx:-0}" -eq 0 ]]; then
+        status FAILED "ONE-WAY tunnel (tx=${tx} rx=0): exit not answering WireGuard UDP"
+        status INFO "On exit run: wg-ops add-peer \$(cat entry:/etc/wireguard/tunnel-entry.pub) ENTRY_IP"
+        status INFO "Open UDP ${WG_EXIT_TUNNEL_PORT:-51821} on exit and UDP ${WG_TUNNEL_LISTEN_PORT:-51822} on entry"
+      fi
+    fi
+    if ping -c 2 -W 2 10.200.0.1 >/dev/null 2>&1; then
+      status HEALTHY "Ping exit tunnel IP 10.200.0.1"
+      local rtt
+      rtt="$(ping -c 5 -W 2 10.200.0.1 2>/dev/null | awk -F'/' '/rtt|round-trip/{print $5}')"
+      status INFO "Entry→exit tunnel RTT avg=${rtt:-n/a} ms"
+    else
+      status WARNING "Cannot ping 10.200.0.1"
+    fi
+
+    if iptables -C FORWARD -i wg-clients -o wg-tunnel -j ACCEPT 2>/dev/null; then
+      status HEALTHY "FORWARD client→tunnel"
+    else
+      status FAILED "Missing FORWARD client→tunnel"
+    fi
+    if iptables -C FORWARD -i wg-tunnel -o wg-clients -j ACCEPT 2>/dev/null; then
+      status HEALTHY "FORWARD tunnel→client"
+    else
+      status FAILED "Missing FORWARD tunnel→client"
+    fi
+    local def_if
+    def_if="$(default_route_iface)"
+    if [[ -n "$def_if" ]] && iptables -C FORWARD -i wg-clients -o "$def_if" -j DROP 2>/dev/null; then
+      status HEALTHY "Anti-leak DROP client→${def_if}"
+    else
+      status WARNING "Anti-leak DROP missing (set WG_ENTRY_ANTILEAK=1 and run fix-vpn-routing.sh)"
+    fi
+    if iptables -t nat -S POSTROUTING 2>/dev/null | grep -qE -- "-s ${client_cidr}.*MASQUERADE"; then
+      status WARNING "Subnet MASQUERADE on entry for ${client_cidr} — double-NAT risk"
+    else
+      status HEALTHY "No subnet MASQUERADE on entry (NAT belongs on exit)"
+    fi
+    if iptables -L DOCKER-USER -n >/dev/null 2>&1; then
+      status WARNING "Docker present — prefer bare metal for VPN dataplane"
+      if iptables -C DOCKER-USER -i wg-clients -o wg-tunnel -j ACCEPT 2>/dev/null; then
+        status HEALTHY "DOCKER-USER bypass present"
+      else
+        status FAILED "DOCKER-USER bypass missing"
+      fi
+    else
+      status HEALTHY "No Docker DOCKER-USER chain"
     fi
   fi
-  if ping -c 2 -W 2 10.200.0.1 >/dev/null 2>&1; then
-    status HEALTHY "Ping exit tunnel IP 10.200.0.1"
-    local rtt
-    rtt="$(ping -c 5 -W 2 10.200.0.1 2>/dev/null | awk -F'/' '/rtt|round-trip/{print $5}')"
-    status INFO "Entry→exit tunnel RTT avg=${rtt:-n/a} ms"
-  else
-    status WARNING "Cannot ping 10.200.0.1"
-  fi
 
-  if iptables -C FORWARD -i wg-clients -o wg-tunnel -j ACCEPT 2>/dev/null; then
-    status HEALTHY "FORWARD client→tunnel"
-  else
-    status FAILED "Missing FORWARD client→tunnel"
-  fi
-  if iptables -C FORWARD -i wg-tunnel -o wg-clients -j ACCEPT 2>/dev/null; then
-    status HEALTHY "FORWARD tunnel→client"
-  else
-    status FAILED "Missing FORWARD tunnel→client"
-  fi
   if iptables -C FORWARD -i wg-clients -j ACCEPT 2>/dev/null; then
     status WARNING "Broad FORWARD -i wg-clients ACCEPT still present — run fix-vpn-routing.sh"
   else
     status HEALTHY "No broad wg-clients FORWARD ACCEPT"
-  fi
-  local def_if
-  def_if="$(default_route_iface)"
-  if [[ -n "$def_if" ]] && iptables -C FORWARD -i wg-clients -o "$def_if" -j DROP 2>/dev/null; then
-    status HEALTHY "Anti-leak DROP client→${def_if}"
-  else
-    status WARNING "Anti-leak DROP missing (set WG_ENTRY_ANTILEAK=1 and run fix-vpn-routing.sh)"
-  fi
-  if iptables -t nat -S POSTROUTING 2>/dev/null | grep -qE -- "-s ${client_cidr}.*MASQUERADE"; then
-    status WARNING "Subnet MASQUERADE on entry for ${client_cidr} — double-NAT risk"
-  else
-    status HEALTHY "No subnet MASQUERADE on entry (NAT belongs on exit)"
-  fi
-
-  if iptables -L DOCKER-USER -n >/dev/null 2>&1; then
-    status WARNING "Docker present — prefer bare metal for VPN dataplane"
-    if iptables -C DOCKER-USER -i wg-clients -o wg-tunnel -j ACCEPT 2>/dev/null; then
-      status HEALTHY "DOCKER-USER bypass present"
-    else
-      status FAILED "DOCKER-USER bypass missing"
-    fi
-  else
-    status HEALTHY "No Docker DOCKER-USER chain"
   fi
 
   if [[ -f /etc/wireguard/wg-clients.conf ]] \
@@ -362,9 +400,13 @@ diag_entry() {
       fi
     done
   fi
-  status INFO "VPN modes: twohop=${twohop} direct=${direct} (direct is diagnostic-only)"
-  if [[ "$direct" -gt 0 ]]; then
-    status WARNING "${direct} client(s) in direct mode — production should use twohop"
+  if [[ "$standalone" -eq 1 ]]; then
+    status INFO "VPN modes: direct=${direct} twohop=${twohop} (standalone uses direct only)"
+    if [[ "$twohop" -gt 0 ]]; then
+      status WARNING "${twohop} client(s) set to twohop but no exit is configured — run sync-vpn-modes or attach an exit"
+    fi
+  else
+    status INFO "VPN modes: twohop=${twohop} direct=${direct}"
   fi
 
   check_bool "IP forwarding on" sh -c '[ "$(sysctl -n net.ipv4.ip_forward)" = "1" ]'
@@ -386,7 +428,11 @@ diag_entry() {
   fi
   status INFO "Configured MTU: server=${WG_SERVER_MTU:-1420} clients_if=${WG_CLIENTS_MTU:-} tunnel=${WG_TUNNEL_MTU:-} twohop_client=${WG_CLIENT_MTU_TWOHOP:-1380}"
 
-  status INFO "From a twohop client: curl -4 https://api.ipify.org  # must equal EXIT public IP"
+  if [[ "$standalone" -eq 1 ]]; then
+    status INFO "From a client: curl -4 https://api.ipify.org  # must equal ENTRY public IP"
+  else
+    status INFO "From a twohop client: curl -4 https://api.ipify.org  # must equal EXIT public IP"
+  fi
   diag_host_perf
 }
 

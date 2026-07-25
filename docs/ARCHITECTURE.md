@@ -1,10 +1,12 @@
 # Architecture
 
-How the two-hop WireGuard stack and web panels fit together.
+How the WireGuard stack and web panels fit together — **two-hop** (entry + exit) or **standalone** (entry only).
 
 ---
 
 ## Traffic path
+
+### Two-hop (exit provided)
 
 End-user devices connect only to the **entry** server. Traffic is then forwarded through an encrypted tunnel to the **exit** server, which performs NAT to the internet.
 
@@ -29,16 +31,29 @@ flowchart LR
 └──────────────┘               └──────────────────────┘                └──────────────────┘
 ```
 
+### Standalone (no exit)
+
+Entry is a full VPN by itself: clients connect to `wg-clients`, and the entry host NATs to the internet. No `wg-tunnel`, no exit VPS.
+
+```
+┌──────────────┐   UDP 51820   ┌────────────────────────────┐
+│  User device │ ────────────► │  Entry VPS                 │ ──► internet
+│  WireGuard   │  Endpoint     │  wg-clients + panels + NAT │
+└──────────────┘               └────────────────────────────┘
+```
+
 | Plane | Path | Notes |
 |-------|------|-------|
-| VPN user traffic | client → entry → exit → internet | Two WireGuard encryptions; NAT on exit only |
-| Management | SSH / HTTPS to entry (and SSH to exit) | Uses main routing table — not table 100 |
+| VPN user traffic (two-hop) | client → entry → exit → internet | Two WireGuard encryptions; NAT on exit |
+| VPN user traffic (standalone) | client → entry → internet | NAT on entry; websites see entry IP |
+| Management | SSH / HTTPS to entry (and SSH to exit when present) | Uses main routing table — not table 100 |
 | Control plane | Panels on entry | Not in the WG forward path |
-| Optional Xray | Client → entry :443/… | Separate from WG two-hop when enabled |
+| Optional Xray | Client → entry :443/… | Separate from WG when enabled |
 
 | Server | Role | WireGuard interfaces | Who connects |
 |--------|------|----------------------|--------------|
-| Entry | Client endpoint + web panels | `wg-clients` (users), `wg-tunnel` (to exit) | All VPN users; admin UI |
+| Entry (two-hop) | Client endpoint + web panels | `wg-clients` (users), `wg-tunnel` (to exit) | All VPN users; admin UI |
+| Entry (standalone) | Client endpoint + panels + NAT | `wg-clients` only | All VPN users; admin UI |
 | Exit | Internet egress only | `wg-tunnel` (from entry) | Entry server only — **not** end users directly |
 
 Default client subnet: `10.10.10.0/24` (override with `WG_CLIENT_CIDR`).
@@ -49,16 +64,24 @@ Install: [DEPLOYMENT.md](DEPLOYMENT.md). Day-2 ops: [OPERATIONS.md](OPERATIONS.m
 
 ## VPN modes (per client)
 
-| Mode | Path | Egress IP seen by websites | When to use |
-|------|------|----------------------------|-------------|
-| `twohop` (default) | Device → entry → tunnel → exit → internet | Exit server IP | **Production** — required architecture |
-| `direct` | Device → entry → internet | Entry server IP | Diagnostic A/B only (not production) |
+| Mode | Path | Egress IP seen by websites | When available |
+|------|------|----------------------------|----------------|
+| `twohop` | Device → entry → tunnel → exit → internet | Exit server IP | Only when an exit is configured (default for new clients) |
+| `direct` | Device → entry → internet | Entry server IP | Always; **only** mode when standalone (also default then) |
 
 Set when creating a client in the admin panel **Clients** tab, or via CLI:
 
 ```bash
-sudo wg-client set-mode CLIENT_NAME twohop
+sudo wg-client set-mode CLIENT_NAME twohop   # requires exit
+sudo wg-client set-mode CLIENT_NAME direct
 sudo wg-client sync-vpn-modes   # apply routing after bulk mode changes
+```
+
+Attach an exit to a standalone install later:
+
+```bash
+sudo wg-ops change-exit --exit-ip EXIT_IP --tunnel-pub EXIT_TUNNEL_PUBKEY
+# then on exit: sudo wg-ops add-peer ENTRY_TUNNEL_PUBKEY ENTRY_IP
 ```
 
 ---
@@ -83,7 +106,7 @@ Both panels run on the **entry** server and share one SQLite database.
 | Entry endpoint | `/etc/wireguard/wg-endpoint` | `IP:51820` written into every client config |
 | Audit log | `/etc/wireguard/audit.db` | Per-action log with actor, IP, and timestamp |
 
-Environment variables: `/etc/wireguard/entry-server.env` — see `/opt/wg-ops/config.env.example` or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18/deploy/config.env.example
+Environment variables: `/etc/wireguard/entry-server.env` — see `/opt/wg-ops/config.env.example` or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19/deploy/config.env.example
 
 ---
 
@@ -147,12 +170,12 @@ An unauthenticated endpoint that returns the user's WireGuard config(s) as plain
 
 ### Server status (`/connection-test`)
 
-A server-side check triggered from the Support page (labeled **Server status**). Returns JSON with three fields:
+A server-side check triggered from the Support page (labeled **Server status**). Returns JSON with these fields:
 
 | Field | Checks |
 |-------|--------|
 | `wg_interface` | WireGuard interface is up and has peers |
-| `exit_ping` | Exit server is reachable via ICMP through the tunnel |
+| `exit_ping` | Exit server reachable via tunnel ICMP (`skipped` on standalone) |
 | `dns` | Server can resolve external domain names |
 
 ---

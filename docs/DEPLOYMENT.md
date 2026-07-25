@@ -1,13 +1,18 @@
 # Deployment guide
 
-Get a working two-hop VPN on **two clean servers**. Follow the steps in order.
+Deploy either a **two-hop** VPN (entry + exit) or a **standalone** entry VPN (no exit).
 
 ```
+# Two-hop
 Your phone / laptop  →  Entry VPS  →  Exit VPS  →  Internet
                          (panels)     (public IP websites see)
+
+# Standalone
+Your phone / laptop  →  Entry VPS  →  Internet
+                         (panels + NAT; websites see entry IP)
 ```
 
-You need two Ubuntu/Debian VPS machines with public IPv4. Installers only work on **clean** servers (no previous install). To start over: `sudo wg-ops uninstall`.
+Installers only work on **clean** servers (no previous install). To start over: `sudo wg-ops uninstall`.
 
 Examples use placeholders (`ENTRY_IP`, `EXIT_IP`, `CLIENT_NAME`, …). Replace them with your real values.
 
@@ -20,33 +25,33 @@ Collect these values:
 | What | Placeholder | Notes |
 |------|-------------|--------|
 | Entry public IP | `ENTRY_IP` | IP clients will connect to |
-| Exit public IP | `EXIT_IP` | IP websites will see |
+| Exit public IP | `EXIT_IP` | Two-hop only — IP websites will see |
 | Admin password | `ADMIN_PASSWORD` | At least 8 characters |
 
 Open these ports in your **cloud firewall** (keep SSH open):
 
 | Server | Ports |
 |--------|--------|
-| Entry | UDP `51820`, UDP `51822`, TCP `22` (add TCP `80`/`443` if you want HTTPS) |
-| Exit | UDP `51821` from the entry IP only, TCP `22` |
+| Entry | UDP `51820`, TCP `22` (add TCP `80`/`443` if you want HTTPS; add UDP `51822` for two-hop return path) |
+| Exit (two-hop) | UDP `51821` from the entry IP only, TCP `22` |
 
 Optional: point a DNS A record at the entry IP if you want HTTPS panels later.
 
-**Hardware (minimum):** entry 2 vCPU / 2 GB RAM; exit 2 vCPU / 1 GB RAM. Ubuntu 22.04/24.04 or Debian 12.
+**Hardware (minimum):** entry 2 vCPU / 2 GB RAM; exit 2 vCPU / 1 GB RAM (two-hop). Ubuntu 22.04/24.04 or Debian 12.
 
 ---
 
-## Step 1 — Install `wg-ops` on both servers
+## Step 1 — Install `wg-ops`
 
-Run on **entry** and **exit**:
+Run on every server you will use (entry, and exit if two-hop):
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18/deploy/wg-ops \
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19/deploy/wg-ops \
   -o /usr/local/bin/wg-ops && sudo chmod 755 /usr/local/bin/wg-ops
 sudo wg-ops pull
 ```
 
-`@v1.0.18` is the current pinned release on jsDelivr (see `deploy/repo.conf`).  
+`@v1.0.19` is the current pinned release on jsDelivr (see `deploy/repo.conf`).  
 `wg-ops pull` downloads the full script set into `/opt/wg-ops` from that same CDN base.
 
 Then either:
@@ -56,7 +61,37 @@ Then either:
 
 ---
 
-## Step 2 — Install the exit server (do this first)
+## Option A — Standalone entry (no exit)
+
+On a single VPS:
+
+```bash
+sudo WG_ENTRY_PUBLIC_IP=ENTRY_IP \
+  WG_ADMIN_PASS='ADMIN_PASSWORD' \
+  WG_SKIP_XRAY=1 \
+  wg-ops install-entry
+```
+
+Leave `WG_EXIT_PUBLIC_IP` and `WG_EXIT_TUNNEL_PUB` unset. Interactive install: leave the exit IP prompt blank.
+
+- Default client VPN path: **direct** (websites see `ENTRY_IP`)
+- No `wg-tunnel`; Standard/twohop is unavailable until you attach an exit
+- Quick check: `sudo wg-ops test --role entry`
+
+### Attach an exit later
+
+1. Install an exit server (Option B Step 2).
+2. On entry: `sudo wg-ops change-exit --exit-ip EXIT_IP --tunnel-pub EXIT_TUNNEL_PUBKEY`
+3. On exit: `sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_IP'`
+4. Switch clients to Standard (twohop) in the admin panel when ready.
+
+Skip to [Step 5 — Create a test client](#step-5--create-a-test-client-and-log-in) if you are staying standalone.
+
+---
+
+## Option B — Two-hop (entry + exit)
+
+### Step 2 — Install the exit server (do this first)
 
 On the **exit** VPS:
 
@@ -79,7 +114,7 @@ sudo wg-ops test --role exit
 
 ---
 
-## Step 3 — Install the entry server
+### Step 3 — Install the entry server
 
 On the **entry** VPS (use the exit key from Step 2):
 
@@ -129,7 +164,7 @@ sudo WG_GITHUB_REPO='https://gh-proxy.com/https://github.com/ahmadfarzad-amiri/w
 
 ---
 
-## Step 4 — Link entry ↔ exit
+### Step 4 — Link entry ↔ exit
 
 On the **exit** VPS (use the entry tunnel key from Step 3):
 
@@ -222,4 +257,4 @@ sudo wg-ops measure --role guide
 | End-user help | [User guide](USER_GUIDE.md) |
 
 Full environment variable list: after `wg-ops pull`, see `/opt/wg-ops/config.env.example`  
-or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18/deploy/config.env.example
+or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19/deploy/config.env.example

@@ -1,14 +1,21 @@
 # WireGuard Access Panels
 
-Client and admin web panels for a **two-hop VPN** stack:
+Client and admin web panels for a WireGuard VPN that can run as:
+
+- **Two-hop** — entry + exit (tunnel); Standard and Direct paths available
+- **Standalone** — entry only (no exit); Direct path only (websites see the entry IP)
 
 ```
-devices  →  entry VPS (wg-clients + panels)  →  encrypted tunnel  →  exit VPS  →  internet
+# Two-hop
+devices  →  entry VPS (wg-clients + panels)  →  tunnel  →  exit VPS  →  internet
+
+# Standalone
+devices  →  entry VPS (wg-clients + panels + NAT)  →  internet
 ```
 
 **Repository:** [github.com/ahmadfarzad-amiri/wg](https://github.com/ahmadfarzad-amiri/wg)
 
-Fresh install on clean entry and exit servers. Full walkthrough: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
+Fresh install on clean servers. Full walkthrough: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
 
 ---
 
@@ -17,17 +24,29 @@ Fresh install on clean entry and exit servers. Full walkthrough: **[docs/DEPLOYM
 On **each** server:
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18/deploy/wg-ops \
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19/deploy/wg-ops \
   -o /usr/local/bin/wg-ops && sudo chmod 755 /usr/local/bin/wg-ops
 sudo wg-ops pull
 ```
 
-Scripts are served from a **pinned** jsDelivr tag (`@v1.0.18`). If update is stuck on an old release, force:  
-`sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18' wg-ops pull`
+Scripts are served from a **pinned** jsDelivr tag (`@v1.0.19`). If update is stuck on an old release, force:  
+`sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19' wg-ops pull`
+
+### Two-hop (entry + exit)
 
 1. **Exit first:** `sudo WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP wg-ops install-exit` — save the tunnel public key  
 2. **Entry second:** set `WG_ENTRY_PUBLIC_IP`, `WG_EXIT_PUBLIC_IP`, `WG_EXIT_TUNNEL_PUB`, `WG_ADMIN_PASS`, then `wg-ops install-entry` — save the entry tunnel public key  
 3. **Link on exit:** `sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'`
+
+### Standalone (entry only)
+
+```bash
+sudo WG_ENTRY_PUBLIC_IP=YOUR_ENTRY_IP \
+  WG_ADMIN_PASS='ADMIN_PASSWORD' \
+  wg-ops install-entry
+```
+
+Omit `WG_EXIT_*`. Clients use **direct** egress (entry public IP). Attach an exit later with `sudo wg-ops change-exit`.
 
 Or use `sudo wg-ops` (role-aware menu) on each host.
 
@@ -40,13 +59,14 @@ Or use `sudo wg-ops` (role-aware menu) on each host.
 | Client panel URL | `http://ENTRY_IP:8088/login` |
 | Admin panel URL | `http://ENTRY_IP:8090/admin/login` |
 | VPN endpoint for users | `ENTRY_IP:51820` |
-| Internet exit | Exit VPS (**twohop** production default) |
+| Internet exit (two-hop) | Exit VPS (**twohop** default) |
+| Internet exit (standalone) | Entry VPS (**direct** only) |
 
 ### Cloud firewall
 
 | Server | Open |
 |--------|------|
-| Entry | UDP **51820** (all users share this port), TCP **80/443** (optional, for HTTPS) |
+| Entry | UDP **51820** (all users share this port), TCP **80/443** (optional, for HTTPS); UDP **51822** if using a tunnel |
 | Exit | UDP **51821** — restrict to entry server egress IP when possible |
 
 ---
@@ -96,14 +116,14 @@ Or use **Admin panel → Tools**.
 
 ### Per-client VPN mode
 
-| Mode | Egress IP | Use when |
-|------|-----------|----------|
-| `twohop` (default) | Exit VPS | **Production** — required architecture |
-| `direct` | Entry VPS | Diagnostic A/B only (not a speed fix) |
+| Mode | Egress IP | When |
+|------|-----------|------|
+| `twohop` | Exit VPS | Default when an exit is configured |
+| `direct` | Entry VPS | Default when standalone; also available with an exit |
 
 ```bash
-sudo wg-client set-mode CLIENT_NAME twohop
-sudo wg-client set-mode CLIENT_NAME direct   # diagnostic only
+sudo wg-client set-mode CLIENT_NAME twohop   # needs exit
+sudo wg-client set-mode CLIENT_NAME direct
 sudo wg-client sync-vpn-modes
 ```
 

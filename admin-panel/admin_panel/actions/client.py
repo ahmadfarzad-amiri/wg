@@ -12,6 +12,7 @@ from admin_panel.core.i18n import t, tf
 from admin_panel.core.shell import CLIENT_CMD_TIMEOUT, run, safe_name, tail_message
 from admin_panel.core.wireguard import all_client_meta, find_client_status
 from admin_panel.db.panel_queries import detach_users_from_client
+from wg_common.entry_mode import default_vpn_mode, is_standalone_entry
 
 
 def _audit(handler, action, detail=""):
@@ -33,6 +34,15 @@ def _try_add_xray_client(name):
         )
 
 
+def _resolve_vpn_mode(raw):
+    mode = (raw or default_vpn_mode()).strip().lower()
+    if mode not in ("direct", "twohop"):
+        mode = default_vpn_mode()
+    if mode == "twohop" and is_standalone_entry():
+        mode = "direct"
+    return mode
+
+
 def handle_bulk(handler, data):
     """Create multiple clients from a newline-separated name list."""
     raw = data.get("names", "")
@@ -46,9 +56,7 @@ def handle_bulk(handler, data):
         _render(handler, t("msg.bulk_too_many"), variant="error")
         return
 
-    vpn_mode = (data.get("vpn_mode") or "twohop").strip().lower()
-    if vpn_mode not in ("direct", "twohop"):
-        vpn_mode = "twohop"
+    vpn_mode = _resolve_vpn_mode(data.get("vpn_mode"))
 
     days = data.get("days") or DEFAULT_DAYS
     limit = data.get("limit") or DEFAULT_LIMIT
@@ -94,9 +102,7 @@ def handle(handler, data):
         if not client:
             _render(handler, t("msg.client_name_required"), variant="error")
             return
-        vpn_mode = (data.get("vpn_mode") or "twohop").strip().lower()
-        if vpn_mode not in ("direct", "twohop"):
-            vpn_mode = "twohop"
+        vpn_mode = _resolve_vpn_mode(data.get("vpn_mode"))
         ok, _, out = ensure_client(
             client,
             days=data.get("days", DEFAULT_DAYS),
@@ -143,6 +149,9 @@ def handle(handler, data):
         if vpn_mode:
             if vpn_mode not in ("direct", "twohop"):
                 _render(handler, t("msg.invalid_vpn_mode"), variant="error", client=client)
+                return
+            if vpn_mode == "twohop" and is_standalone_entry():
+                _render(handler, t("msg.twohop_needs_exit"), variant="error", client=client)
                 return
             cmd.extend(["--vpn-mode", vpn_mode])
         if data.get("reset_usage"):

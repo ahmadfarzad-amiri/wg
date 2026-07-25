@@ -91,6 +91,20 @@ assert_ok "validate helper reads runtime names" \
   grep -q 'WG_ENDPOINT:-' "$ROOT/deploy/lib/common.sh"
 assert_ok "validate helper reads WG_EXIT_IP" \
   grep -q 'WG_EXIT_IP' "$ROOT/deploy/lib/common.sh"
+assert_ok "standalone helper defined" type wg_entry_is_standalone
+assert_ok "has_exit helper defined" type wg_entry_has_exit
+assert_eq "default mode twohop with exit" \
+  "$(WG_ENTRY_MODE=twohop wg_entry_default_vpn_mode)" "twohop"
+assert_eq "default mode direct standalone" \
+  "$(WG_ENTRY_MODE=standalone wg_entry_default_vpn_mode)" "direct"
+assert_ok "standalone when mode set" \
+  bash -c 'source "'"$ROOT"'/deploy/lib/common.sh"; WG_ENTRY_MODE=standalone; wg_entry_is_standalone'
+assert_fail "not standalone when twohop" \
+  bash -c 'source "'"$ROOT"'/deploy/lib/common.sh"; WG_ENTRY_MODE=twohop; wg_entry_is_standalone'
+assert_ok "entry install mentions standalone" \
+  grep -q 'standalone' "$ROOT/deploy/install-entry-server.sh"
+assert_ok "change-exit can attach from scratch" \
+  grep -q 'ATTACHING_FROM_STANDALONE' "$ROOT/deploy/change-exit-server.sh"
 rm -rf "$_tmpdir"
 
 postup="$(wg_render_entry_tunnel_postup wg-clients wg-tunnel 10.10.10.0/24)"

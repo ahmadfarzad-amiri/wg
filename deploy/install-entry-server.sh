@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # Entry VPS — where client devices connect + web panels.
 #
-# Preferred:
+# Two-hop (with exit):
 #   sudo WG_ENTRY_PUBLIC_IP=ENTRY_IP \
 #     WG_EXIT_PUBLIC_IP=EXIT_IP \
 #     WG_EXIT_TUNNEL_PUB='EXIT_TUNNEL_PUBKEY' \
+#     WG_ADMIN_PASS='ADMIN_PASSWORD' \
+#     wg-ops install-entry
+#
+# Standalone (no exit — direct egress from this server only):
+#   sudo WG_ENTRY_PUBLIC_IP=ENTRY_IP \
 #     WG_ADMIN_PASS='ADMIN_PASSWORD' \
 #     wg-ops install-entry
 #
@@ -15,7 +20,7 @@ set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19}"
   _WG_INSTALLER="$(mktemp /tmp/wg-install-XXXXXX.sh)"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/install-entry-server.sh" -o "$_WG_INSTALLER"
   chmod 700 "$_WG_INSTALLER"
@@ -33,7 +38,7 @@ if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19}"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"
@@ -88,9 +93,14 @@ if should_prompt; then
   log "Interactive mode — press Enter to accept [defaults]."
   prompt ENTRY_IP "Entry server public IP (client Endpoint)" "$ENTRY_IP"
   prompt CLIENT_PORT_WG "Client WireGuard UDP port" "$CLIENT_PORT_WG"
-  prompt EXIT_IP "Exit server public IP" "$EXIT_IP"
-  prompt EXIT_TUNNEL_PORT "Exit tunnel UDP port" "$EXIT_TUNNEL_PORT"
-  prompt EXIT_TUNNEL_PUB "Exit tunnel public key (from install-exit-server.sh)" "$EXIT_TUNNEL_PUB"
+  prompt_optional EXIT_IP "Exit server public IP (blank = standalone VPN on this server)" "$EXIT_IP"
+  if [[ -n "$EXIT_IP" ]]; then
+    prompt EXIT_TUNNEL_PORT "Exit tunnel UDP port" "$EXIT_TUNNEL_PORT"
+    prompt EXIT_TUNNEL_PUB "Exit tunnel public key (from install-exit-server.sh)" "$EXIT_TUNNEL_PUB"
+  else
+    EXIT_TUNNEL_PUB=""
+    log "Standalone mode — no exit server; clients egress via this host (direct)."
+  fi
   prompt_optional PANEL_DOMAIN "Panel domain for web access" "$PANEL_DOMAIN"
   prompt PANEL_BRAND "Brand name shown in panels" "$PANEL_BRAND"
   prompt CLIENT_PORT "Client panel HTTP port" "$CLIENT_PORT"
@@ -107,14 +117,26 @@ if should_prompt; then
   fi
 else
   log "Entry public IP   : ${ENTRY_IP}"
-  log "Exit public IP    : ${EXIT_IP}"
-  log "Exit tunnel port  : ${EXIT_TUNNEL_PORT}"
-  [[ -n "$EXIT_TUNNEL_PUB" ]] || die "Set WG_EXIT_TUNNEL_PUB (exit tunnel public key)"
-  [[ -n "$EXIT_IP" ]] || die "Set WG_EXIT_PUBLIC_IP"
+  if [[ -n "$EXIT_IP" || -n "$EXIT_TUNNEL_PUB" ]]; then
+    log "Exit public IP    : ${EXIT_IP}"
+    log "Exit tunnel port  : ${EXIT_TUNNEL_PORT}"
+    [[ -n "$EXIT_TUNNEL_PUB" ]] || die "Set WG_EXIT_TUNNEL_PUB (exit tunnel public key), or omit both exit IP and pubkey for standalone"
+    [[ -n "$EXIT_IP" ]] || die "Set WG_EXIT_PUBLIC_IP, or omit both exit IP and pubkey for standalone"
+  else
+    log "Mode              : standalone (no exit — direct egress)"
+  fi
   if [[ -z "${WG_ADMIN_PASS:-}" && -z "${WG_ADMIN_PASS_FILE:-}" ]]; then
     die "Set WG_ADMIN_PASS or WG_ADMIN_PASS_FILE for non-interactive install"
   fi
   read_admin_password
+fi
+
+if [[ -n "$EXIT_IP" && -n "$EXIT_TUNNEL_PUB" ]]; then
+  ENTRY_MODE="twohop"
+else
+  ENTRY_MODE="standalone"
+  EXIT_IP=""
+  EXIT_TUNNEL_PUB=""
 fi
 
 PANEL_ADMIN_HOST="0.0.0.0"
@@ -127,6 +149,7 @@ fi
 WG_ENDPOINT="${ENTRY_IP}:${CLIENT_PORT_WG}"
 # Export for validators (names match env vars used by helpers).
 export WG_ENTRY_PUBLIC_IP="$ENTRY_IP"
+export WG_ENTRY_MODE="$ENTRY_MODE"
 export WG_EXIT_PUBLIC_IP="$EXIT_IP"
 export WG_EXIT_TUNNEL_PUB="$EXIT_TUNNEL_PUB"
 export WG_EXIT_TUNNEL_PORT="$EXIT_TUNNEL_PORT"
@@ -134,7 +157,9 @@ export WG_CLIENT_PORT="$CLIENT_PORT_WG"
 export WG_CLIENT_CIDR="$CLIENT_CIDR"
 wg_validate_entry_install_env
 require_fresh_install "$CLIENT_CONF"
-require_fresh_install "$TUNNEL_CONF"
+if [[ "$ENTRY_MODE" == "twohop" ]]; then
+  require_fresh_install "$TUNNEL_CONF"
+fi
 
 if [[ -f "$SCRIPT_DIR/../client-panel/app.py" ]]; then
   REPO_DIR="$SCRIPT_DIR/.."
@@ -189,10 +214,12 @@ EOF
 printf '%s\n' "$CLIENT_PUB" > /etc/wireguard/clients-server.pub
 chmod 600 "$CLIENT_CONF" /etc/wireguard/clients-server.pub
 
-TUNNEL_PRIV="$(wg genkey)"
-TUNNEL_PUB="$(printf '%s' "$TUNNEL_PRIV" | wg pubkey)"
+TUNNEL_PUB=""
+if [[ "$ENTRY_MODE" == "twohop" ]]; then
+  TUNNEL_PRIV="$(wg genkey)"
+  TUNNEL_PUB="$(printf '%s' "$TUNNEL_PRIV" | wg pubkey)"
 
-cat > "$TUNNEL_CONF" <<EOF
+  cat > "$TUNNEL_CONF" <<EOF
 [Interface]
 Address = ${TUNNEL_LOCAL}
 ListenPort = ${TUNNEL_LISTEN_PORT}
@@ -208,8 +235,9 @@ Endpoint = ${EXIT_IP}:${EXIT_TUNNEL_PORT}
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
 EOF
-printf '%s\n' "$TUNNEL_PUB" > /etc/wireguard/tunnel-entry.pub
-chmod 600 "$TUNNEL_CONF" /etc/wireguard/tunnel-entry.pub
+  printf '%s\n' "$TUNNEL_PUB" > /etc/wireguard/tunnel-entry.pub
+  chmod 600 "$TUNNEL_CONF" /etc/wireguard/tunnel-entry.pub
+fi
 
 if command -v ufw >/dev/null 2>&1; then
   wg_ufw_allow_udp_ports
@@ -224,8 +252,11 @@ fi
 maybe_enable_ufw
 
 wg_quick_up "$CLIENT_CONF" "$CLIENT_IF"
-wg_quick_up "$TUNNEL_CONF" "$TUNNEL_IF"
-systemctl enable "wg-quick@${CLIENT_IF}" "wg-quick@${TUNNEL_IF}" 2>/dev/null || true
+systemctl enable "wg-quick@${CLIENT_IF}" 2>/dev/null || true
+if [[ "$ENTRY_MODE" == "twohop" ]]; then
+  wg_quick_up "$TUNNEL_CONF" "$TUNNEL_IF"
+  systemctl enable "wg-quick@${TUNNEL_IF}" 2>/dev/null || true
+fi
 
 UDP_PORT_MIN="${WG_UDP_PORT_MIN:-$CLIENT_PORT_WG}"
 UDP_PORT_MAX="${WG_UDP_PORT_MAX:-}"
@@ -234,8 +265,14 @@ if [[ -z "$UDP_PORT_MAX" && -n "${WG_UDP_PORT_RANGE:-}" ]]; then
 fi
 UDP_PORT_MAX="${UDP_PORT_MAX:-$UDP_PORT_MIN}"
 
+ANTILEAK_DEFAULT=1
+if [[ "$ENTRY_MODE" == "standalone" ]]; then
+  ANTILEAK_DEFAULT=0
+fi
+
 write_env_file "$ENV_FILE" \
   WG_ROLE entry \
+  WG_ENTRY_MODE "$ENTRY_MODE" \
   WG_DATA_DIR /etc/wireguard \
   WG_BIN_DIR /usr/local/bin \
   WG_IF "$CLIENT_IF" \
@@ -267,12 +304,17 @@ write_env_file "$ENV_FILE" \
   WG_TUNNEL_MTU "${WG_TUNNEL_MTU:-${WG_SERVER_MTU:-1420}}" \
   WG_ENABLE_BBR "${WG_ENABLE_BBR:-1}" \
   WG_ENABLE_MSS_CLAMP "${WG_ENABLE_MSS_CLAMP:-1}" \
-  WG_ENTRY_ANTILEAK "${WG_ENTRY_ANTILEAK:-1}" \
+  WG_ENTRY_ANTILEAK "${WG_ENTRY_ANTILEAK:-$ANTILEAK_DEFAULT}" \
   WG_DNS "${WG_DNS:-8.8.8.8, 8.8.4.4}"
 
 export WG_CLIENT_CIDR="$CLIENT_CIDR"
 export WG_TUNNEL_IF="$TUNNEL_IF"
 export WG_IF="$CLIENT_IF"
+export WG_ENTRY_MODE="$ENTRY_MODE"
+export WG_EXIT_IP="$EXIT_IP"
+export WG_EXIT_PUBLIC_IP="$EXIT_IP"
+export WG_EXIT_TUNNEL_PUB="$EXIT_TUNNEL_PUB"
+export WG_ENTRY_ANTILEAK="${WG_ENTRY_ANTILEAK:-$ANTILEAK_DEFAULT}"
 apply_entry_vpn_routing_fix
 
 cat > /etc/systemd/system/wg-panel.service <<EOF
@@ -397,9 +439,39 @@ bash "$SCRIPT_DIR/test-connectivity.sh" --role entry || true
 
 # Print summary last so keys are not scrolled away by connectivity checks
 # (and stay visible above wg-ops "Press Enter" when installed from the menu).
-cat <<EOF
+if [[ "$ENTRY_MODE" == "standalone" ]]; then
+  cat <<EOF
+
+=== ENTRY server ready (standalone) ===
+Mode                      : standalone (direct egress via this server)
+Client Endpoint (devices): ${WG_ENDPOINT}
+Client server public key  : ${CLIENT_PUB}
+  (saved: /etc/wireguard/clients-server.pub)
+Default VPN path          : direct (websites see this server's public IP)
+
+Operator CLI:
+  sudo wg-ops pull
+  sudo wg-ops test --role entry
+  sudo wg-ops diagnose --role entry
+  sudo wg-ops tune --role entry
+
+Web panels:
+  ${PANEL_URL_CLIENT}
+  ${PANEL_URL_ADMIN}
+Admin user                : ${ADMIN_USER}
+Xray protocols            : ${XRAY_INSTALLED}
+
+To attach an exit later (enable Standard/twohop):
+  Install exit, then: sudo wg-ops change-exit --exit-ip EXIT_IP --tunnel-pub EXIT_TUNNEL_PUBKEY
+
+Cloud firewall: allow UDP ${CLIENT_PORT_WG} from clients; TCP 80/443 or panel ports.
+
+EOF
+else
+  cat <<EOF
 
 === ENTRY server ready ===
+Mode                      : twohop (tunnel to exit)
 Client Endpoint (devices): ${WG_ENDPOINT}
 Client server public key  : ${CLIENT_PUB}
   (saved: /etc/wireguard/clients-server.pub)
@@ -426,8 +498,13 @@ Cloud firewall: allow UDP ${CLIENT_PORT_WG} from clients; TCP 80/443 or panel po
 Copy the tunnel public key above before continuing (needed for add-peer on the exit).
 
 EOF
+fi
 
 # Pause when run as a standalone CLI install (menu path pauses itself).
 if should_prompt && [[ "${WG_OPS_MENU:-0}" != "1" ]]; then
-  read -r -p "Press Enter after you have copied the tunnel public key..." _
+  if [[ "$ENTRY_MODE" == "twohop" ]]; then
+    read -r -p "Press Enter after you have copied the tunnel public key..." _
+  else
+    read -r -p "Press Enter to continue..." _
+  fi
 fi

@@ -31,17 +31,17 @@ Native WireGuard CLI remains `wg` (example: `sudo wg show`).
 
 | What | Source | Notes |
 |------|--------|--------|
-| `wg-ops` bootstrap + `pull` / `update` scripts | jsDelivr **pinned tag** (e.g. `@v1.0.18`) | Avoid `@latest` — jsDelivr purge is often throttled and can stick on an old release |
+| `wg-ops` bootstrap + `pull` / `update` scripts | jsDelivr **pinned tag** (e.g. `@v1.0.19`) | Avoid `@latest` — jsDelivr purge is often throttled and can stick on an old release |
 | Panel code (`update-panels`, entry install) | Git branch `main` | Clone into `/opt/wg-src` (GitHub or `gh-proxy.com`) |
 
 Default CDN base (bump with each release in `deploy/repo.conf`):
 
-`https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18`
+`https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19`
 
 If `wg-ops update` still shows an old version (stuck `@latest` cache), force one pull:
 
 ```bash
-sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18' wg-ops pull
+sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19' wg-ops pull
 ```
 
 ---
@@ -131,12 +131,15 @@ Or **Admin → Tools → Change entry**. Update cloud firewall and DNS; users mu
 
 ### Exit server
 
-On **entry**:
+On **entry** (change existing exit, or **attach** an exit to a standalone install):
 
 ```bash
 sudo WG_EXIT_PUBLIC_IP=NEW_EXIT_IP WG_EXIT_TUNNEL_PUB='NEW_EXIT_PUBKEY' \
   wg-ops change-exit
+# Or: sudo wg-ops change-exit --exit-ip NEW_EXIT_IP --tunnel-pub 'NEW_EXIT_PUBKEY'
 ```
+
+On a standalone entry this creates `wg-tunnel`, sets `WG_ENTRY_MODE=twohop`, and enables Standard/direct paths. Existing clients stay on their current mode until you switch them.
 
 On the **new exit**:
 
@@ -183,7 +186,7 @@ Then on entry: `sudo wg-ops fix-routing --role entry` and `sudo wg show wg-tunne
 
 ## Performance (two-hop)
 
-Keep production clients on **twohop** (exit IP). `direct` mode is for short diagnostic tests only — not a speed fix.
+With an exit configured, prefer **twohop** for production clients (exit IP). On **standalone** entry, only **direct** is available (entry IP). When both paths exist, `direct` is still useful for short A/B checks.
 
 ```bash
 # On entry and exit
@@ -330,7 +333,7 @@ Runtime file on entry: `/etc/wireguard/entry-server.env`
 | `WG_ENABLE_MSS_CLAMP` | `1` | MSS clamp service |
 
 Full list: `/opt/wg-ops/config.env.example`  
-or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18/deploy/config.env.example
+or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19/deploy/config.env.example
 
 ---
 
@@ -340,19 +343,19 @@ Install and `wg-ops pull` / `update` use a **pinned** jsDelivr tag (see `GITHUB_
 
 For each release:
 
-1. Bump `GITHUB_CDN_REF` / `GITHUB_RAW_BASE` / docs URLs to the new tag (e.g. `v1.0.18`).
+1. Bump `GITHUB_CDN_REF` / `GITHUB_RAW_BASE` / docs URLs to the new tag (e.g. `v1.0.19`).
 2. Commit, then `git tag` / `git push` that same version.
 3. On servers still stuck on an old `@latest` cache, pull once with an explicit base:
 
 ```bash
-sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18' wg-ops pull
+sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19' wg-ops pull
 sudo wg-ops update
 ```
 
 Optional purge (often throttled):
 
 ```bash
-curl 'https://purge.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18/deploy/wg-ops'
+curl 'https://purge.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19/deploy/wg-ops'
 ```
 
 Or use the [jsDelivr purge tool](https://www.jsdelivr.com/tools/purge).

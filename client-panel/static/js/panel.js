@@ -328,6 +328,7 @@
           var html = "";
           Object.keys(data).forEach(function (key) {
             var val = data[key];
+            if (val === "skipped") return;
             var ok = val === "ok" || val === "up";
             var cls = ok ? "ok" : "bad";
             var display = valueLabels[val] || val;

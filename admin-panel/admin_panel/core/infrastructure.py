@@ -2,6 +2,8 @@
 import os
 import re
 
+from wg_common.entry_mode import is_standalone_entry
+
 
 def _data_dir():
     return os.environ.get("WG_DATA_DIR", "/etc/wireguard")
@@ -89,10 +91,23 @@ def get_infrastructure_state():
     if not exit_port:
         exit_port = "51821"
 
+    mode = (env.get("WG_ENTRY_MODE") or "").strip().lower()
+    if mode == "standalone":
+        standalone = True
+    elif mode == "twohop":
+        standalone = False
+    else:
+        standalone = not (exit_ip and exit_pub) or is_standalone_entry()
+        mode = "standalone" if standalone else "twohop"
+
     return {
         "entry_endpoint": entry_endpoint,
         "entry_old_ip": entry_old_ip,
         "exit_ip": exit_ip,
         "exit_tunnel_pub": exit_pub,
         "exit_tunnel_port": exit_port,
+        "entry_mode": mode if mode in ("standalone", "twohop") else (
+            "standalone" if standalone else "twohop"
+        ),
+        "standalone": standalone,
     }

@@ -58,6 +58,9 @@ def client_action_applied(action, name):
     return True
 
 
+from wg_common.entry_mode import default_vpn_mode, is_standalone_entry
+
+
 def ensure_client(name, *, days=None, limit=None, single=None, vpn_mode=None):
     """Ensure a client exists. Returns (ok, created, output)."""
     if find_client_meta_by_name(name):
@@ -66,9 +69,11 @@ def ensure_client(name, *, days=None, limit=None, single=None, vpn_mode=None):
     days = str(days or DEFAULT_DAYS)
     limit = str(limit or DEFAULT_LIMIT)
     single = single or DEFAULT_SINGLE
-    mode = (vpn_mode or "twohop").strip().lower()
+    mode = (vpn_mode or default_vpn_mode()).strip().lower()
     if mode not in ("direct", "twohop"):
-        mode = "twohop"
+        mode = default_vpn_mode()
+    if mode == "twohop" and is_standalone_entry():
+        mode = "direct"
 
     output = run(
         [

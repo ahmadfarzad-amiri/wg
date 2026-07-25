@@ -95,18 +95,45 @@ test_entry() {
     source "$env_file"
   fi
 
-  check "wg-clients up" wg show wg-clients
-  check "wg-tunnel up (to exit)" wg show wg-tunnel
-  check "client endpoint file" test -f /etc/wireguard/wg-endpoint
-  check "policy route table 100" sh -c "ip rule show | grep -q 'lookup 100'"
-  check "client subnet via wg-clients" sh -c 'ip route get 10.10.10.2 2>/dev/null | grep -q "dev wg-clients"'
-  check "tunnel→client forward rule" sh -c "iptables -C FORWARD -i wg-tunnel -o wg-clients -j ACCEPT"
-  check "client→tunnel forward rule" sh -c "iptables -C FORWARD -i wg-clients -o wg-tunnel -j ACCEPT"
-  if iptables -L DOCKER-USER -n >/dev/null 2>&1; then
-    check "docker bypass tunnel→clients" sh -c "iptables -C DOCKER-USER -i wg-tunnel -o wg-clients -j ACCEPT"
-    check "docker bypass clients→tunnel" sh -c "iptables -C DOCKER-USER -i wg-clients -o wg-tunnel -j ACCEPT"
+  local standalone=0
+  if wg_entry_is_standalone 2>/dev/null; then
+    standalone=1
+    log "Mode: standalone (direct egress)"
+  else
+    log "Mode: twohop (tunnel to exit)"
   fi
-  check "wg tunnel rp_filter off" sh -c '[ "$(sysctl -n net.ipv4.conf.wg-tunnel.rp_filter 2>/dev/null)" = "0" ] && [ "$(sysctl -n net.ipv4.conf.wg-clients.rp_filter 2>/dev/null)" = "0" ]'
+
+  check "wg-clients up" wg show wg-clients
+  check "client endpoint file" test -f /etc/wireguard/wg-endpoint
+  check "client subnet via wg-clients" sh -c 'ip route get 10.10.10.2 2>/dev/null | grep -q "dev wg-clients"'
+
+  if [[ "$standalone" -eq 1 ]]; then
+    local def_if
+    def_if="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
+    def_if="${def_if:-eth0}"
+    check "client→WAN forward rule" sh -c "iptables -C FORWARD -i wg-clients -o ${def_if} -j ACCEPT"
+    check "WAN→client forward rule" sh -c "iptables -C FORWARD -i ${def_if} -o wg-clients -j ACCEPT"
+    check "standalone subnet MASQUERADE" sh -c "iptables -t nat -S POSTROUTING | grep -qE -- '-s ${WG_CLIENT_CIDR:-10.10.10.0/24}.*MASQUERADE'"
+  else
+    check "wg-tunnel up (to exit)" wg show wg-tunnel
+    check "policy route table 100" sh -c "ip rule show | grep -q 'lookup 100'"
+    check "tunnel→client forward rule" sh -c "iptables -C FORWARD -i wg-tunnel -o wg-clients -j ACCEPT"
+    check "client→tunnel forward rule" sh -c "iptables -C FORWARD -i wg-clients -o wg-tunnel -j ACCEPT"
+    if iptables -L DOCKER-USER -n >/dev/null 2>&1; then
+      check "docker bypass tunnel→clients" sh -c "iptables -C DOCKER-USER -i wg-tunnel -o wg-clients -j ACCEPT"
+      check "docker bypass clients→tunnel" sh -c "iptables -C DOCKER-USER -i wg-clients -o wg-tunnel -j ACCEPT"
+    fi
+    check "wg tunnel rp_filter off" sh -c '[ "$(sysctl -n net.ipv4.conf.wg-tunnel.rp_filter 2>/dev/null)" = "0" ] && [ "$(sysctl -n net.ipv4.conf.wg-clients.rp_filter 2>/dev/null)" = "0" ]'
+    printf '  %-42s ' "tunnel handshake to exit (<=180s)"
+    if tunnel_handshake_recent 180; then
+      echo "OK"
+      pass=$((pass + 1))
+    else
+      echo "FAIL"
+      fail=$((fail + 1))
+    fi
+  fi
+
   check "wg-panel service" systemctl is-active wg-panel
   check "wg-admin-panel service" systemctl is-active wg-admin-panel
   if [[ -f /etc/nginx/sites-enabled/wg-panels.conf ]]; then
@@ -122,14 +149,6 @@ test_entry() {
   fi
   check "admin config" test -f /etc/wireguard/admin-panel.json
   check "wg-client installed" command -v wg-client
-  printf '  %-42s ' "tunnel handshake to exit (<=180s)"
-  if tunnel_handshake_recent 180; then
-    echo "OK"
-    pass=$((pass + 1))
-  else
-    echo "FAIL"
-    fail=$((fail + 1))
-  fi
   if [[ "${WG_ENABLE_BBR:-1}" != "0" ]]; then
     check "TCP BBR enabled" sh -c '[ "$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)" = "bbr" ]'
     check "UDP rmem_max >= 16MB" sh -c '[ "$(sysctl -n net.core.rmem_max 2>/dev/null)" -ge 16777216 ]'
@@ -139,7 +158,7 @@ test_entry() {
   check "no broad clients FORWARD" sh -c '! iptables -C FORWARD -i wg-clients -j ACCEPT 2>/dev/null'
   local def_if
   def_if="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
-  if [[ -n "$def_if" && "${WG_ENTRY_ANTILEAK:-1}" != "0" ]]; then
+  if [[ "$standalone" -eq 0 && -n "$def_if" && "${WG_ENTRY_ANTILEAK:-1}" != "0" ]]; then
     check "anti-leak DROP client→WAN" sh -c "iptables -C FORWARD -i wg-clients -o ${def_if} -j DROP"
   fi
   check "client panel health" curl -fsS "http://127.0.0.1:${WG_PANEL_PORT:-8088}/health"

@@ -11,7 +11,7 @@ fi
 GITHUB_OWNER="${GITHUB_OWNER:-ahmadfarzad-amiri}"
 GITHUB_REPO_NAME="${GITHUB_REPO_NAME:-wg}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
-GITHUB_CDN_REF="${GITHUB_CDN_REF:-v1.0.18}"
+GITHUB_CDN_REF="${GITHUB_CDN_REF:-v1.0.19}"
 GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/${GITHUB_OWNER}/${GITHUB_REPO_NAME}.git}"
 # jsDelivr CDN mirrors GitHub and works where raw.githubusercontent.com is blocked (e.g. Iran).
 # Pin GITHUB_CDN_REF to a semver tag (not @latest) — jsDelivr @latest purge is often throttled.
@@ -44,6 +44,69 @@ server_role() {
     printf 'exit'
   else
     printf 'unknown'
+  fi
+}
+
+# Resolve exit IP/pubkey from env or live wg-tunnel.conf (first Peer).
+wg_entry_resolve_exit_ip() {
+  local exit_ip tip
+  exit_ip="${WG_EXIT_PUBLIC_IP:-${EXIT_IP:-${WG_EXIT_IP:-}}}"
+  if [[ -z "$exit_ip" && -f /etc/wireguard/wg-tunnel.conf ]]; then
+    tip="$(awk '
+      /^\[Peer\]/ { in_peer=1; next }
+      in_peer && /^Endpoint[[:space:]]*=/ {
+        sub(/^[^=]*=[[:space:]]*/, "")
+        sub(/:.*/, "")
+        print
+        exit
+      }
+    ' /etc/wireguard/wg-tunnel.conf)"
+    exit_ip="$tip"
+  fi
+  printf '%s' "$exit_ip"
+}
+
+wg_entry_resolve_exit_pub() {
+  local exit_pub
+  exit_pub="${WG_EXIT_TUNNEL_PUB:-${EXIT_TUNNEL_PUB:-}}"
+  if [[ -z "$exit_pub" && -f /etc/wireguard/wg-tunnel.conf ]]; then
+    exit_pub="$(awk '
+      /^\[Peer\]/ { in_peer=1; next }
+      in_peer && /^PublicKey[[:space:]]*=/ {
+        sub(/^[^=]*=[[:space:]]*/, "")
+        gsub(/[[:space:]]/, "")
+        print
+        exit
+      }
+    ' /etc/wireguard/wg-tunnel.conf)"
+  fi
+  printf '%s' "$exit_pub"
+}
+
+# True when entry has a configured exit (two-hop capable).
+wg_entry_has_exit() {
+  if [[ "${WG_ENTRY_MODE:-}" == "standalone" ]]; then
+    return 1
+  fi
+  if [[ "${WG_ENTRY_MODE:-}" == "twohop" ]]; then
+    return 0
+  fi
+  local exit_ip exit_pub
+  exit_ip="$(wg_entry_resolve_exit_ip)"
+  exit_pub="$(wg_entry_resolve_exit_pub)"
+  [[ -n "$exit_ip" && -n "$exit_pub" ]]
+}
+
+# True when entry is a standalone VPN (direct egress only; no exit tunnel).
+wg_entry_is_standalone() {
+  ! wg_entry_has_exit
+}
+
+wg_entry_default_vpn_mode() {
+  if wg_entry_is_standalone; then
+    printf 'direct'
+  else
+    printf 'twohop'
   fi
 }
 
@@ -412,7 +475,7 @@ fetch_deploy_helper_scripts() {
 source_deploy_lib() {
   local script_ref="${1:-}"
   # jsDelivr works where raw.githubusercontent.com is blocked (Iran, etc.)
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.18}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.19}"
   if [[ -n "$script_ref" && -f "$(dirname "$script_ref")/lib/common.sh" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "$script_ref")" && pwd)"
     # shellcheck source=lib/common.sh
@@ -704,6 +767,40 @@ wg_entry_forward_rules_up() {
   if [[ "${WG_ENTRY_ANTILEAK:-1}" != "0" && -n "$def_if" ]]; then
     wg_iptables_ensure FORWARD -i "$client_if" -o "$def_if" -j DROP
   fi
+}
+
+# Standalone entry: clients egress via this host's WAN (subnet NAT). No tunnel.
+wg_entry_standalone_forward_rules_up() {
+  local client_if="${1:-wg-clients}"
+  local client_cidr="${2:-${WG_CLIENT_CIDR:-10.10.10.0/24}}"
+  local def_if
+  def_if="$(default_route_iface)"
+  def_if="${def_if:-eth0}"
+
+  # Drop leftover two-hop policy/forward if upgrading from/to modes.
+  wg_entry_tunnel_routes_down "$client_cidr" wg-tunnel
+  wg_iptables_delete_all FORWARD -i "$client_if" -o wg-tunnel -j ACCEPT
+  wg_iptables_delete_all FORWARD -i wg-tunnel -o "$client_if" -j ACCEPT
+  wg_iptables_delete_all FORWARD -i "$client_if" -o "$def_if" -j DROP
+
+  wg_iptables_ensure FORWARD -i "$client_if" -o "$def_if" -j ACCEPT
+  wg_iptables_ensure FORWARD -i "$def_if" -o "$client_if" -j ACCEPT
+  wg_iptables_delete_all FORWARD -i "$client_if" -j ACCEPT
+  wg_iptables_delete_all FORWARD -o "$client_if" -j ACCEPT
+
+  wg_iptables_delete_all -t nat POSTROUTING -s "$client_cidr" -o "$def_if" -j MASQUERADE
+  iptables -t nat -A POSTROUTING -s "$client_cidr" -o "$def_if" -j MASQUERADE
+}
+
+wg_entry_standalone_forward_rules_down() {
+  local client_if="${1:-wg-clients}"
+  local client_cidr="${2:-${WG_CLIENT_CIDR:-10.10.10.0/24}}"
+  local def_if
+  def_if="$(default_route_iface)"
+  def_if="${def_if:-eth0}"
+  wg_iptables_delete_all FORWARD -i "$client_if" -o "$def_if" -j ACCEPT
+  wg_iptables_delete_all FORWARD -i "$def_if" -o "$client_if" -j ACCEPT
+  wg_iptables_delete_all -t nat POSTROUTING -s "$client_cidr" -o "$def_if" -j MASQUERADE
 }
 
 wg_entry_forward_rules_down() {
@@ -1159,16 +1256,35 @@ apply_entry_vpn_routing_fix() {
   local tunnel_if="${WG_TUNNEL_IF:-wg-tunnel}"
   local client_cidr="${WG_CLIENT_CIDR:-10.10.10.0/24}"
 
-  # Conf/hooks first, then bring interfaces up, then live routes.
-  strip_wrong_entry_tunnel_peer_block "/etc/wireguard/${tunnel_if}.conf"
-  strip_rp_filter_from_wg_postup "/etc/wireguard/${tunnel_if}.conf"
   strip_rp_filter_from_wg_postup "/etc/wireguard/${client_if}.conf"
-  fix_entry_tunnel_postup_in_conf "/etc/wireguard/${tunnel_if}.conf"
   ensure_entry_client_postup_in_conf "/etc/wireguard/${client_if}.conf" "$client_if" "$client_cidr"
   wg_install_rp_filter_systemd_hooks
+  ensure_wg_quick_running "$client_if"
+
+  if wg_entry_is_standalone; then
+    wg_apply_ip_forward
+    wg_entry_standalone_forward_rules_up "$client_if" "$client_cidr"
+    wg_entry_client_subnet_route_up "$client_cidr" "$client_if" || true
+    wg_apply_rp_filter_for_wg
+    wg_apply_vpn_performance
+    ensure_wg_conf_permissions
+    if wg_entry_client_subnet_route_ok "10.10.10.2" "$client_if"; then
+      log "Standalone entry routing applied (${client_cidr} → ${client_if}, NAT via WAN)"
+    else
+      warn "Entry: ip route get 10.10.10.2 still does not use ${client_if} — provider may inject a conflicting route; try: ip route replace ${client_cidr} dev ${client_if} scope link"
+    fi
+    wg_sync_all_client_modes
+    return 0
+  fi
+
+  # Two-hop: conf/hooks first, then tunnel up, then live routes.
+  strip_wrong_entry_tunnel_peer_block "/etc/wireguard/${tunnel_if}.conf"
+  strip_rp_filter_from_wg_postup "/etc/wireguard/${tunnel_if}.conf"
+  fix_entry_tunnel_postup_in_conf "/etc/wireguard/${tunnel_if}.conf"
+  # Tear down standalone subnet NAT before enabling tunnel anti-leak path.
+  wg_entry_standalone_forward_rules_down "$client_if" "$client_cidr"
 
   ensure_wg_quick_running "$tunnel_if"
-  ensure_wg_quick_running "$client_if"
 
   wg_apply_ip_forward
   wg_entry_docker_forward_rules_up "$client_if" "$tunnel_if"
@@ -1686,8 +1802,9 @@ wg_validate_exit_install_env() {
 wg_validate_entry_install_env() {
   # Accept install-time vars (WG_ENTRY_PUBLIC_IP, …) or runtime entry-server.env
   # (WG_ENDPOINT, WG_EXIT_IP) / wg-endpoint / wg-tunnel.conf.
+  # Exit is optional: omit both WG_EXIT_* for standalone (direct-only) entry.
   local entry_ip exit_ip exit_pub exit_port client_port cidr server_mtu client_mtu
-  local ep
+  local ep standalone=0
 
   entry_ip="${WG_ENTRY_PUBLIC_IP:-${ENTRY_IP:-}}"
   if [[ -z "$entry_ip" && -n "${WG_ENDPOINT:-${WG_DEFAULT_ENDPOINT:-}}" ]]; then
@@ -1698,18 +1815,8 @@ wg_validate_entry_install_env() {
     entry_ip="$(tr -d '[:space:]' </etc/wireguard/wg-endpoint | cut -d: -f1)"
   fi
 
-  exit_ip="${WG_EXIT_PUBLIC_IP:-${EXIT_IP:-${WG_EXIT_IP:-}}}"
-  exit_pub="${WG_EXIT_TUNNEL_PUB:-${EXIT_TUNNEL_PUB:-}}"
-  if [[ -z "$exit_pub" && -f /etc/wireguard/wg-tunnel.conf ]]; then
-    exit_pub="$(awk '
-      /^\[Peer\]/ { in_peer=1; next }
-      in_peer && /^PublicKey[[:space:]]*=/ {
-        sub(/^[^=]*=[[:space:]]*/, "")
-        print
-        exit
-      }
-    ' /etc/wireguard/wg-tunnel.conf)"
-  fi
+  exit_ip="$(wg_entry_resolve_exit_ip)"
+  exit_pub="$(wg_entry_resolve_exit_pub)"
 
   exit_port="${WG_EXIT_TUNNEL_PORT:-51821}"
   client_port="${WG_CLIENT_PORT:-}"
@@ -1734,23 +1841,33 @@ wg_validate_entry_install_env() {
   wg_is_ipv4 "$entry_ip" || die "Invalid entry public IP: ${entry_ip}"
   _is_public_ipv4 "$entry_ip" || warn "Entry public IP ${entry_ip} looks private — clients may not reach it"
 
-  [[ -n "$exit_ip" ]] || die "Exit public IP missing (set WG_EXIT_PUBLIC_IP or WG_EXIT_IP)"
-  wg_is_ipv4 "$exit_ip" || die "Invalid exit public IP: ${exit_ip}"
+  if [[ "${WG_ENTRY_MODE:-}" == "standalone" ]] || { [[ -z "$exit_ip" && -z "$exit_pub" ]]; }; then
+    standalone=1
+  fi
+  if [[ "$standalone" -eq 0 ]]; then
+    [[ -n "$exit_ip" ]] || die "Exit public IP missing (set WG_EXIT_PUBLIC_IP or WG_EXIT_IP), or omit both exit IP and pubkey for standalone"
+    [[ -n "$exit_pub" ]] || die "Exit tunnel pubkey missing (set WG_EXIT_TUNNEL_PUB), or omit both exit IP and pubkey for standalone"
+    wg_is_ipv4 "$exit_ip" || die "Invalid exit public IP: ${exit_ip}"
+    wg_is_wg_pubkey "$exit_pub" || die "Exit tunnel pubkey does not look like a WireGuard public key"
+    wg_is_port "$exit_port" || die "Invalid WG_EXIT_TUNNEL_PORT: ${exit_port}"
+  elif [[ -n "$exit_ip" || -n "$exit_pub" ]]; then
+    die "Partial exit config — set both WG_EXIT_PUBLIC_IP and WG_EXIT_TUNNEL_PUB, or leave both empty for standalone"
+  fi
 
-  [[ -n "$exit_pub" ]] || die "Exit tunnel pubkey missing (set WG_EXIT_TUNNEL_PUB or Peer PublicKey in wg-tunnel.conf)"
-  wg_is_wg_pubkey "$exit_pub" || die "Exit tunnel pubkey does not look like a WireGuard public key"
-
-  wg_is_port "$exit_port" || die "Invalid WG_EXIT_TUNNEL_PORT: ${exit_port}"
   wg_is_port "$client_port" || die "Invalid client ListenPort: ${client_port}"
   wg_is_cidr_v4 "$cidr" || die "Invalid WG_CLIENT_CIDR: ${cidr}"
   wg_validate_mtu "$server_mtu" "WG_SERVER_MTU"
-  wg_validate_mtu "$client_mtu" "WG_CLIENT_MTU_TWOHOP"
-
-  if [[ "$client_mtu" -gt "$server_mtu" ]]; then
-    die "WG_CLIENT_MTU_TWOHOP (${client_mtu}) must be <= WG_SERVER_MTU (${server_mtu})"
-  fi
-  if [[ "$client_mtu" -gt 1420 ]]; then
-    warn "Two-hop client MTU ${client_mtu} is high — expect fragmentation on 1500 underlays"
+  if [[ "$standalone" -eq 0 ]]; then
+    wg_validate_mtu "$client_mtu" "WG_CLIENT_MTU_TWOHOP"
+    if [[ "$client_mtu" -gt "$server_mtu" ]]; then
+      die "WG_CLIENT_MTU_TWOHOP (${client_mtu}) must be <= WG_SERVER_MTU (${server_mtu})"
+    fi
+    if [[ "$client_mtu" -gt 1420 ]]; then
+      warn "Two-hop client MTU ${client_mtu} is high — expect fragmentation on 1500 underlays"
+    fi
+  else
+    local direct_mtu="${WG_CLIENT_MTU_DIRECT:-${WG_CLIENT_MTU:-1420}}"
+    wg_validate_mtu "$direct_mtu" "WG_CLIENT_MTU_DIRECT"
   fi
 
   if [[ -n "${WG_DNS:-}" ]]; then
