@@ -31,17 +31,19 @@ Native WireGuard CLI remains `wg` (example: `sudo wg show`).
 
 | What | Source | Notes |
 |------|--------|--------|
-| `wg-ops` bootstrap + `pull` / `update` scripts | jsDelivr **pinned tag** (e.g. `@v1.0.22`) | Avoid `@latest` — jsDelivr purge is often throttled and can stick on an old release |
+| `wg-ops` bootstrap + `pull` / `update` scripts | jsDelivr `@latest`, or `WG_VERSION` / `WG_RAW_BASE` if set | Version resolves from env or the latest GitHub release tag |
 | Panel code (`update-panels`, entry install) | Git branch `main` | Clone into `/opt/wg-src` (GitHub or `gh-proxy.com`) |
 
-Default CDN base (bump with each release in `deploy/repo.conf`):
+Default CDN base (latest release):
 
-`https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22`
+`https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest`
 
-If `wg-ops update` still shows an old version (stuck `@latest` cache), force one pull:
+Pin a specific release when needed:
 
 ```bash
-sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22' wg-ops pull
+sudo WG_VERSION=1.0.23 wg-ops pull
+# or
+sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.23' wg-ops pull
 ```
 
 ---
@@ -344,29 +346,29 @@ Runtime file on entry: `/etc/wireguard/entry-server.env`
 | `WG_ENABLE_MSS_CLAMP` | `1` | MSS clamp service |
 
 Full list: `/opt/wg-ops/config.env.example`  
-or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22/deploy/config.env.example
+or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/config.env.example
 
 ---
 
 ## Releases and CDN tags
 
-Install and `wg-ops pull` / `update` use a **pinned** jsDelivr tag (see `GITHUB_CDN_REF` in `deploy/repo.conf`), not `@latest`. Git clone for panels still uses branch `main`.
+Install and `wg-ops pull` / `update` resolve **`WG_VERSION`** from the environment, or from the **latest GitHub release tag** when unset (CDN `@latest` as fallback). Panel git clone still uses branch `main`.
 
 For each release:
 
-1. Bump `GITHUB_CDN_REF` / `GITHUB_RAW_BASE` / docs URLs to the new tag (e.g. `v1.0.22`).
-2. Commit, then `git tag` / `git push` that same version.
-3. On servers still stuck on an old `@latest` cache, pull once with an explicit base:
+1. Commit on `main`, then `git tag` / `git push` the new semver (e.g. `v1.0.23`).
+2. No version bump is required inside the repo — servers pick up the new tag automatically.
+3. To pin a server to a specific release:
 
 ```bash
-sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22' wg-ops pull
+sudo WG_VERSION=1.0.23 wg-ops pull
 sudo wg-ops update
 ```
 
-Optional purge (often throttled):
+Optional jsDelivr purge after a bad cache:
 
 ```bash
-curl 'https://purge.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22/deploy/wg-ops'
+curl 'https://purge.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/wg-ops'
 ```
 
 Or use the [jsDelivr purge tool](https://www.jsdelivr.com/tools/purge).

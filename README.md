@@ -24,13 +24,13 @@ Fresh install on clean servers. Full walkthrough: **[docs/DEPLOYMENT.md](docs/DE
 On **each** server:
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22/deploy/wg-ops \
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/wg-ops \
   -o /usr/local/bin/wg-ops && sudo chmod 755 /usr/local/bin/wg-ops
 sudo wg-ops pull
 ```
 
-Scripts are served from a **pinned** jsDelivr tag (`@v1.0.22`). If update is stuck on an old release, force:  
-`sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22' wg-ops pull`
+Scripts follow the **latest** GitHub release (`@latest`), or pin with `WG_VERSION` / `WG_RAW_BASE`:  
+`sudo WG_VERSION=1.0.23 wg-ops pull`
 
 ### Two-hop (entry + exit)
 

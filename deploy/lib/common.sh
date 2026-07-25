@@ -11,15 +11,84 @@ fi
 GITHUB_OWNER="${GITHUB_OWNER:-ahmadfarzad-amiri}"
 GITHUB_REPO_NAME="${GITHUB_REPO_NAME:-wg}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
-GITHUB_CDN_REF="${GITHUB_CDN_REF:-v1.0.22}"
 GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/${GITHUB_OWNER}/${GITHUB_REPO_NAME}.git}"
-# jsDelivr CDN mirrors GitHub and works where raw.githubusercontent.com is blocked (e.g. Iran).
-# Pin GITHUB_CDN_REF to a semver tag (not @latest) — jsDelivr @latest purge is often throttled.
-GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/${GITHUB_OWNER}/${GITHUB_REPO_NAME}@${GITHUB_CDN_REF}}"
+# WG_VERSION / GITHUB_CDN_REF / GITHUB_RAW_BASE: from env, or resolve_wg_version (GitHub latest).
 
 log() { printf '[wg-deploy] %s\n' "$*"; }
 warn() { printf '[wg-deploy] WARN: %s\n' "$*" >&2; }
 die() { printf '[wg-deploy] ERROR: %s\n' "$*" >&2; exit 1; }
+
+# Normalize tag/version to semver without leading v.
+wg_strip_v() {
+  local v="${1:-}"
+  v="${v#v}"
+  v="${v#V}"
+  printf '%s' "$v"
+}
+
+# Resolve WG_VERSION from env or latest GitHub release/tag (jsDelivr @latest as last resort).
+# Sets WG_VERSION, GITHUB_CDN_REF, and GITHUB_RAW_BASE (unless already set).
+resolve_wg_version() {
+  local owner="${GITHUB_OWNER:-ahmadfarzad-amiri}"
+  local repo="${GITHUB_REPO_NAME:-wg}"
+  local tag="" hdr=""
+
+  if [[ -n "${WG_RAW_BASE:-}" && -z "${GITHUB_RAW_BASE:-}" ]]; then
+    GITHUB_RAW_BASE="$WG_RAW_BASE"
+  fi
+
+  if [[ -n "${WG_VERSION:-}" ]]; then
+    WG_VERSION="$(wg_strip_v "$WG_VERSION")"
+  elif [[ -n "${GITHUB_CDN_REF:-}" && "$GITHUB_CDN_REF" != "latest" ]]; then
+    WG_VERSION="$(wg_strip_v "$GITHUB_CDN_REF")"
+  else
+    tag="$(curl -fsSL --connect-timeout 5 --max-time 12 \
+      "https://api.github.com/repos/${owner}/${repo}/releases/latest" 2>/dev/null \
+      | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 || true)"
+    if [[ -z "$tag" ]]; then
+      tag="$(curl -fsSL --connect-timeout 5 --max-time 12 \
+        "https://api.github.com/repos/${owner}/${repo}/tags?per_page=1" 2>/dev/null \
+        | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 || true)"
+    fi
+    if [[ -z "$tag" ]]; then
+      hdr="$(curl -fsSI --connect-timeout 5 --max-time 12 \
+        "https://cdn.jsdelivr.net/gh/${owner}/${repo}@latest/deploy/repo.conf" 2>/dev/null \
+        | tr -d '\r' || true)"
+      tag="$(printf '%s\n' "$hdr" | awk -F': ' 'tolower($1)=="x-jsd-version"{print $2; exit}')"
+    fi
+    WG_VERSION="$(wg_strip_v "$tag")"
+  fi
+
+  if [[ -n "${WG_VERSION:-}" ]]; then
+    GITHUB_CDN_REF="${GITHUB_CDN_REF:-v${WG_VERSION}}"
+    [[ "$GITHUB_CDN_REF" == "latest" ]] && GITHUB_CDN_REF="v${WG_VERSION}"
+  else
+    warn "Could not resolve WG_VERSION from env or GitHub — using CDN @latest"
+    GITHUB_CDN_REF="${GITHUB_CDN_REF:-latest}"
+  fi
+
+  if [[ -z "${GITHUB_RAW_BASE:-}" ]]; then
+    GITHUB_RAW_BASE="https://cdn.jsdelivr.net/gh/${owner}/${repo}@${GITHUB_CDN_REF}"
+  fi
+  export WG_VERSION GITHUB_CDN_REF GITHUB_RAW_BASE
+}
+
+# Ensure version + CDN base are set (no-op if WG_VERSION and GITHUB_RAW_BASE already set).
+ensure_wg_version() {
+  if [[ -n "${WG_VERSION:-}" && -n "${GITHUB_RAW_BASE:-}${WG_RAW_BASE:-}" ]]; then
+    WG_VERSION="$(wg_strip_v "$WG_VERSION")"
+    if [[ -n "${WG_RAW_BASE:-}" && -z "${GITHUB_RAW_BASE:-}" ]]; then
+      GITHUB_RAW_BASE="$WG_RAW_BASE"
+    fi
+    GITHUB_CDN_REF="${GITHUB_CDN_REF:-v${WG_VERSION}}"
+    export WG_VERSION GITHUB_CDN_REF GITHUB_RAW_BASE
+    return 0
+  fi
+  resolve_wg_version
+}
+
+# Resolve once when this library is sourced (no network if WG_VERSION already set).
+ensure_wg_version
 
 require_root() {
   [[ "$(id -u)" -eq 0 ]] || die "Run as root: sudo bash $0"
@@ -475,11 +544,20 @@ fetch_deploy_helper_scripts() {
 source_deploy_lib() {
   local script_ref="${1:-}"
   # jsDelivr works where raw.githubusercontent.com is blocked (Iran, etc.)
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22}"
+  if [[ -z "${GITHUB_RAW_BASE:-}" ]]; then
+    if [[ -n "${WG_RAW_BASE:-}" ]]; then
+      GITHUB_RAW_BASE="$WG_RAW_BASE"
+    elif [[ -n "${WG_VERSION:-}" ]]; then
+      GITHUB_RAW_BASE="https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v${WG_VERSION#v}"
+    else
+      GITHUB_RAW_BASE="https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest"
+    fi
+  fi
   if [[ -n "$script_ref" && -f "$(dirname "$script_ref")/lib/common.sh" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "$script_ref")" && pwd)"
     # shellcheck source=lib/common.sh
     source "$SCRIPT_DIR/lib/common.sh"
+    ensure_wg_version
     return 0
   fi
   _BOOT="$(mktemp -d)"
@@ -489,6 +567,7 @@ source_deploy_lib() {
   SCRIPT_DIR="$_BOOT/deploy"
   # shellcheck source=lib/common.sh
   source "$SCRIPT_DIR/lib/common.sh"
+  ensure_wg_version
 }
 
 _git_clone_with_fallback() {
@@ -1441,6 +1520,22 @@ write_env_file() {
   done
   chmod 600 "$path"
   log "Wrote $path"
+}
+
+# Upsert KEY=value in an env file (shell-quoted like write_env_file).
+ensure_env_kv() {
+  local path="$1" key="$2" value="$3" line tmp
+  [[ -f "$path" ]] || die "Missing env file: $path"
+  line="$(printf '%s=%q' "$key" "$value")"
+  tmp="$(mktemp)"
+  if grep -qE "^${key}=" "$path" 2>/dev/null; then
+    grep -vE "^${key}=" "$path" > "$tmp" || true
+    printf '%s\n' "$line" >> "$tmp"
+    cat "$tmp" > "$path"
+  else
+    printf '%s\n' "$line" >> "$path"
+  fi
+  rm -f "$tmp"
 }
 
 backup_wg_configs() {

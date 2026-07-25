@@ -6,7 +6,7 @@
 #   sudo wg-ops styles --fix    # check, sync panels, restart
 #
 # One-liner from GitHub:
-#   curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22/deploy/check-sync-panel-styles.sh -o /tmp/check-panel-styles.sh
+#   curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest/deploy/check-sync-panel-styles.sh -o /tmp/check-panel-styles.sh
 #   sudo bash /tmp/check-panel-styles.sh --fix
 #
 # Env:
@@ -16,7 +16,15 @@ set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22}"
+  if [[ -z "${GITHUB_RAW_BASE:-}" ]]; then
+    if [[ -n "${WG_RAW_BASE:-}" ]]; then
+      GITHUB_RAW_BASE="$WG_RAW_BASE"
+    elif [[ -n "${WG_VERSION:-}" ]]; then
+      GITHUB_RAW_BASE="https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v${WG_VERSION#v}"
+    else
+      GITHUB_RAW_BASE="https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest"
+    fi
+  fi
   _WG_INSTALLER="$(mktemp /tmp/wg-check-panel-styles-XXXXXX.sh)"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/check-sync-panel-styles.sh" -o "$_WG_INSTALLER"
   chmod 700 "$_WG_INSTALLER"
@@ -34,7 +42,15 @@ if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22}"
+  if [[ -z "${GITHUB_RAW_BASE:-}" ]]; then
+    if [[ -n "${WG_RAW_BASE:-}" ]]; then
+      GITHUB_RAW_BASE="$WG_RAW_BASE"
+    elif [[ -n "${WG_VERSION:-}" ]]; then
+      GITHUB_RAW_BASE="https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v${WG_VERSION#v}"
+    else
+      GITHUB_RAW_BASE="https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest"
+    fi
+  fi
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"
@@ -69,7 +85,6 @@ CLIENT_CSS="${INSTALL_DIR}/client-panel/static/css/panel.css"
 ADMIN_CSS="${INSTALL_DIR}/admin-panel/static/css/admin.css"
 CLIENT_LAYOUT="${INSTALL_DIR}/client-panel/client_panel/components/layout.py"
 CLIENT_SETTINGS_VIEW="${INSTALL_DIR}/client-panel/client_panel/views/settings.py"
-CLIENT_SETTINGS="${INSTALL_DIR}/client-panel/client_panel/config/settings.py"
 PANEL_PORT="${WG_PANEL_PORT:-8088}"
 ADMIN_PORT="${WG_ADMIN_PORT:-8090}"
 
@@ -179,19 +194,22 @@ check_client_static_cache() {
 }
 
 check_client_version() {
-  if [[ -f "$CLIENT_SETTINGS" ]]; then
-    local ver
-    ver="$(grep -E '^VERSION[[:space:]]*=' "$CLIENT_SETTINGS" 2>/dev/null | head -1 | sed -E "s/.*[\"']([^\"']+)[\"'].*/\1/")"
-    log "Client panel VERSION (cache bust): ${ver:-unknown}"
-    if [[ "${ver:-}" == "1.0.3" ]]; then
-      check_ok "client VERSION ${ver} (cache bust)"
-    elif [[ "${ver:-}" == "1.0.0" || "${ver:-}" == "1.0.1" || "${ver:-}" == "1.0.2" ]]; then
-      check_warn "client VERSION is ${ver} (run --fix to bump to 1.0.3)"
+  local want="${WG_VERSION}"
+  local env_ver=""
+  if [[ -f /etc/wireguard/entry-server.env ]]; then
+    env_ver="$(unset WG_VERSION; # shellcheck disable=SC1091
+      . /etc/wireguard/entry-server.env >/dev/null 2>&1
+      printf '%s' "${WG_VERSION:-}")"
+  fi
+  log "Expected WG_VERSION (cache bust): ${want}"
+  if [[ -n "$env_ver" ]]; then
+    if [[ "$env_ver" == "$want" ]]; then
+      check_ok "entry-server.env WG_VERSION=${env_ver}"
     else
-      check_warn "client VERSION is ${ver:-?} (expected 1.0.3)"
+      check_warn "entry-server.env WG_VERSION=${env_ver} (expected ${want}; run --fix)"
     fi
   else
-    check_warn "client settings.py missing"
+    check_warn "entry-server.env missing WG_VERSION (run --fix to set ${want})"
   fi
 }
 
@@ -285,24 +303,13 @@ if [[ "$DO_FIX" -eq 0 ]]; then
   exit 1
 fi
 
-bump_client_panel_version() {
-  local target="1.0.3"
-  local bumped=0
-  local f
-  for f in \
-    "$INSTALL_DIR/client-panel/client_panel/config/settings.py" \
-    "$REPO_DIR/client-panel/client_panel/config/settings.py"; do
-    [[ -f "$f" ]] || continue
-    if ! grep -qE "^VERSION = \"${target}\"" "$f" 2>/dev/null; then
-      sed -i "s/^VERSION = .*/VERSION = \"${target}\"/" "$f"
-      bumped=1
-    fi
-  done
-  if [[ "$bumped" -eq 1 ]]; then
-    log "Set client panel VERSION to ${target} (forces new ?v= in browser)"
-    systemctl restart wg-panel 2>/dev/null || true
-    sleep 1
-  fi
+ensure_panel_version_env() {
+  local env_file="/etc/wireguard/entry-server.env"
+  [[ -f "$env_file" ]] || return 0
+  ensure_env_kv "$env_file" WG_VERSION "$WG_VERSION"
+  log "Set WG_VERSION=${WG_VERSION} in ${env_file} (panel cache bust)"
+  systemctl restart wg-panel wg-admin-panel 2>/dev/null || true
+  sleep 1
 }
 
 log "=== Applying panel sync (--fix) ==="
@@ -311,7 +318,7 @@ if [[ ! -f "$SCRIPT_DIR/update-panels.sh" ]]; then
 fi
 export WG_REPO_DIR="$REPO_DIR"
 bash "$SCRIPT_DIR/update-panels.sh"
-bump_client_panel_version
+ensure_panel_version_env
 echo ""
 log "Re-running checks after sync..."
 run_all_checks
@@ -320,7 +327,7 @@ if [[ "$fail" -eq 0 ]]; then
   log "Panel UI sync complete."
   if [[ "$warn_count" -gt 0 ]]; then
     log "Warnings are OK — hard refresh the client panel: Ctrl+Shift+R"
-    log "CSS URL should load as panel.css?v=1.0.3"
+    log "CSS URL should load as panel.css?v=${WG_VERSION}"
   else
     log "Hard refresh the client panel once: Ctrl+Shift+R"
   fi

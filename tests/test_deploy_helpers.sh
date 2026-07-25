@@ -3,6 +3,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Offline-friendly: pin version before sourcing deploy helpers (avoids GitHub network).
+export WG_VERSION="${WG_VERSION:-0.0.0-test}"
 # shellcheck source=../deploy/lib/common.sh
 source "$ROOT/deploy/lib/common.sh"
 
@@ -178,6 +180,24 @@ assert_ok "wg-ops help mentions update" bash -c "bash '$ROOT/deploy/wg-ops' help
 assert_ok "wg-ops help mentions uninstall" bash -c "bash '$ROOT/deploy/wg-ops' help | grep -q uninstall"
 assert_ok "wg-ops help mentions role detection" bash -c "bash '$ROOT/deploy/wg-ops' help | grep -q 'none'"
 assert_fail "wg-ops unknown command" bash "$ROOT/deploy/wg-ops" not-a-real-command
+assert_ok "wg-ops list-menu shows version" \
+  bash -c "WG_VERSION=0.0.0-test bash '$ROOT/deploy/wg-ops' list-menu none | grep -q 'Version: 0.0.0-test'"
+assert_ok "WG_VERSION env drives CDN ref without hardcode" \
+  bash -c '
+    unset GITHUB_CDN_REF GITHUB_RAW_BASE
+    WG_VERSION=9.9.9
+    # shellcheck source=/dev/null
+    source "'"$ROOT"'/deploy/lib/common.sh"
+    test "$WG_VERSION" = "9.9.9"
+    test "$GITHUB_CDN_REF" = "v9.9.9"
+    [[ "$GITHUB_RAW_BASE" == *"/wg@v9.9.9" ]]
+    grep -q "resolve_version" "'"$ROOT"'/client-panel/client_panel/config/settings.py"
+    grep -q "resolve_version" "'"$ROOT"'/admin-panel/admin_panel/config/settings.py"
+    ! grep -qE "VERSION = .*[0-9]+\.[0-9]+\.[0-9]+" "'"$ROOT"'/client-panel/client_panel/config/settings.py"
+    ! grep -qE "VERSION = .*[0-9]+\.[0-9]+\.[0-9]+" "'"$ROOT"'/admin-panel/admin_panel/config/settings.py"
+  '
+assert_ok "no hardcoded semver pin in repo.conf" \
+  bash -c "! grep -qE '[0-9]+\.[0-9]+\.[0-9]+' '$ROOT/deploy/repo.conf'"
 assert_ok "wg-ops list-menu none shows install exit" \
   bash -c "bash '$ROOT/deploy/wg-ops' list-menu none | grep -q 'Install exit server'"
 assert_ok "wg-ops list-menu none shows install entry" \

@@ -2,6 +2,8 @@
 import os
 from pathlib import Path
 
+from wg_common.version import resolve_version
+
 ROOT = Path(__file__).resolve().parents[2]
 
 _DATA = os.environ.get("WG_DATA_DIR", "/etc/wireguard")
@@ -22,7 +24,7 @@ HOST = os.environ.get("WG_PANEL_HOST", "0.0.0.0")
 PORT = int(os.environ.get("WG_PANEL_PORT", "8088"))
 SESSION_DAYS = 14
 BRAND = os.environ.get("WG_PANEL_BRAND", "VPN Access")
-VERSION = "1.0.3"
+VERSION = resolve_version()  # WG_VERSION env, else latest GitHub tag
 ROTATE_KEYS_CMD = os.environ.get(
     "WG_ROTATE_KEYS_CMD", os.path.join(_BIN, "wg-client-rotate-keys")
 )

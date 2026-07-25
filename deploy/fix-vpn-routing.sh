@@ -10,7 +10,15 @@ set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22}"
+  if [[ -z "${GITHUB_RAW_BASE:-}" ]]; then
+    if [[ -n "${WG_RAW_BASE:-}" ]]; then
+      GITHUB_RAW_BASE="$WG_RAW_BASE"
+    elif [[ -n "${WG_VERSION:-}" ]]; then
+      GITHUB_RAW_BASE="https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v${WG_VERSION#v}"
+    else
+      GITHUB_RAW_BASE="https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest"
+    fi
+  fi
   _WG_INSTALLER="$(mktemp /tmp/wg-fix-routing-XXXXXX.sh)"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/fix-vpn-routing.sh" -o "$_WG_INSTALLER"
   chmod 700 "$_WG_INSTALLER"
@@ -28,7 +36,15 @@ if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22}"
+  if [[ -z "${GITHUB_RAW_BASE:-}" ]]; then
+    if [[ -n "${WG_RAW_BASE:-}" ]]; then
+      GITHUB_RAW_BASE="$WG_RAW_BASE"
+    elif [[ -n "${WG_VERSION:-}" ]]; then
+      GITHUB_RAW_BASE="https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v${WG_VERSION#v}"
+    else
+      GITHUB_RAW_BASE="https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@latest"
+    fi
+  fi
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"

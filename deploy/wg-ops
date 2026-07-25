@@ -10,12 +10,59 @@ set -euo pipefail
 
 OPS_NAME="wg-ops"
 OPS_DIR="${WG_OPS_DIR:-/opt/wg-ops}"
-RAW_BASE="${WG_RAW_BASE:-${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22}}"
 BIN_PATH="${WG_OPS_BIN:-/usr/local/bin/wg-ops}"
 
 log() { printf '[%s] %s\n' "$OPS_NAME" "$*"; }
 warn() { printf '[%s] WARN: %s\n' "$OPS_NAME" "$*" >&2; }
 die() { printf '[%s] ERROR: %s\n' "$OPS_NAME" "$*" >&2; exit 1; }
+
+wg_strip_v() {
+  local v="${1:-}"
+  v="${v#v}"
+  v="${v#V}"
+  printf '%s' "$v"
+}
+
+# WG_VERSION from env, else latest GitHub release/tag (jsDelivr @latest as last resort).
+resolve_wg_version() {
+  local owner="${GITHUB_OWNER:-ahmadfarzad-amiri}"
+  local repo="${GITHUB_REPO_NAME:-wg}"
+  local tag="" hdr=""
+
+  if [[ -n "${WG_VERSION:-}" ]]; then
+    WG_VERSION="$(wg_strip_v "$WG_VERSION")"
+  else
+    tag="$(curl -fsSL --connect-timeout 5 --max-time 12 \
+      "https://api.github.com/repos/${owner}/${repo}/releases/latest" 2>/dev/null \
+      | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 || true)"
+    if [[ -z "$tag" ]]; then
+      tag="$(curl -fsSL --connect-timeout 5 --max-time 12 \
+        "https://api.github.com/repos/${owner}/${repo}/tags?per_page=1" 2>/dev/null \
+        | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 || true)"
+    fi
+    if [[ -z "$tag" ]]; then
+      hdr="$(curl -fsSI --connect-timeout 5 --max-time 12 \
+        "https://cdn.jsdelivr.net/gh/${owner}/${repo}@latest/deploy/wg-ops" 2>/dev/null \
+        | tr -d '\r' || true)"
+      tag="$(printf '%s\n' "$hdr" | awk -F': ' 'tolower($1)=="x-jsd-version"{print $2; exit}')"
+    fi
+    WG_VERSION="$(wg_strip_v "$tag")"
+  fi
+
+  if [[ -n "${WG_RAW_BASE:-}" ]]; then
+    RAW_BASE="$WG_RAW_BASE"
+  elif [[ -n "${GITHUB_RAW_BASE:-}" ]]; then
+    RAW_BASE="$GITHUB_RAW_BASE"
+  elif [[ -n "${WG_VERSION:-}" ]]; then
+    RAW_BASE="https://cdn.jsdelivr.net/gh/${owner}/${repo}@v${WG_VERSION}"
+  else
+    warn "Could not resolve WG_VERSION — using CDN @latest"
+    RAW_BASE="https://cdn.jsdelivr.net/gh/${owner}/${repo}@latest"
+  fi
+  export WG_VERSION RAW_BASE
+}
+
+resolve_wg_version
 
 # Best-effort: report which semver jsDelivr resolved for this RAW_BASE (empty if not CDN).
 cdn_resolved_version() {
@@ -267,6 +314,7 @@ print_status_footer() {
       ;;
   esac
   echo "Scripts dir:    ${OPS_DIR}"
+  echo "Version:        ${WG_VERSION:-unknown}"
   [[ -x "$BIN_PATH" ]] && echo "CLI:            ${BIN_PATH}" || echo "CLI:            not installed"
 }
 
@@ -445,8 +493,9 @@ Usage:
   sudo $OPS_NAME <command> ...
 
 CDN / source:
-  Default script base: $RAW_BASE
-  Override: WG_RAW_BASE=https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.22
+  Default script base: ${RAW_BASE:-"(resolve on demand)"}
+  Version: ${WG_VERSION:-latest} (override: WG_VERSION=… or WG_RAW_BASE=…)
+  Unset WG_VERSION → use latest GitHub release tag
   Panel git clone still uses branch main (WG_GITHUB_BRANCH).
 
 Role detection (automatic):
@@ -967,9 +1016,11 @@ build_menu() {
 }
 
 print_menu_body() {
-  local i n=0 role
+  local i n=0 role ver
   role="$(detect_role)"
+  ver="${WG_VERSION:-unknown}"
   echo "  WG-OPS Management Script"
+  echo "  Version: ${ver}"
   echo "  Detected role: ${role}"
   echo "————————————————————————————————"
   for i in "${!MENU_ACTIONS[@]}"; do
@@ -988,6 +1039,15 @@ show_menu() {
   clear 2>/dev/null || true
   local os_id
   os_id="$(os_release_id)"
+  # Refresh version from pulled repo helpers when available.
+  if [[ -f "$OPS_DIR/lib/common.sh" ]]; then
+    # shellcheck source=/dev/null
+    source "$OPS_DIR/lib/common.sh"
+    ensure_wg_version
+    RAW_BASE="${GITHUB_RAW_BASE:-$RAW_BASE}"
+  else
+    resolve_wg_version
+  fi
   echo "The OS release is: ${os_id}"
   echo
   build_menu
@@ -999,6 +1059,7 @@ show_menu() {
 # Print role-filtered menu to stdout (for docs/tests; no clear/status).
 cmd_list_menu() {
   local role="${1:-}"
+  resolve_wg_version
   if [[ -n "$role" ]]; then
     export WG_OPS_ROLE_OVERRIDE="$role"
   fi

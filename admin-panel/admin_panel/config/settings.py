@@ -2,6 +2,8 @@
 import os
 from pathlib import Path
 
+from wg_common.version import resolve_version
+
 ROOT = Path(__file__).resolve().parents[2]
 
 _DATA = os.environ.get("WG_DATA_DIR", "/etc/wireguard")
@@ -26,7 +28,7 @@ STATIC_DIR = str(ROOT / "static")
 
 SESSION_HOURS = 24
 BRAND = os.environ.get("WG_ADMIN_BRAND", "VPN Access")
-VERSION = "1.0.0"
+VERSION = resolve_version()  # WG_VERSION env, else latest GitHub tag
 
 DEFAULT_DAYS = os.environ.get("WG_ADMIN_DEFAULT_DAYS", "30")
 DEFAULT_LIMIT = os.environ.get("WG_ADMIN_DEFAULT_LIMIT", "20G")
