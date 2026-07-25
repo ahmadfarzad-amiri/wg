@@ -363,10 +363,12 @@ class Handler(BaseHTTPRequestHandler):
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                 tmp_path = tmp.name
 
-            subprocess.check_call(
+            # check_call forwards kwargs to Popen (no input=); run() accepts stdin data.
+            subprocess.run(
                 ["qrencode", "-o", tmp_path, "-t", "PNG", "-s", "6", "--level=M"],
                 input=conf_data,
                 timeout=10,
+                check=True,
             )
             with open(tmp_path, "rb") as f:
                 png_data = f.read()
