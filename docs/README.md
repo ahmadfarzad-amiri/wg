@@ -7,7 +7,7 @@ Guides for **end users**, **administrators**, and **operators** running the two-
 | Guide | Audience | What it covers |
 |-------|----------|----------------|
 | [Architecture](ARCHITECTURE.md) | Everyone (reference) | Traffic path, panels, database schema, security |
-| [Fresh deployment](FRESH_DEPLOYMENT.md) | Operators | Clean entry/exit install and acceptance checklist |
+| [Deployment](DEPLOYMENT.md) | Operators | Clean entry/exit install, firewall, validate, uninstall |
 | [User guide](USER_GUIDE.md) | VPN users | Register, log in, connect, subscription links, connection test, support requests |
 | [Admin guide](ADMIN_GUIDE.md) | Panel administrators | Approve users, bulk create clients, handle requests, audit log, server tools |
 | [Operations guide](OPERATIONS.md) | Server operators | Install, validate, operate, troubleshoot, uninstall |
@@ -16,7 +16,7 @@ Guides for **end users**, **administrators**, and **operators** running the two-
 ## Quick links
 
 - **Repository:** [github.com/ahmadfarzad-amiri/wg](https://github.com/ahmadfarzad-amiri/wg)
-- **Server install:** [deploy/README-DEPLOY.md](../deploy/README-DEPLOY.md)
+- **Server install:** [DEPLOYMENT.md](DEPLOYMENT.md)
 - **Client panel code:** [client-panel/README.md](../client-panel/README.md)
 - **Admin panel code:** [admin-panel/README.md](../admin-panel/README.md)
 
