@@ -29,6 +29,7 @@ def body(clients, msg="", variant="info"):
   <p class="list-search-empty" data-list-search-empty hidden>{html.escape(t("empty.no_results"))}</p>
 </section>
 
+<div class="add-client-actions">
 <details class="add-client-details card">
   <summary><h3>{html.escape(t("clients.add_title"))}</h3></summary>
   <p class="hint add-client-intro">{html.escape(t("clients.add_intro"))}</p>
@@ -40,5 +41,6 @@ def body(clients, msg="", variant="info"):
   <p class="hint">{html.escape(t("clients.bulk_add_intro"))}</p>
   {bulk_add_client_form()}
 </details>
+</div>
 </div>
 """

@@ -697,9 +697,10 @@ body.modal-open{overflow:hidden}
 }
 
 .form-stack button[type="submit"]{
-  margin-top:28px;
-  width:auto;
+  margin-top:16px;
+  width:fit-content;
   max-width:100%;
+  align-self:flex-start;
 }
 
 /* Auth pages */
@@ -1518,10 +1519,14 @@ input[readonly]:not(.config-textarea){
   display:flex;flex-wrap:wrap;gap:10px;align-items:center;
 }
 .form-stack .btn-block,.form-stack button.btn-block[type="submit"]{
-  width:100%;max-width:none;display:flex;justify-content:center;
+  width:100%;max-width:none;align-self:stretch;display:flex;justify-content:center;
 }
+.form-stack > button:not(.btn-block),
+.form-stack > .btn:not(.btn-block),
 .form-stack button[type="submit"]:not(.btn-block){
-  width:auto;max-width:100%;
+  width:fit-content;
+  max-width:100%;
+  align-self:flex-start;
 }
 .field{display:flex;flex-direction:column;gap:6px;width:100%;margin-block-end:14px}
 .field-label{font-size:13px;color:var(--muted,#9aabbf);text-align:start}
@@ -1574,11 +1579,15 @@ input[readonly]:not(.config-textarea){
 @media (max-width:900px){
   .form-grid{grid-template-columns:1fr}
   .btn,.btn.dark,button.btn,.actions .btn,.config-actions .btn,.form-stack button[type="submit"]{
-    min-height:44px;width:100%;max-width:100%;
+    min-height:44px;
   }
   .btn-sm{min-height:44px}
   .btn-icon{width:44px;height:44px;min-width:44px}
   .btn-pair .btn,.btn-pair .btn-sm{width:100%}
+  .form-stack .btn-block,.form-stack button.btn-block[type="submit"],.btn-block{
+    width:100%;
+    max-width:100%;
+  }
   .list-controls{flex-direction:column;align-items:stretch}
   .field-input,.field-select,input,select,textarea{font-size:16px}
   .shell-header-bar{display:flex;padding-inline:4px}
