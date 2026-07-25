@@ -4,7 +4,7 @@ How to improve **two-hop** WireGuard throughput while keeping:
 
 `device → entry → exit → internet` (websites must see the **exit** IP).
 
-> See [Architecture](ARCHITECTURE.md) and [Fresh deployment](FRESH_DEPLOYMENT.md).
+> See [Architecture](ARCHITECTURE.md) and [Deployment](DEPLOYMENT.md).
 > Do **not** treat single-hop / direct mode as the production speed fix.
 
 ---
@@ -79,6 +79,6 @@ Actual Mbps depends on client ISP, VPS CPU, PPS limits, distance, loss, and shap
 ## Related
 
 - [Operations](OPERATIONS.md) — install and day-2 ops  
-- [Fresh deployment](FRESH_DEPLOYMENT.md) — clean servers  
+- [Deployment](DEPLOYMENT.md) — clean servers  
 - `sudo wg-ops diagnose` — HEALTHY/WARNING/FAILED  
 - `sudo wg-ops fix-routing` — repair current dataplane  

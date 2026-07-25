@@ -8,7 +8,14 @@ Step-by-step tasks for **server operators** who install and maintain the WireGua
 
 ## Operator CLI (`wg-ops`)
 
-Run with no arguments for an interactive menu:
+Run with no arguments for an interactive menu. The menu **auto-detects** this host’s role and only shows matching options:
+
+| Detected role | How | Menu shows |
+|---------------|-----|------------|
+| `none` | No `/etc/wireguard/*-server.env` | Install exit / entry, pull scripts |
+| `entry` | `entry-server.env` present | Entry update/uninstall, VPN ops, panels, admin, Xray, services |
+| `exit` | `exit-server.env` present | Exit update/uninstall, VPN ops, add entry peer, services |
+| `both` | Both env files present | Combined entry + exit options |
 
 ```bash
 curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/wg-ops \
@@ -17,16 +24,17 @@ curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/wg-ops \
 sudo wg-ops
 ```
 
-Menu covers **install**, **update**, and **delete**:
+Preview the filtered menu without opening it:
 
-| Action | Menu |
-|--------|------|
-| Install exit / entry | 1 / 2 |
-| Update all (scripts + panels + tools) | 3 |
-| Update scripts only | 4 |
-| Update panels only | 5 |
-| Uninstall server | 6 |
-| Uninstall Xray only | 7 |
+```bash
+sudo wg-ops list-menu          # current host role
+wg-ops list-menu none          # preview clean-server menu
+wg-ops list-menu entry
+wg-ops list-menu exit
+wg-ops list-menu both
+```
+
+Ops that take `--role` (test, diagnose, tune, …) use the detected role automatically — no prompt when the host is clearly entry or exit.
 
 Non-interactive examples:
 
@@ -64,7 +72,7 @@ sudo wg-ops pull
 
 Run on the **exit** VPS.
 
-Interactive: `sudo wg-ops` → **1**
+Interactive: on a **clean** exit VPS, `sudo wg-ops` → **Install exit server**
 
 Or non-interactive:
 
@@ -89,7 +97,7 @@ Optional environment variables:
 
 ## Step 2 — Install the entry server
 
-Interactive: `sudo wg-ops` → **2**
+Interactive: on a **clean** entry VPS, `sudo wg-ops` → **Install entry server**
 
 Or non-interactive:
 
@@ -425,4 +433,4 @@ sudo wg-ops fix-panels
 - [Architecture](ARCHITECTURE.md) — how the stack works
 - [Admin guide](ADMIN_GUIDE.md) — admin panel UI tasks
 - [Performance guide](PERFORMANCE.md) — speed tuning
-- [deploy/README-DEPLOY.md](../deploy/README-DEPLOY.md) — detailed script reference
+- [Deployment](DEPLOYMENT.md) — install, validate, uninstall

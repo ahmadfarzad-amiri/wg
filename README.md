@@ -24,7 +24,7 @@ sudo wg-ops pull
 
 ### 1. Exit VPS first
 
-Interactive menu: `sudo wg-ops` → **1. Install exit server**
+Interactive menu (clean server): `sudo wg-ops` → **Install exit server**
 
 Or non-interactive:
 
@@ -36,7 +36,7 @@ Save the **tunnel public key** and **exit IP:51821** printed at the end.
 
 ### 2. Entry VPS second
 
-Interactive menu: `sudo wg-ops` → **2. Install entry server**
+Interactive menu (clean server): `sudo wg-ops` → **Install entry server**
 
 Or non-interactive:
 
@@ -59,7 +59,7 @@ Save the **entry tunnel public key** printed at the end.
 sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
 ```
 
-Or menu → **27. Add entry peer**.
+Or on the **exit** host: `sudo wg-ops` → **Add entry peer**.
 
 ---
 
@@ -154,5 +154,4 @@ sudo wg-ops uninstall
 | **[docs/OPERATIONS.md](docs/OPERATIONS.md)** | Server install, ops, troubleshooting |
 | **[docs/PERFORMANCE.md](docs/PERFORMANCE.md)** | Two-hop throughput — MTU, BBR, hop measurements |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | How the two-hop stack works |
-| **[docs/FRESH_DEPLOYMENT.md](docs/FRESH_DEPLOYMENT.md)** | Clean entry/exit install procedure |
-| **[deploy/README-DEPLOY.md](deploy/README-DEPLOY.md)** | Detailed script reference |
+| **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** | Deployment guide (install, validate, uninstall) |

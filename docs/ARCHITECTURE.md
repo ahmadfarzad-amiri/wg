@@ -43,7 +43,7 @@ flowchart LR
 
 Default client subnet: `10.10.10.0/24` (override with `WG_CLIENT_CIDR`).
 
-Install steps: [FRESH_DEPLOYMENT.md](FRESH_DEPLOYMENT.md). Day-2 ops: [OPERATIONS.md](OPERATIONS.md).
+Install steps: [DEPLOYMENT.md](DEPLOYMENT.md). Day-2 ops: [OPERATIONS.md](OPERATIONS.md).
 
 ---
 

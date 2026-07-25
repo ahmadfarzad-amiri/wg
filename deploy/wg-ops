@@ -62,21 +62,77 @@ os_release_id() {
   fi
 }
 
+# Returns: none | entry | exit | both
 detect_role() {
-  if [[ -f /etc/wireguard/entry-server.env ]]; then
+  if [[ -n "${WG_OPS_ROLE_OVERRIDE:-}" ]]; then
+    printf '%s' "$WG_OPS_ROLE_OVERRIDE"
+    return 0
+  fi
+  local has_entry=0 has_exit=0
+  [[ -f /etc/wireguard/entry-server.env ]] && has_entry=1
+  [[ -f /etc/wireguard/exit-server.env ]] && has_exit=1
+  if (( has_entry && has_exit )); then
+    printf 'both'
+  elif (( has_entry )); then
     printf 'entry'
-  elif [[ -f /etc/wireguard/exit-server.env ]]; then
+  elif (( has_exit )); then
     printf 'exit'
   else
     printf 'none'
   fi
 }
 
+role_is_entry() {
+  local role
+  role="$(detect_role)"
+  [[ "$role" == "entry" || "$role" == "both" ]]
+}
+
+role_is_exit() {
+  local role
+  role="$(detect_role)"
+  [[ "$role" == "exit" || "$role" == "both" ]]
+}
+
+role_is_installed() {
+  local role
+  role="$(detect_role)"
+  [[ "$role" != "none" ]]
+}
+
 require_role() {
   local want="$1"
   local role
   role="$(detect_role)"
-  [[ "$role" == "$want" ]] || die "This action requires the ${want} server (detected: ${role})."
+  case "$want" in
+    entry)
+      role_is_entry || die "This action requires the entry server (detected: ${role})."
+      ;;
+    exit)
+      role_is_exit || die "This action requires the exit server (detected: ${role})."
+      ;;
+    installed)
+      role_is_installed || die "No install detected on this host (detected: ${role})."
+      ;;
+    none)
+      [[ "$role" == "none" ]] || die "This action requires a clean server (detected: ${role})."
+      ;;
+    *)
+      die "Internal error: unknown role requirement '${want}'"
+      ;;
+  esac
+}
+
+# Role flag for scripts that take --role entry|exit|auto|...
+auto_script_role() {
+  local fallback="${1:-auto}"
+  local role
+  role="$(detect_role)"
+  case "$role" in
+    entry|exit) printf '%s' "$role" ;;
+    both) printf 'auto' ;;
+    *) printf '%s' "$fallback" ;;
+  esac
 }
 
 unit_state() {
@@ -105,13 +161,16 @@ print_status_footer() {
   echo
   echo "Role detected: ${role}"
   case "$role" in
-    entry)
+    entry|both)
       echo "wg-clients:     $(unit_state 'wg-quick@wg-clients')  (autostart: $(unit_enabled 'wg-quick@wg-clients'))"
       echo "wg-tunnel:      $(unit_state 'wg-quick@wg-tunnel')  (autostart: $(unit_enabled 'wg-quick@wg-tunnel'))"
       echo "wg-panel:       $(unit_state wg-panel)  (autostart: $(unit_enabled wg-panel))"
       echo "wg-admin-panel: $(unit_state wg-admin-panel)  (autostart: $(unit_enabled wg-admin-panel))"
       if systemctl cat xray.service >/dev/null 2>&1; then
         echo "xray:           $(unit_state xray)  (autostart: $(unit_enabled xray))"
+      fi
+      if [[ "$role" == "both" ]]; then
+        echo "(also exit-server.env present — combined entry+exit host)"
       fi
       ;;
     exit)
@@ -134,8 +193,11 @@ ask_role() {
   local default="${1:-auto}"
   local detected choice=""
   detected="$(detect_role)"
-  if [[ "$default" == "auto" && "$detected" != "none" ]]; then
-    default="$detected"
+  if [[ "$default" == "auto" ]]; then
+    case "$detected" in
+      entry|exit) default="$detected" ;;
+      both) default="auto" ;;
+    esac
   fi
   read -r -p "Role [${default}]: " choice || true
   choice="${choice:-$default}"
@@ -239,10 +301,15 @@ cmd_update_all() {
   log "=== Update all (${role}) ==="
   cmd_pull
   case "$role" in
-    entry)
+    entry|both)
       invoke_script update-panels.sh
       if ask_yes "Apply routing/performance repair now?"; then
-        invoke_script tune-vpn-performance.sh --role entry
+        if [[ "$role" == "both" ]]; then
+          invoke_script tune-vpn-performance.sh --role entry
+          invoke_script tune-vpn-performance.sh --role exit
+        else
+          invoke_script tune-vpn-performance.sh --role entry
+        fi
       fi
       ;;
     exit)
@@ -265,21 +332,30 @@ CLI:     ${BIN_PATH}
 Role:    $(detect_role)
 
 CLI commands:
-  menu, pull, update, update-panels, install-entry, install-exit,
+  menu, list-menu, pull, update, update-panels, install-entry, install-exit,
   uninstall, uninstall-xray, test, diagnose, tune, validate, fix-routing,
   measure, backup, open-ports, start, stop, restart, status, logs,
   change-entry, change-exit, add-peer, set-admin-pass, show-admin,
   install-xray, styles, fix-panels, run <script> [...]
+
+Interactive menu filters options by detected role: none | entry | exit | both.
 EOF
 }
 
 cmd_help() {
   cat <<EOF
 Usage:
-  sudo $OPS_NAME                 Interactive menu
+  sudo $OPS_NAME                 Interactive menu (role-aware)
   sudo $OPS_NAME menu
+  sudo $OPS_NAME list-menu       Print menu for current role (no prompts)
   sudo $OPS_NAME update          Pull scripts + update panels/tools
   sudo $OPS_NAME <command> ...
+
+Role detection (automatic):
+  none   — clean server (install options)
+  entry  — /etc/wireguard/entry-server.env
+  exit   — /etc/wireguard/exit-server.env
+  both   — both env files present
 
 Install / update / delete:
   pull, self-update, update, update-panels
@@ -381,7 +457,7 @@ run_install_exit() {
   require_root
   ensure_ops_ready
   if [[ "$(detect_role)" != "none" ]]; then
-    die "Existing install detected. Uninstall first (menu 6 / sudo wg-ops uninstall), then install."
+    die "Existing install detected. Uninstall first (sudo wg-ops uninstall), then install."
   fi
   # Interactive when no public IP set; otherwise honor env for non-interactive CLI installs.
   if [[ -z "${WG_INSTALL_INTERACTIVE:-}" ]]; then
@@ -398,7 +474,7 @@ run_install_entry() {
   require_root
   ensure_ops_ready
   if [[ "$(detect_role)" != "none" ]]; then
-    die "Existing install detected. Uninstall first (menu 6 / sudo wg-ops uninstall), then install."
+    die "Existing install detected. Uninstall first (sudo wg-ops uninstall), then install."
   fi
   if [[ -z "${WG_INSTALL_INTERACTIVE:-}" ]]; then
     if [[ -n "${WG_EXIT_PUBLIC_IP:-}" && -n "${WG_EXIT_TUNNEL_PUB:-}" && -n "${WG_ADMIN_PASS:-}${WG_ADMIN_PASS_FILE:-}" ]]; then
@@ -440,7 +516,7 @@ svc_start() {
   local role
   role="$(detect_role)"
   case "$role" in
-    entry)
+    entry|both)
       systemctl start 'wg-quick@wg-clients' 'wg-quick@wg-tunnel' wg-panel wg-admin-panel 2>/dev/null || true
       systemctl start wg-mss-clamp.service 2>/dev/null || true
       systemctl start xray 2>/dev/null || true
@@ -459,7 +535,7 @@ svc_stop() {
   local role
   role="$(detect_role)"
   case "$role" in
-    entry)
+    entry|both)
       systemctl stop wg-panel wg-admin-panel xray 2>/dev/null || true
       systemctl stop 'wg-quick@wg-clients' 'wg-quick@wg-tunnel' 2>/dev/null || true
       ;;
@@ -476,7 +552,7 @@ svc_restart() {
   local role
   role="$(detect_role)"
   case "$role" in
-    entry)
+    entry|both)
       systemctl restart 'wg-quick@wg-clients' 'wg-quick@wg-tunnel' 2>/dev/null || true
       systemctl restart wg-panel wg-admin-panel 2>/dev/null || true
       systemctl restart wg-mss-clamp.service 2>/dev/null || true
@@ -496,7 +572,7 @@ svc_logs() {
   local role
   role="$(detect_role)"
   case "$role" in
-    entry)
+    entry|both)
       journalctl -u wg-panel -u wg-admin-panel -u 'wg-quick@wg-clients' -u 'wg-quick@wg-tunnel' -u xray -n 100 --no-pager
       ;;
     exit)
@@ -510,7 +586,7 @@ svc_enable() {
   local role
   role="$(detect_role)"
   case "$role" in
-    entry)
+    entry|both)
       systemctl enable 'wg-quick@wg-clients' 'wg-quick@wg-tunnel' wg-panel wg-admin-panel 2>/dev/null || true
       systemctl enable xray 2>/dev/null || true
       ;;
@@ -526,7 +602,7 @@ svc_disable() {
   local role
   role="$(detect_role)"
   case "$role" in
-    entry)
+    entry|both)
       systemctl disable wg-panel wg-admin-panel 'wg-quick@wg-clients' 'wg-quick@wg-tunnel' xray 2>/dev/null || true
       ;;
     exit)
@@ -558,140 +634,315 @@ show_admin_menu() {
   WG_DATA_DIR=/etc/wireguard python3 "$path" --show
 }
 
+# Dynamic menu: MENU_ACTIONS[i] = action id, MENU_LABELS[i] = display label
+MENU_ACTIONS=()
+MENU_LABELS=()
+
+menu_reset() {
+  MENU_ACTIONS=()
+  MENU_LABELS=()
+}
+
+menu_add() {
+  MENU_ACTIONS+=("$1")
+  MENU_LABELS+=("$2")
+}
+
+menu_section() {
+  MENU_ACTIONS+=("__section__")
+  MENU_LABELS+=("$1")
+}
+
+build_menu() {
+  local role
+  role="$(detect_role)"
+  menu_reset
+  menu_add quit "Exit"
+
+  case "$role" in
+    none)
+      menu_section "Install [clean server]"
+      menu_add install-exit "Install exit server"
+      menu_add install-entry "Install entry server"
+      menu_section "Scripts"
+      menu_add pull "Update scripts only (pull)"
+      menu_add update "Update all (scripts only on clean host)"
+      ;;
+    entry)
+      menu_section "Update / delete [entry]"
+      menu_add update "Update all (scripts + panels + tools)"
+      menu_add pull "Update scripts only (pull)"
+      menu_add update-panels "Update panels only"
+      menu_add uninstall "Uninstall this server"
+      menu_add uninstall-xray "Uninstall Xray only"
+      menu_section "VPN ops [entry]"
+      menu_add test "Test connectivity"
+      menu_add diagnose "Diagnose VPN"
+      menu_add validate "Validate config"
+      menu_add fix-routing "Fix routing"
+      menu_add tune "Tune performance"
+      menu_add measure "Measure bandwidth"
+      menu_add backup "Backup configs"
+      menu_add open-ports "Open firewall ports"
+      menu_section "Panels & admin [entry]"
+      menu_add fix-panels "Fix panel services"
+      menu_add styles "Sync panel styles"
+      menu_add change-entry "Change entry endpoint"
+      menu_add change-exit "Change exit server"
+      menu_add show-admin "View admin username"
+      menu_add set-admin-pass "Set admin password"
+      menu_add install-xray "Install / reinstall Xray"
+      menu_add xray-client "Add Xray client"
+      menu_section "Services [entry]"
+      menu_add start "Start services"
+      menu_add stop "Stop services"
+      menu_add restart "Restart services"
+      menu_add status "Check service state"
+      menu_add logs "View logs"
+      menu_add enable "Enable autostart"
+      menu_add disable "Disable autostart"
+      ;;
+    exit)
+      menu_section "Update / delete [exit]"
+      menu_add update "Update all (scripts + tools)"
+      menu_add pull "Update scripts only (pull)"
+      menu_add uninstall "Uninstall this server"
+      menu_section "VPN ops [exit]"
+      menu_add test "Test connectivity"
+      menu_add diagnose "Diagnose VPN"
+      menu_add validate "Validate config"
+      menu_add fix-routing "Fix routing"
+      menu_add tune "Tune performance"
+      menu_add measure "Measure bandwidth"
+      menu_add backup "Backup configs"
+      menu_add open-ports "Open firewall ports"
+      menu_add add-peer "Add entry peer"
+      menu_section "Services [exit]"
+      menu_add start "Start services"
+      menu_add stop "Stop services"
+      menu_add restart "Restart services"
+      menu_add status "Check service state"
+      menu_add logs "View logs"
+      menu_add enable "Enable autostart"
+      menu_add disable "Disable autostart"
+      ;;
+    both)
+      menu_section "Update / delete [both]"
+      menu_add update "Update all (scripts + panels + tools)"
+      menu_add pull "Update scripts only (pull)"
+      menu_add update-panels "Update panels only"
+      menu_add uninstall "Uninstall this server"
+      menu_add uninstall-xray "Uninstall Xray only"
+      menu_section "VPN ops [both]"
+      menu_add test "Test connectivity"
+      menu_add diagnose "Diagnose VPN"
+      menu_add validate "Validate config"
+      menu_add fix-routing "Fix routing"
+      menu_add tune "Tune performance"
+      menu_add measure "Measure bandwidth"
+      menu_add backup "Backup configs"
+      menu_add open-ports "Open firewall ports"
+      menu_add add-peer "Add entry peer"
+      menu_section "Panels & admin [entry side]"
+      menu_add fix-panels "Fix panel services"
+      menu_add styles "Sync panel styles"
+      menu_add change-entry "Change entry endpoint"
+      menu_add change-exit "Change exit server"
+      menu_add show-admin "View admin username"
+      menu_add set-admin-pass "Set admin password"
+      menu_add install-xray "Install / reinstall Xray"
+      menu_add xray-client "Add Xray client"
+      menu_section "Services [both]"
+      menu_add start "Start services"
+      menu_add stop "Stop services"
+      menu_add restart "Restart services"
+      menu_add status "Check service state"
+      menu_add logs "View logs"
+      menu_add enable "Enable autostart"
+      menu_add disable "Disable autostart"
+      ;;
+  esac
+}
+
+print_menu_body() {
+  local i n=0 role
+  role="$(detect_role)"
+  echo "  WG-OPS Management Script"
+  echo "  Detected role: ${role}"
+  echo "————————————————————————————————"
+  for i in "${!MENU_ACTIONS[@]}"; do
+    if [[ "${MENU_ACTIONS[$i]}" == "__section__" ]]; then
+      echo "————————————————————————————————"
+      echo "  ${MENU_LABELS[$i]}"
+      continue
+    fi
+    echo "  ${n}. ${MENU_LABELS[$i]}"
+    n=$((n + 1))
+  done
+  echo "————————————————————————————————"
+}
+
 show_menu() {
   clear 2>/dev/null || true
   local os_id
   os_id="$(os_release_id)"
   echo "The OS release is: ${os_id}"
   echo
-  echo "  WG-OPS Management Script"
-  echo "————————————————————————————————"
-  echo "  0. Exit"
-  echo "————————————————————————————————"
-  echo "  1. Install exit server"
-  echo "  2. Install entry server"
-  echo "  3. Update all (scripts + panels + tools)"
-  echo "  4. Update scripts only (pull)"
-  echo "  5. Update panels only (entry)"
-  echo "  6. Uninstall this server"
-  echo "  7. Uninstall Xray only (entry)"
-  echo "————————————————————————————————"
-  echo "  8. Test connectivity"
-  echo "  9. Diagnose VPN"
-  echo "  10. Validate config"
-  echo "  11. Fix routing"
-  echo "  12. Tune performance"
-  echo "  13. Measure bandwidth"
-  echo "————————————————————————————————"
-  echo "  14. Backup configs"
-  echo "  15. Open firewall ports"
-  echo "  16. Fix panel services"
-  echo "  17. Sync panel styles"
-  echo "————————————————————————————————"
-  echo "  18. Start services"
-  echo "  19. Stop services"
-  echo "  20. Restart services"
-  echo "  21. Check service state"
-  echo "  22. View logs"
-  echo "  23. Enable autostart"
-  echo "  24. Disable autostart"
-  echo "————————————————————————————————"
-  echo "  25. Change entry endpoint"
-  echo "  26. Change exit server"
-  echo "  27. Add entry peer (on exit)"
-  echo "  28. View admin username"
-  echo "  29. Set admin password"
-  echo "  30. Install / reinstall Xray"
-  echo "  31. Add Xray client"
-  echo "————————————————————————————————"
+  build_menu
+  print_menu_body
   print_status_footer
   echo
 }
 
-handle_menu_choice() {
-  local choice="$1"
+# Print role-filtered menu to stdout (for docs/tests; no clear/status).
+cmd_list_menu() {
+  local role="${1:-}"
+  if [[ -n "$role" ]]; then
+    export WG_OPS_ROLE_OVERRIDE="$role"
+  fi
+  build_menu
+  print_menu_body
+  if [[ -n "$role" ]]; then
+    unset WG_OPS_ROLE_OVERRIDE
+  fi
+}
+
+menu_action_at() {
+  local want="$1"
+  local i n=0
+  for i in "${!MENU_ACTIONS[@]}"; do
+    if [[ "${MENU_ACTIONS[$i]}" == "__section__" ]]; then
+      continue
+    fi
+    if [[ "$n" -eq "$want" ]]; then
+      printf '%s' "${MENU_ACTIONS[$i]}"
+      return 0
+    fi
+    n=$((n + 1))
+  done
+  return 1
+}
+
+menu_max_index() {
+  local i n=-1
+  for i in "${!MENU_ACTIONS[@]}"; do
+    if [[ "${MENU_ACTIONS[$i]}" != "__section__" ]]; then
+      n=$((n + 1))
+    fi
+  done
+  printf '%s' "$n"
+}
+
+run_menu_action() {
+  local action="$1"
   local role
-  case "$choice" in
-    0) echo "Bye."; exit 0 ;;
-    1) run_install_exit ;;
-    2) run_install_entry ;;
-    3) cmd_update_all ;;
-    4) cmd_pull ;;
-    5) require_root; require_role entry; ensure_ops_ready; invoke_script update-panels.sh ;;
-    6) run_uninstall ;;
-    7) run_uninstall_xray ;;
-    8)
-      require_root; ensure_ops_ready
-      role="$(ask_role auto)"
+  case "$action" in
+    quit) echo "Bye."; exit 0 ;;
+    install-exit) run_install_exit ;;
+    install-entry) run_install_entry ;;
+    update) cmd_update_all ;;
+    pull) cmd_pull ;;
+    update-panels) require_root; require_role entry; ensure_ops_ready; invoke_script update-panels.sh ;;
+    uninstall) run_uninstall ;;
+    uninstall-xray) run_uninstall_xray ;;
+    test)
+      require_root; ensure_ops_ready; require_role installed
+      role="$(auto_script_role auto)"
       invoke_script test-connectivity.sh --role "$role"
       ;;
-    9)
-      require_root; ensure_ops_ready
-      role="$(ask_role auto)"
+    diagnose)
+      require_root; ensure_ops_ready; require_role installed
+      role="$(auto_script_role auto)"
       invoke_script diagnose-vpn.sh --role "$role"
       ;;
-    10)
-      require_root; ensure_ops_ready
-      role="$(ask_role runtime)"
+    validate)
+      require_root; ensure_ops_ready; require_role installed
+      role="$(auto_script_role runtime)"
+      # validate accepts entry|exit|runtime — map auto-detected entry/exit
+      case "$(detect_role)" in
+        entry) role=entry ;;
+        exit) role=exit ;;
+        both) role=runtime ;;
+        *) role=runtime ;;
+      esac
       invoke_script validate-config.sh --role "$role"
       ;;
-    11)
-      require_root; ensure_ops_ready
-      role="$(ask_role auto)"
+    fix-routing)
+      require_root; ensure_ops_ready; require_role installed
+      role="$(auto_script_role auto)"
       invoke_script fix-vpn-routing.sh --role "$role"
       ;;
-    12)
-      require_root; ensure_ops_ready
-      role="$(ask_role auto)"
+    tune)
+      require_root; ensure_ops_ready; require_role installed
+      role="$(auto_script_role auto)"
       invoke_script tune-vpn-performance.sh --role "$role"
       ;;
-    13)
+    measure)
       require_root; ensure_ops_ready
-      role="$(ask_role guide)"
+      role="$(auto_script_role guide)"
       invoke_script measure-vpn-bandwidth.sh --role "$role"
       ;;
-    14) require_root; ensure_ops_ready; invoke_script backup.sh ;;
-    15)
-      require_root; ensure_ops_ready
-      role="$(ask_role auto)"
+    backup) require_root; ensure_ops_ready; require_role installed; invoke_script backup.sh ;;
+    open-ports)
+      require_root; ensure_ops_ready; require_role installed
+      role="$(auto_script_role auto)"
       invoke_script open-firewall-ports.sh --role "$role"
       ;;
-    16) require_root; require_role entry; ensure_ops_ready; invoke_script fix-panel-services.sh ;;
-    17) require_root; require_role entry; ensure_ops_ready; invoke_script check-sync-panel-styles.sh ;;
-    18) require_root; svc_start ;;
-    19) require_root; svc_stop ;;
-    20) require_root; svc_restart ;;
-    21) print_status_footer ;;
-    22) require_root; svc_logs ;;
-    23) require_root; svc_enable ;;
-    24) require_root; svc_disable ;;
-    25) require_root; require_role entry; ensure_ops_ready; invoke_script change-entry-server.sh ;;
-    26) require_root; require_role entry; ensure_ops_ready; invoke_script change-exit-server.sh ;;
-    27) require_root; require_role exit; ensure_ops_ready; invoke_script add-entry-peer.sh ;;
-    28) require_root; show_admin_menu ;;
-    29) require_root; set_admin_password_menu ;;
-    30) require_root; require_role entry; ensure_ops_ready; export WG_INSTALL_INTERACTIVE=1; invoke_script install-xray.sh ;;
-    31) require_root; require_role entry; ensure_ops_ready; invoke_script xray-client-add.sh ;;
+    fix-panels) require_root; require_role entry; ensure_ops_ready; invoke_script fix-panel-services.sh ;;
+    styles) require_root; require_role entry; ensure_ops_ready; invoke_script check-sync-panel-styles.sh ;;
+    change-entry) require_root; require_role entry; ensure_ops_ready; invoke_script change-entry-server.sh ;;
+    change-exit) require_root; require_role entry; ensure_ops_ready; invoke_script change-exit-server.sh ;;
+    add-peer) require_root; require_role exit; ensure_ops_ready; invoke_script add-entry-peer.sh ;;
+    show-admin) require_root; show_admin_menu ;;
+    set-admin-pass) require_root; set_admin_password_menu ;;
+    install-xray) require_root; require_role entry; ensure_ops_ready; export WG_INSTALL_INTERACTIVE=1; invoke_script install-xray.sh ;;
+    xray-client) require_root; require_role entry; ensure_ops_ready; invoke_script xray-client-add.sh ;;
+    start) require_root; svc_start ;;
+    stop) require_root; svc_stop ;;
+    restart) require_root; svc_restart ;;
+    status) print_status_footer ;;
+    logs) require_root; svc_logs ;;
+    enable) require_root; svc_enable ;;
+    disable) require_root; svc_disable ;;
     *)
-      echo "Invalid selection: $choice"
+      echo "Invalid action: $action"
       ;;
   esac
+}
+
+handle_menu_choice() {
+  local choice="$1"
+  local action=""
+  if ! [[ "$choice" =~ ^[0-9]+$ ]]; then
+    echo "Invalid selection: $choice"
+    return 1
+  fi
+  if ! action="$(menu_action_at "$choice")"; then
+    echo "Invalid selection: $choice"
+    return 1
+  fi
+  run_menu_action "$action"
 }
 
 menu_loop() {
   require_root
   ensure_ops_ready || true
-  local choice=""
+  local choice="" max_idx
   while true; do
     show_menu
-    read -r -p "Please enter your selection [0-31]: " choice || true
+    max_idx="$(menu_max_index)"
+    read -r -p "Please enter your selection [0-${max_idx}]: " choice || true
     choice="${choice// /}"
     [[ -n "$choice" ]] || continue
     echo
     set +e
     handle_menu_choice "$choice"
+    local rc=$?
     set -e
-    if [[ "$choice" != "0" ]]; then
+    if [[ "$choice" == "0" ]]; then
+      break
+    fi
+    if [[ $rc -eq 0 ]]; then
       pause_menu
     fi
   done
@@ -703,6 +954,9 @@ dispatch_cli() {
   case "$cmd" in
     -h|--help|help) cmd_help ;;
     menu) menu_loop ;;
+    list-menu)
+      cmd_list_menu "$@"
+      ;;
     pull|get|sync) cmd_pull ;;
     install-cli) cmd_install_cli ;;
     self-update) cmd_pull; cmd_install_cli ;;

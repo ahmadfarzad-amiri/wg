@@ -96,7 +96,26 @@ assert_ok "wg-ops help" bash "$ROOT/deploy/wg-ops" help
 assert_ok "wg-ops maps test" bash -c "bash '$ROOT/deploy/wg-ops' list | grep -q 'test-connectivity.sh\|test,'"
 assert_ok "wg-ops help mentions update" bash -c "bash '$ROOT/deploy/wg-ops' help | grep -q update"
 assert_ok "wg-ops help mentions uninstall" bash -c "bash '$ROOT/deploy/wg-ops' help | grep -q uninstall"
+assert_ok "wg-ops help mentions role detection" bash -c "bash '$ROOT/deploy/wg-ops' help | grep -q 'none'"
 assert_fail "wg-ops unknown command" bash "$ROOT/deploy/wg-ops" not-a-real-command
+assert_ok "wg-ops list-menu none shows install exit" \
+  bash -c "bash '$ROOT/deploy/wg-ops' list-menu none | grep -q 'Install exit server'"
+assert_ok "wg-ops list-menu none shows install entry" \
+  bash -c "bash '$ROOT/deploy/wg-ops' list-menu none | grep -q 'Install entry server'"
+assert_ok "wg-ops list-menu none hides add peer" \
+  bash -c "! bash '$ROOT/deploy/wg-ops' list-menu none | grep -q 'Add entry peer'"
+assert_ok "wg-ops list-menu entry shows panels" \
+  bash -c "bash '$ROOT/deploy/wg-ops' list-menu entry | grep -q 'Update panels only'"
+assert_ok "wg-ops list-menu entry hides add peer" \
+  bash -c "! bash '$ROOT/deploy/wg-ops' list-menu entry | grep -q 'Add entry peer'"
+assert_ok "wg-ops list-menu entry hides install exit" \
+  bash -c "! bash '$ROOT/deploy/wg-ops' list-menu entry | grep -q 'Install exit server'"
+assert_ok "wg-ops list-menu exit shows add peer" \
+  bash -c "bash '$ROOT/deploy/wg-ops' list-menu exit | grep -q 'Add entry peer'"
+assert_ok "wg-ops list-menu exit hides panels" \
+  bash -c "! bash '$ROOT/deploy/wg-ops' list-menu exit | grep -q 'Update panels only'"
+assert_ok "wg-ops list-menu both shows add peer and panels" \
+  bash -c "out=\$(bash '$ROOT/deploy/wg-ops' list-menu both); echo \"\$out\" | grep -q 'Add entry peer' && echo \"\$out\" | grep -q 'Update panels only'"
 assert_ok "set-admin-password syntax" python3 -m py_compile "$ROOT/deploy/set-admin-password.py"
 
 echo

@@ -18,7 +18,7 @@ sudo WG_ENTRY_PUBLIC_IP=... WG_EXIT_PUBLIC_IP=... WG_EXIT_TUNNEL_PUB='...' \
   WG_ADMIN_PASS='...' wg-ops install-entry
 ```
 
-See [../deploy/README-DEPLOY.md](../deploy/README-DEPLOY.md) for full env var reference and [../docs/ADMIN_GUIDE.md](../docs/ADMIN_GUIDE.md) for panel usage.
+See [../docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for full env var reference and [../docs/ADMIN_GUIDE.md](../docs/ADMIN_GUIDE.md) for panel usage.
 
 ---
 
