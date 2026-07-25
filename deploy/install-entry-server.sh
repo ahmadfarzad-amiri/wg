@@ -392,12 +392,18 @@ else
   log "Xray skipped — set WG_XRAY_REALITY_SNI to install, or run: sudo wg-ops install-xray"
 fi
 
+bash "$SCRIPT_DIR/test-connectivity.sh" --role entry || true
+
+# Print summary last so keys are not scrolled away by connectivity checks
+# (and stay visible above wg-ops "Press Enter" when installed from the menu).
 cat <<EOF
 
 === ENTRY server ready ===
 Client Endpoint (devices): ${WG_ENDPOINT}
 Client server public key  : ${CLIENT_PUB}
+  (saved: /etc/wireguard/clients-server.pub)
 Tunnel public key (entry) : ${TUNNEL_PUB}
+  (saved: /etc/wireguard/tunnel-entry.pub)
 
 Operator CLI:
   sudo wg-ops pull
@@ -416,6 +422,11 @@ IMPORTANT — on the exit server, run:
 
 Cloud firewall: allow UDP ${CLIENT_PORT_WG} from clients; TCP 80/443 or panel ports.
 
+Copy the tunnel public key above before continuing (needed for add-peer on the exit).
+
 EOF
 
-bash "$SCRIPT_DIR/test-connectivity.sh" --role entry || true
+# Pause when run as a standalone CLI install (menu path pauses itself).
+if should_prompt && [[ "${WG_OPS_MENU:-0}" != "1" ]]; then
+  read -r -p "Press Enter after you have copied the tunnel public key..." _
+fi

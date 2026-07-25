@@ -63,9 +63,9 @@ sudo WG_EXIT_PUBLIC_IP=203.0.113.50 wg-ops install-exit
 
 Or: `sudo wg-ops` → **Install exit server**.
 
-**Write down from the output:**
+**Write down from the output** (printed at the very end of install):
 
-1. Exit tunnel public key (also in `/etc/wireguard/tunnel-server.pub`)
+1. Exit tunnel public key (also in `/etc/wireguard/tunnel-server.pub` — `sudo cat /etc/wireguard/tunnel-server.pub`)
 2. Exit endpoint: `EXIT_IP:51821`
 
 Quick check:
@@ -96,7 +96,7 @@ Notes:
 - `WG_ENTRY_PUBLIC_IP` must be the **public** IP clients use (not a private `10.x` / `172.16.x` LAN IP).
 - `WG_SKIP_XRAY=1` skips alternate protocols for a simpler first install. To enable Xray later: set `WG_XRAY_REALITY_SNI=www.microsoft.com` and run `sudo wg-ops install-xray`.
 
-**Write down:** entry tunnel public key (`/etc/wireguard/tunnel-entry.pub`).
+**Write down:** entry tunnel public key (printed at the end of install, also in `/etc/wireguard/tunnel-entry.pub`). If the screen already returned to the `wg-ops` menu, run: `sudo cat /etc/wireguard/tunnel-entry.pub`.
 
 Quick check:
 

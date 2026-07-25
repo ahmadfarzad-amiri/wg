@@ -838,8 +838,13 @@ run_menu_action() {
   local role
   case "$action" in
     quit) echo "Bye."; exit 0 ;;
-    install-exit) run_install_exit ;;
-    install-entry) run_install_entry ;;
+    install-exit)
+      # Menu already pauses before redraw; skip installer key-copy pause.
+      WG_OPS_MENU=1 run_install_exit
+      ;;
+    install-entry)
+      WG_OPS_MENU=1 run_install_entry
+      ;;
     update) cmd_update_all ;;
     pull) cmd_pull ;;
     update-panels) require_root; require_role entry; ensure_ops_ready; invoke_script update-panels.sh ;;
