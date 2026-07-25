@@ -194,6 +194,17 @@ diag_exit() {
 
   diag_wg_ifaces wg-tunnel
 
+  # Peer present but never received bytes ⇒ UDP 51821 not reaching this host.
+  local peer_count rx_total
+  peer_count="$(wg show wg-tunnel peers 2>/dev/null | awk 'NF{c++} END{print c+0}')"
+  rx_total="$(wg show wg-tunnel transfer 2>/dev/null | awk 'NF>=3 {r+=$2} END{print r+0}')"
+  if [[ "${peer_count:-0}" -gt 0 && "${rx_total:-0}" -eq 0 ]]; then
+    status FAILED "Entry peer configured but received 0 B — UDP ${WG_TUNNEL_PORT:-51821} is not reaching wg-tunnel"
+    status INFO "Keys are OK if peer pubkey matches entry tunnel-entry.pub; fix cloud firewall / ufw"
+    status INFO "On exit: sudo ufw allow from ENTRY_IP to any port ${WG_TUNNEL_PORT:-51821} proto udp"
+    status INFO "Prove UDP: on exit 'tcpdump -ni any udp port ${WG_TUNNEL_PORT:-51821}' while entry pings 10.200.0.1"
+  fi
+
   if wg_exit_route_to_client_ok "10.10.10.2"; then
     status HEALTHY "Route 10.10.10.2 → wg-tunnel"
   else
