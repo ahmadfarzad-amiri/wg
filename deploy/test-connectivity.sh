@@ -61,8 +61,10 @@ test_exit() {
   check "outbound internet" curl -4fsS --max-time 5 https://api.ipify.org
   if [[ "${WG_ENABLE_BBR:-1}" != "0" ]]; then
     check "TCP BBR enabled" sh -c '[ "$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)" = "bbr" ]'
+    check "UDP rmem_max >= 16MB" sh -c '[ "$(sysctl -n net.core.rmem_max 2>/dev/null)" -ge 16777216 ]'
   fi
-  check "TCP MSS clamp" sh -c "iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu"
+  check "TCP MSS clamp rule" sh -c "iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu"
+  check "TCP MSS clamp unit" sh -c "systemctl is-enabled wg-mss-clamp.service"
   if [[ -f /etc/wireguard/tunnel-entry.pub ]]; then
     check "entry peer in config" grep -q 'BEGIN ENTRY TUNNEL PEER' /etc/wireguard/wg-tunnel.conf
     check "entry server peer configured" wg show wg-tunnel peers
@@ -117,8 +119,10 @@ test_entry() {
   fi
   if [[ "${WG_ENABLE_BBR:-1}" != "0" ]]; then
     check "TCP BBR enabled" sh -c '[ "$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)" = "bbr" ]'
+    check "UDP rmem_max >= 16MB" sh -c '[ "$(sysctl -n net.core.rmem_max 2>/dev/null)" -ge 16777216 ]'
   fi
-  check "TCP MSS clamp" sh -c "iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu"
+  check "TCP MSS clamp rule" sh -c "iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu"
+  check "TCP MSS clamp unit" sh -c "systemctl is-enabled wg-mss-clamp.service"
   check "client panel health" curl -fsS "http://127.0.0.1:${WG_PANEL_PORT:-8088}/health"
   check "admin panel health" curl -fsS "http://127.0.0.1:${WG_ADMIN_PORT:-8090}/admin/health"
 }

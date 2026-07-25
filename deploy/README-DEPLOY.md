@@ -129,11 +129,12 @@ After install or when users report slow speeds:
 ```bash
 sudo bash deploy/tune-vpn-performance.sh --role entry   # on entry
 sudo bash deploy/tune-vpn-performance.sh --role exit    # on exit
+sudo bash deploy/measure-vpn-bandwidth.sh --role guide  # hop-by-hop test plan
 ```
 
-This applies routing repair, TCP MSS clamp, BBR + UDP buffers, and runs diagnostics. See **[docs/PERFORMANCE.md](../docs/PERFORMANCE.md)**.
+This applies routing repair, **persistent** TCP MSS clamp, BBR + 64 MB UDP buffers, server WG MTUs, and runs diagnostics. See **[docs/PERFORMANCE.md](../docs/PERFORMANCE.md)**.
 
-Per-client speed vs privacy: `wg-client set-mode CLIENT direct|twohop` (direct = faster, entry IP visible).
+Production clients stay on **twohop** (exit IP). `direct` mode is only for short diagnostic A/B tests.
 
 ## Uninstall (remove everything)
 

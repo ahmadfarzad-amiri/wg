@@ -1,237 +1,186 @@
 # Performance guide
 
-How to improve connection speed and reduce server load for the two-hop WireGuard stack.
+How to improve **two-hop** WireGuard throughput while keeping the mandatory path:
+
+`device → entry → exit → internet` (websites must see the **exit** IP).
 
 > See [Architecture](ARCHITECTURE.md) for traffic paths and [Operations guide](OPERATIONS.md) for install steps.
+> Do **not** treat single-hop / direct mode as the production speed fix.
 
 ---
 
 ## Quick start
 
-Run on **each** server (entry and exit) after install:
+Run on **each** server (entry and exit) after install or upgrade:
 
 ```bash
 sudo bash deploy/tune-vpn-performance.sh
 ```
 
-This applies routing repair, TCP MSS clamp, BBR congestion control, UDP buffer sizing, and syncs VPN modes on entry.
+This applies:
 
-Verify from a **connected client device** (not the server itself):
+- Routing repair (policy table 100, forward rules, `rp_filter`)
+- Persistent TCP MSS clamp (`wg-mss-clamp.service`)
+- BBR + **64 MB** UDP socket buffers
+- Server WireGuard interface MTU (`WG_SERVER_MTU`, default 1420)
+- One-shot VPN mode sync on entry (not every minute)
+
+Then measure hops (do not rely only on browser speed tests):
 
 ```bash
-curl -4 https://api.ipify.org
+sudo bash deploy/measure-vpn-bandwidth.sh --role guide
+sudo bash deploy/diagnose-vpn.sh --role entry   # on entry
+sudo bash deploy/diagnose-vpn.sh --role exit    # on exit
+```
+
+From a **connected twohop client**:
+
+```bash
+curl -4 https://api.ipify.org   # must show EXIT public IP
 ```
 
 ---
 
 ## 1. Fix routing first
 
-Broken routing looks identical to a slow or dead VPN. Before tuning anything else:
+Broken routing looks identical to a slow or dead VPN:
 
 ```bash
-# On entry server
 sudo bash deploy/fix-vpn-routing.sh --role entry
-sudo bash deploy/diagnose-vpn.sh --role entry
-
-# On exit server
 sudo bash deploy/fix-vpn-routing.sh --role exit
 ```
 
-The install scripts and `tune-vpn-performance.sh` apply these automatically. Run `fix-vpn-routing.sh` manually if you change iptables rules or install Docker after initial setup.
+Automatic fixes include:
 
-Common routing fixes applied automatically:
-
-- Client subnet routed via `wg-clients` on entry
-- Policy routing table 100 for twohop egress
+- Client subnet → `wg-clients` on entry
+- Policy routing table **100** for twohop egress via `wg-tunnel`
 - `rp_filter=0` on WireGuard interfaces
-- Docker `DOCKER-USER` bypass on entry (if Docker is installed)
+- Docker `DOCKER-USER` bypass on entry (only if Docker is installed — prefer **no Docker** on VPN hosts)
 
 ---
 
-## 2. VPN mode: speed vs privacy
+## 2. Measure which hop is slow
 
-| Mode | Path | Latency | Egress IP |
-|------|------|---------|-----------|
-| **direct** | Device → entry → internet | Fastest (single hop) | Entry server |
-| **twohop** (default) | Device → entry → tunnel → exit → internet | Extra RTT + CPU | Exit server |
+A drop from hundreds of Mbps to ~tens of Mbps is usually **path capacity, loss, or ISP shaping** — not “two-hop crypto” alone.
 
-**direct** skips the tunnel entirely — no double encryption, no extra hop.
-**twohop** hides the exit server from users and gives a separate egress IP.
+| Test | Where | What it isolates |
+|------|--------|------------------|
+| Exit → internet | Exit host | Exit plan / peering |
+| Entry → exit (public IP, iperf3) | Entry→exit underlay | Provider path between VPS |
+| Entry → exit (`10.200.0.1` via tunnel) | `wg-tunnel` | Tunnel MTU/CPU/WG path |
+| Client full twohop | Client device | End-to-end production path |
+| Optional direct A/B | One test client only | Client↔entry vs full twohop |
 
-### Change VPN mode for a user
+Full command list: `deploy/measure-vpn-bandwidth.sh`.
 
-**Admin panel:** Clients → select client → VPN mode dropdown.
+**Interpretation (keep twohop in production):**
 
-**CLI on entry server:**
+- Exit native slow → upgrade exit bandwidth / provider
+- Entry↔exit underlay slow → co-locate entry+exit or change peering
+- Underlay fast but tunnel slow → MTU/MSS/CPU on servers
+- Twohop slow but underlay+tunnel fast → client↔entry (often DPI on WireGuard UDP); keep twohop egress, consider Reality/Hysteria2 for **hop 1 only** (see [Iran protocol strategy](IRAN-PROTOCOL-STRATEGY.md))
 
-```bash
-# Single client
-sudo wg-client set-mode alice direct
-sudo wg-client set-mode bob twohop
-
-# Apply routing for all clients after bulk changes
-sudo wg-client sync-vpn-modes
-```
-
-**Verify** from the client device:
-
-```bash
-curl -4 https://api.ipify.org
-```
-
-- Shows entry IP → `direct` mode is active.
-- Shows exit IP → `twohop` mode is active.
+Optional **direct** mode (`wg-client set-mode NAME direct`) is for **lab comparison only**. It egresses via the entry IP and is **not** the production architecture.
 
 ---
 
-## 3. Server placement
+## 3. Server placement (twohop)
 
 | Decision | Recommendation |
 |----------|----------------|
-| Entry location | Close to **your users** — minimises UDP latency on port 51820 |
-| Exit location | Good peering or close to **target content**; or co-locate with entry |
-| Co-location | Entry + exit in the same datacenter cuts tunnel RTT while keeping separate IPs |
-| Entry CPU | More important for `twohop` (entry encrypts traffic twice) |
-| Exit bandwidth | All `twohop` users share exit egress — size for aggregate throughput |
-
-If `wg show wg-clients transfer` grows but user speeds plateau, upgrade the VPS tier.
+| Entry location | Close to **users** (UDP 51820 latency) |
+| Exit location | Good egress peering / close to target content |
+| Co-location | Same DC/region for entry+exit cuts tunnel RTT while keeping a separate exit IP |
+| Entry CPU | Double crypto (decrypt client + encrypt tunnel) — prefer dedicated vCPU |
+| Exit bandwidth | All twohop users share exit egress — size for **aggregate** demand |
 
 ---
 
 ## 4. MTU settings
 
-Default values in `/etc/wireguard/entry-server.env`:
+Defaults written to `/etc/wireguard/entry-server.env` on install:
 
-| Variable | Default | Mode |
-|----------|---------|------|
-| `WG_CLIENT_MTU` | 1280 | Fallback |
-| `WG_CLIENT_MTU_DIRECT` | 1420 | Single hop |
-| `WG_CLIENT_MTU_TWOHOP` | 1280 | Double encapsulation |
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `WG_SERVER_MTU` | 1420 | `wg-clients` / `wg-tunnel` on servers |
+| `WG_CLIENT_MTU_TWOHOP` | 1380 | Client configs (twohop) |
+| `WG_CLIENT_MTU_DIRECT` | 1420 | Diagnostic direct clients only |
+| `WG_CLIENT_MTU` | 1380 | Fallback |
 
-`twohop` needs a lower MTU because packets are encapsulated twice.
+1380 leaves headroom for double WireGuard on a typical 1500 underlay (including mild PPPoE). Raise toward 1420 only after `ping -M do` path tests succeed.
 
 ### Change MTU defaults
 
-1. Edit `/etc/wireguard/entry-server.env`.
-2. Create new clients or renew existing ones:
+1. Edit `/etc/wireguard/entry-server.env` (and `WG_SERVER_MTU` on exit env if needed).
+2. Re-run `sudo bash deploy/tune-vpn-performance.sh` on both servers (applies server MTU).
+3. Renew clients so `.conf` files pick up the new client MTU:
    ```bash
    sudo wg-client renew alice --days 30
    ```
 
-### Override MTU for a single client
-
-```bash
-sudo wg-client add bob --vpn-mode direct --mtu 1420
-```
-
-**TCP MSS clamp** (enabled by `tune-vpn-performance.sh`) prevents fragmentation when MTU is increased on twohop paths.
+**TCP MSS clamp** is installed as `wg-mss-clamp.service` so it survives reboot.
 
 ---
 
 ## 5. OS-level tuning
 
-Enabled automatically during install (`WG_ENABLE_BBR=1`, `WG_ENABLE_MSS_CLAMP=1`).
+Enabled by default (`WG_ENABLE_BBR=1`, `WG_ENABLE_MSS_CLAMP=1`).
 
 | Setting | Location | Effect |
 |---------|----------|--------|
-| TCP BBR | `/etc/sysctl.d/99-wg-performance.conf` | Better throughput under packet loss |
-| UDP buffers | Same file (`rmem_max`, `wmem_max`) | Handles burst traffic |
-| MSS clamp | `iptables -t mangle … TCPMSS --clamp-mss-to-pmtu` | Avoids IP fragmentation |
+| TCP BBR + fq | `/etc/sysctl.d/99-wg-performance.conf` | Better TCP under loss |
+| UDP buffers 64 MB | Same file | Fewer drops under tunnel bursts |
+| `netdev_max_backlog` | Same file | Softnet queue depth |
+| MSS clamp | `wg-mss-clamp.service` + mangle FORWARD | Avoids blackhole PMTU issues |
 
-### Disable if needed
+Disable if needed:
 
 ```bash
 WG_ENABLE_BBR=0 WG_ENABLE_MSS_CLAMP=0 sudo bash deploy/tune-vpn-performance.sh
 ```
 
-Or set `WG_ENABLE_BBR=0` in `entry-server.env` / `exit-server.env` and re-run the tune script.
+---
+
+## 6. What we removed / do not do for speed
+
+| Practice | Status |
+|----------|--------|
+| Switching production users to **direct** mode | **Not recommended** — breaks exit-IP twohop requirement |
+| Calling `sync-vpn-modes` every minute from enforce | **Removed** — sync on mode change / boot / routing fix only |
+| 2.5 MB UDP buffers / client MTU 1280 defaults | **Replaced** with 64 MB / 1380 |
+| Non-persistent MSS (lost on reboot) | **Fixed** via systemd unit |
+| Docker on the VPN datapath | **Avoid** — bypass exists only as a safety net |
+| Extra userspace proxies between entry and exit | **Do not add** for “speed” |
 
 ---
 
-## 6. Application-level performance
+## 7. Application-level performance
 
-The Python panels have several built-in optimisations that reduce server load at scale.
+Panel optimisations (status caching, session purge throttle, WAL SQLite) reduce control-plane load. They are **not** on the WireGuard forward path.
 
-### WireGuard status caching
-
-| Cache | TTL | Protects against |
-|-------|-----|-----------------|
-| `wg_interface_up()` | 5 s | Repeated `wg show` kernel calls on every page load |
-| `wg_map()` (transfer, endpoints, handshakes) | 2 s | O(1) kernel calls per map type |
-| `statuses_for_user()` | — | Builds **one** WireGuard snapshot for all clients (3 calls total, not 3 per client) |
-
-All caches use `threading.Lock` for thread safety under `ThreadingHTTPServer`.
-
-### Session purge throttle
-
-`DELETE FROM sessions WHERE expires_at <= ?` runs at most **once per 60 seconds** regardless of traffic. This prevents write-lock storms on the sessions SQLite database under high concurrent load.
-
-### Schema check flag
-
-`ensure_user_configs_schema()` sets a module-level flag after the first successful run — no DDL executes on subsequent DB reads within the same process lifetime.
-
-### Database indexes
-
-Added indexes on high-frequency query columns:
-
-| Table | Column | Query type |
-|-------|--------|-----------|
-| `sessions` | `expires_at` | Purge and expiry checks |
-| `requests` | `user_id` | Per-user request list |
-| `requests` | `status` | Pending filter |
-| `users` | `status` | Pending/approved filter |
-| `audit_log` | `created_at DESC` | Recent entries in Tools tab |
-
-### SQLite WAL mode
-
-All databases (`panel.db`, `audit.db`) open with:
-```sql
-PRAGMA journal_mode=WAL;
-PRAGMA busy_timeout=3000;
-```
-WAL allows concurrent reads during writes. `busy_timeout=3000` retries for up to 3 seconds before returning "database is locked" — eliminates spurious errors under normal concurrent traffic.
+Quota enforcement (`wg-client-enforce.timer`) still runs every minute for expiry / data limits / single-device locks — it no longer rewrites routing for every client on each tick.
 
 ---
 
-## 7. Measure before and after
+## 8. If twohop is still slow after tuning
 
-**From a connected client device** (not the VPS):
-
-```bash
-ping -c 20 ENTRY_PUBLIC_IP          # latency baseline
-curl -4 https://api.ipify.org       # confirm VPN mode
-# Browser: fast.com or speedtest.net for throughput
-```
-
-**From the entry server:**
-
-```bash
-sudo wg show wg-clients transfer    # per-client TX/RX
-sudo wg show wg-tunnel transfer     # tunnel throughput
-sudo bash deploy/diagnose-vpn.sh --role entry
-```
-
-Compare direct vs twohop for the same user at the same time of day.
-
----
-
-## 8. Larger architecture options
-
-If the steps above are insufficient:
+Keep two hops; change the weak layer:
 
 | Option | Effect | Trade-off |
 |--------|--------|-----------|
-| All users on **direct** mode | Removes tunnel hop; fastest possible | Exit server unused for egress; entry IP visible |
-| **Single VPS** | One WireGuard hop; simplest setup | No separate egress IP |
-| **Multi-exit routing** | Different exit per user group | Not built into the panels today |
-
-The built-in per-client `direct` vs `twohop` selection is the recommended compromise.
+| Co-locate / upgrade entry↔exit | Raises tunnel ceiling | Provider change |
+| Upgrade exit egress plan | Raises shared internet ceiling | Cost |
+| Alternate **client→entry** transport (Xray Reality / Hysteria2) when WG UDP is shaped | Often restores speed under DPI | Different client apps; hop 2 stays WG to exit |
+| Multi-exit (future) | Capacity split | Not built into panels today |
 
 ---
 
 ## Related guides
 
 - [Operations guide](OPERATIONS.md) — install and maintenance
-- [Admin guide](ADMIN_GUIDE.md) — set VPN mode per client in the admin panel
-- [Architecture](ARCHITECTURE.md) — full traffic path and caching details
+- [Admin guide](ADMIN_GUIDE.md) — clients and VPN mode
+- [Architecture](ARCHITECTURE.md) — traffic path
+- [Iran protocol strategy](IRAN-PROTOCOL-STRATEGY.md) — when WireGuard UDP is shaped
 - [deploy/README-DEPLOY.md](../deploy/README-DEPLOY.md) — routing troubleshooting
+- [deploy/measure-vpn-bandwidth.sh](../deploy/measure-vpn-bandwidth.sh) — hop bandwidth plan
+)

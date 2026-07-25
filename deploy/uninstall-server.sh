@@ -78,6 +78,7 @@ log "Stopping services..."
 stop_systemd_unit wg-panel.service
 stop_systemd_unit wg-admin-panel.service
 stop_systemd_unit wg-docker-forward.service
+stop_systemd_unit wg-mss-clamp.service
 stop_systemd_unit wg-client-enforce.timer
 stop_systemd_unit wg-client-enforce.service
 

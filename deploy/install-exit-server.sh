@@ -87,6 +87,7 @@ cat > "$TUNNEL_CONF" <<EOF
 Address = ${TUNNEL_LOCAL}
 ListenPort = ${TUNNEL_PORT}
 PrivateKey = ${TUNNEL_PRIV}
+MTU = ${WG_SERVER_MTU:-1420}
 PostUp = iptables -t nat -A POSTROUTING -s ${CLIENT_CIDR} -o ${DEF_IF} -j MASQUERADE; iptables -A FORWARD -i ${TUNNEL_IF} -j ACCEPT; iptables -A FORWARD -o ${TUNNEL_IF} -j ACCEPT; ip route replace ${CLIENT_CIDR} dev ${TUNNEL_IF}; ip route replace ${TUNNEL_PEER_IP} dev ${TUNNEL_IF}
 PostDown = iptables -t nat -D POSTROUTING -s ${CLIENT_CIDR} -o ${DEF_IF} -j MASQUERADE; iptables -D FORWARD -i ${TUNNEL_IF} -j ACCEPT; iptables -D FORWARD -o ${TUNNEL_IF} -j ACCEPT; ip route del ${CLIENT_CIDR} dev ${TUNNEL_IF} 2>/dev/null || true; ip route del ${TUNNEL_PEER_IP} dev ${TUNNEL_IF} 2>/dev/null || true
 EOF
@@ -132,6 +133,7 @@ write_env_file /etc/wireguard/exit-server.env \
   WG_TUNNEL_PUBLIC_IP "$PUBLIC_IP" \
   WG_CLIENT_CIDR "$CLIENT_CIDR" \
   WG_TUNNEL_PEER_IP "$TUNNEL_PEER_IP" \
+  WG_SERVER_MTU "${WG_SERVER_MTU:-1420}" \
   WG_ENABLE_BBR "${WG_ENABLE_BBR:-1}" \
   WG_ENABLE_MSS_CLAMP "${WG_ENABLE_MSS_CLAMP:-1}"
 

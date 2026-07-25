@@ -140,7 +140,7 @@ def main():
 
     # Preserve MTU from existing config when rotating keys.
     client_conf = os.path.join(CLIENT_DIR, f"{name}.conf")
-    mtu = "1280"
+    mtu = "1380"
     if os.path.isfile(client_conf):
         with open(client_conf, encoding="utf-8", errors="ignore") as old:
             for line in old:

@@ -10,7 +10,7 @@ Guides for **end users**, **administrators**, and **operators** running the two-
 | [User guide](USER_GUIDE.md) | VPN users | Register, log in, connect, subscription links, connection test, support requests |
 | [Admin guide](ADMIN_GUIDE.md) | Panel administrators | Approve users, bulk create clients, handle requests, audit log, server tools |
 | [Operations guide](OPERATIONS.md) | Server operators | Install, upgrade, backup, migrate servers, troubleshoot |
-| [Performance guide](PERFORMANCE.md) | Operators / admins | VPN modes, MTU, BBR, application-level caching, DB indexes |
+| [Performance guide](PERFORMANCE.md) | Operators / admins | Two-hop throughput, MTU, BBR, hop bandwidth tests |
 
 ## Quick links
 
@@ -42,7 +42,7 @@ The UI is fully RTL for Persian and LTR for English, including table alignment, 
           or scans QR code             →  from the Dashboard when account is active
           or uses subscription link    →  from Dashboard → Tools → Subscription link
 4. User imports config into WireGuard app and connects
-5. Internet exits via exit server      →  twohop (default) or direct (entry IP)
+5. Internet exits via exit server      →  twohop (production default)
 ```
 
 For step-by-step instructions, open the guide for your role above.
