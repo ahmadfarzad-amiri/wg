@@ -14,7 +14,7 @@ set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.15}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.16}"
   _WG_INSTALLER="$(mktemp /tmp/wg-change-exit-XXXXXX.sh)"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/change-exit-server.sh" -o "$_WG_INSTALLER"
   chmod 700 "$_WG_INSTALLER"
@@ -32,7 +32,7 @@ if [[ -n "$_WG_SCRIPT" && -f "$(dirname "$_WG_SCRIPT")/lib/common.sh" ]]; then
 else
   _BOOT="$(mktemp -d)"
   mkdir -p "$_BOOT/deploy/lib"
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.15}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.16}"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/repo.conf" -o "$_BOOT/deploy/repo.conf"
   curl -fsSL "$GITHUB_RAW_BASE/deploy/lib/common.sh" -o "$_BOOT/deploy/lib/common.sh"
   SCRIPT_DIR="$_BOOT/deploy"
@@ -74,14 +74,26 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -n "$EXIT_IP" ]] || die "Set WG_EXIT_PUBLIC_IP or --exit-ip"
-[[ -n "$EXIT_PUB" ]] || die "Set WG_EXIT_TUNNEL_PUB or --tunnel-pub (from install-exit-server.sh on new exit)"
-
+CURRENT_EXIT_IP=""
 if [[ -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
   source "$ENV_FILE"
+  CURRENT_EXIT_IP="${WG_EXIT_IP:-${WG_EXIT_PUBLIC_IP:-}}"
   EXIT_PORT="${WG_EXIT_TUNNEL_PORT:-$EXIT_PORT}"
 fi
+
+# Menu / TTY: prompt when required values were not passed via env or flags.
+if [[ -z "$EXIT_IP" || -z "$EXIT_PUB" ]] && _have_tty; then
+  log "=== Change exit server ==="
+  log "Point this entry at a new exit VPS (install-exit on the new host first)."
+  [[ -n "$CURRENT_EXIT_IP" ]] && log "Current exit IP: ${CURRENT_EXIT_IP}"
+  prompt EXIT_IP "New exit server public IP" "${EXIT_IP:-$CURRENT_EXIT_IP}"
+  prompt EXIT_PORT "Exit tunnel UDP port" "$EXIT_PORT"
+  prompt EXIT_PUB "New exit tunnel public key (from install-exit on new exit)" "$EXIT_PUB"
+fi
+
+[[ -n "$EXIT_IP" ]] || die "Set WG_EXIT_PUBLIC_IP or --exit-ip"
+[[ -n "$EXIT_PUB" ]] || die "Set WG_EXIT_TUNNEL_PUB or --tunnel-pub (from install-exit-server.sh on new exit)"
 
 [[ -f "$TUNNEL_CONF" ]] || die "Missing $TUNNEL_CONF — run install-entry-server.sh first"
 
