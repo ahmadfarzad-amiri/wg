@@ -9,9 +9,22 @@ die() { printf '[wg-deploy] ERROR: %s\n' "$*" >&2; exit 1; }
 
 ROLE="${1:-}"
 if [[ "$ROLE" == "--role" ]]; then
-  ROLE="${2:-all}"
+  ROLE="${2:-auto}"
 fi
-ROLE="${ROLE:-all}"
+ROLE="${ROLE:-auto}"
+
+# Default: only test this host's role (avoid false exit failures on entry, etc.).
+if [[ "$ROLE" == "auto" ]]; then
+  if [[ -f /etc/wireguard/entry-server.env && -f /etc/wireguard/exit-server.env ]]; then
+    ROLE="all"
+  elif [[ -f /etc/wireguard/entry-server.env ]]; then
+    ROLE="entry"
+  elif [[ -f /etc/wireguard/exit-server.env ]]; then
+    ROLE="exit"
+  else
+    die "Could not detect role — pass --role entry|exit|all"
+  fi
+fi
 
 pass=0
 fail=0
@@ -142,7 +155,7 @@ case "$ROLE" in
     test_entry || true
     ;;
   *)
-    die "Usage: $0 --role exit|entry|all"
+    die "Usage: $0 --role entry|exit|all|auto"
     ;;
 esac
 

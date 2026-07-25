@@ -10,7 +10,7 @@ set -euo pipefail
 
 OPS_NAME="wg-ops"
 OPS_DIR="${WG_OPS_DIR:-/opt/wg-ops}"
-RAW_BASE="${WG_RAW_BASE:-${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.9}}"
+RAW_BASE="${WG_RAW_BASE:-${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.10}}"
 BIN_PATH="${WG_OPS_BIN:-/usr/local/bin/wg-ops}"
 
 log() { printf '[%s] %s\n' "$OPS_NAME" "$*"; }
@@ -419,7 +419,7 @@ Usage:
 
 CDN / source:
   Default script base: $RAW_BASE
-  Override: WG_RAW_BASE=https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.9
+  Override: WG_RAW_BASE=https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.10
   Panel git clone still uses branch main (WG_GITHUB_BRANCH).
 
 Role detection (automatic):
