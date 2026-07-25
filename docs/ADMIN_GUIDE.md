@@ -52,7 +52,7 @@ On desktop, primary tabs sit in the sidebar; Tools, Xray, and Settings are under
 
    | Field | Notes |
    |-------|-------|
-   | Name | Required. Letters, numbers, hyphens. E.g. `alice` |
+   | Name | Required. Letters, numbers, hyphens. E.g. `CLIENT_NAME` |
    | Data limit | E.g. `20G` or leave blank for unlimited |
    | Days | Subscription length; blank = unlimited |
    | VPN mode | `twohop` (exit IP — **production default**) or `direct` (entry IP — diagnostic only) |
@@ -146,8 +146,8 @@ To drop a **live** session, use **Active → Disconnect** (not the Clients list)
 ### CLI equivalents (SSH on entry server)
 
 ```bash
-sudo wg-client add alice --vpn-mode twohop
-sudo wg-client set-mode alice direct
+sudo wg-client add CLIENT_NAME --vpn-mode twohop
+sudo wg-client set-mode CLIENT_NAME direct
 sudo wg-client sync-vpn-modes
 sudo wg show wg-clients
 ```

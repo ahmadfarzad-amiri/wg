@@ -8,7 +8,7 @@
 #
 # Usage (preferred):
 #   sudo WG_XRAY_REALITY_SNI=www.microsoft.com \
-#        WG_XRAY_WS_DOMAIN=vpn.example.com \
+#        WG_XRAY_WS_DOMAIN=XRAY_WS_DOMAIN \
 #        wg-ops install-xray
 #
 # Direct path after wg-ops pull:

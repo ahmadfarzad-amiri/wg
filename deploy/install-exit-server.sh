@@ -2,10 +2,10 @@
 # Exit VPS — internet egress via site-to-site tunnel from entry server.
 #
 # Preferred:
-#   sudo WG_EXIT_PUBLIC_IP=203.0.113.50 wg-ops install-exit
+#   sudo WG_EXIT_PUBLIC_IP=EXIT_IP wg-ops install-exit
 #
 # Direct path after wg-ops pull:
-#   WG_EXIT_PUBLIC_IP=203.0.113.50 WG_TUNNEL_PORT=51821 sudo bash /opt/wg-ops/install-exit-server.sh
+#   WG_EXIT_PUBLIC_IP=EXIT_IP WG_TUNNEL_PORT=51821 sudo bash /opt/wg-ops/install-exit-server.sh
 #
 # Fresh install only — existing installs must be uninstalled first.
 set -eo pipefail

@@ -9,7 +9,7 @@ Your phone / laptop  →  Entry VPS  →  Exit VPS  →  Internet
 
 You need two Ubuntu/Debian VPS machines with public IPv4. Installers only work on **clean** servers (no previous install). To start over: `sudo wg-ops uninstall`.
 
-Examples use fake IPs (`198.51.100.10`, `203.0.113.50`). Replace them with yours.
+Examples use placeholders (`ENTRY_IP`, `EXIT_IP`, `CLIENT_NAME`, …). Replace them with your real values.
 
 ---
 
@@ -17,11 +17,11 @@ Examples use fake IPs (`198.51.100.10`, `203.0.113.50`). Replace them with yours
 
 Collect these values:
 
-| What | Example | Notes |
-|------|---------|--------|
-| Entry public IP | `198.51.100.10` | IP clients will connect to |
-| Exit public IP | `203.0.113.50` | IP websites will see |
-| Admin password | (your secret) | At least 8 characters |
+| What | Placeholder | Notes |
+|------|-------------|--------|
+| Entry public IP | `ENTRY_IP` | IP clients will connect to |
+| Exit public IP | `EXIT_IP` | IP websites will see |
+| Admin password | `ADMIN_PASSWORD` | At least 8 characters |
 
 Open these ports in your **cloud firewall** (keep SSH open):
 
@@ -58,7 +58,7 @@ Then either:
 On the **exit** VPS:
 
 ```bash
-sudo WG_EXIT_PUBLIC_IP=203.0.113.50 wg-ops install-exit
+sudo WG_EXIT_PUBLIC_IP=EXIT_IP wg-ops install-exit
 ```
 
 Or: `sudo wg-ops` → **Install exit server**.
@@ -81,10 +81,10 @@ sudo wg-ops test --role exit
 On the **entry** VPS (use the exit key from Step 2):
 
 ```bash
-sudo WG_ENTRY_PUBLIC_IP=198.51.100.10 \
-  WG_EXIT_PUBLIC_IP=203.0.113.50 \
-  WG_EXIT_TUNNEL_PUB='PASTE_EXIT_TUNNEL_PUBKEY' \
-  WG_ADMIN_PASS='your-strong-password' \
+sudo WG_ENTRY_PUBLIC_IP=ENTRY_IP \
+  WG_EXIT_PUBLIC_IP=EXIT_IP \
+  WG_EXIT_TUNNEL_PUB='EXIT_TUNNEL_PUBKEY' \
+  WG_ADMIN_PASS='ADMIN_PASSWORD' \
   WG_SKIP_XRAY=1 \
   wg-ops install-entry
 ```
@@ -131,7 +131,7 @@ sudo WG_GITHUB_REPO='https://gh-proxy.com/https://github.com/ahmadfarzad-amiri/w
 On the **exit** VPS (use the entry tunnel key from Step 3):
 
 ```bash
-sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' '198.51.100.10'
+sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_IP'
 ```
 
 On the **entry** VPS, confirm a recent handshake:
@@ -148,15 +148,15 @@ ping -c 3 10.200.0.1
 On **entry**:
 
 ```bash
-sudo wg-client add alice --days 30 --vpn-mode twohop
-sudo wg-client show alice
+sudo wg-client add CLIENT_NAME --days 30 --vpn-mode twohop
+sudo wg-client show CLIENT_NAME
 ```
 
 1. Open admin: `http://ENTRY_IP:8090/admin/login`  
    User `admin` / password from `WG_ADMIN_PASS`
 2. Open client panel: `http://ENTRY_IP:8088/login`  
-   Register a user, then approve them in admin and assign the `alice` config
-3. On your phone/laptop: import `/etc/wireguard/clients/alice.conf` (or QR / panel download) into the WireGuard app  
+   Register a user, then approve them in admin and assign the `CLIENT_NAME` config
+3. On your phone/laptop: import `/etc/wireguard/clients/CLIENT_NAME.conf` (or QR / panel download) into the WireGuard app  
    Leave **Endpoint** as `ENTRY_IP:51820`
 
 ---

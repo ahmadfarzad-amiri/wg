@@ -2,9 +2,9 @@
 # Replace stale client Endpoint IPs in all WireGuard client configs on the entry server.
 #
 # Usage:
-#   sudo wg-ops fix-endpoint 198.51.100.10:51820
-#   sudo wg-ops fix-endpoint --old 198.51.100.20 --new 198.51.100.10:51820
-#   sudo WG_ENTRY_PUBLIC_IP=198.51.100.10 bash /opt/wg-ops/fix-client-endpoint.sh
+#   sudo wg-ops fix-endpoint ENTRY_IP:51820
+#   sudo wg-ops fix-endpoint --old OLD_ENTRY_IP --new ENTRY_IP:51820
+#   sudo WG_ENTRY_PUBLIC_IP=ENTRY_IP bash /opt/wg-ops/fix-client-endpoint.sh
 set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
@@ -70,7 +70,7 @@ if [[ -z "$NEW_EP" ]]; then
     NEW_EP="${WG_ENTRY_PUBLIC_IP}:${CLIENT_PORT}"
   else
     _pub="$(detect_public_ip || true)"
-    [[ -n "$_pub" && "$_pub" != "127.0.0.1" ]] || die "Pass NEW_ENDPOINT (e.g. 198.51.100.10:51820) or set WG_ENTRY_PUBLIC_IP"
+    [[ -n "$_pub" && "$_pub" != "127.0.0.1" ]] || die "Pass NEW_ENDPOINT (e.g. ENTRY_IP:51820) or set WG_ENTRY_PUBLIC_IP"
     NEW_EP="${_pub}:${CLIENT_PORT}"
   fi
 fi

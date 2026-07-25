@@ -367,7 +367,7 @@ def add_client_form():
   <div class="add-client-fields">
     <label class="field field-name">
       <span class="field-label">{html.escape(t("client.name"))}</span>
-      <input name="client" class="field-input" placeholder="alice" required autocomplete="off">
+      <input name="client" class="field-input" placeholder="CLIENT_NAME" required autocomplete="off">
     </label>
     <div class="field field-vpn">
       <span class="field-label">{vpn_mode_label}</span>

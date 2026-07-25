@@ -97,8 +97,8 @@ Or use **Admin panel → Tools**.
 | `direct` | Entry VPS | Diagnostic A/B only (not a speed fix) |
 
 ```bash
-sudo wg-client set-mode alice twohop
-sudo wg-client set-mode alice direct   # diagnostic only
+sudo wg-client set-mode CLIENT_NAME twohop
+sudo wg-client set-mode CLIENT_NAME direct   # diagnostic only
 sudo wg-client sync-vpn-modes
 ```
 

@@ -26,7 +26,7 @@ Usage:
 Examples:
   wg-panel-admin users
   wg-panel-admin pending
-  wg-panel-admin approve alice alice_wg
+  wg-panel-admin approve USERNAME CLIENT_NAME
   wg-panel-admin requests
   wg-panel-admin approve-request 3 --days 30 --limit 20G --single-ip
 

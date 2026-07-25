@@ -8,7 +8,7 @@ This guide is for **VPN users**. It covers registration, connecting, downloading
 
 ## What you need before starting
 
-- The **client panel URL** from your provider (e.g. `https://vpn.example.com/login` or `http://SERVER_IP:8088/login`)
+- The **client panel URL** from your provider (e.g. `https://PANEL_DOMAIN/login` or `http://ENTRY_IP:8088/login`)
 - The **WireGuard app** installed on your device — [wireguard.com/install](https://www.wireguard.com/install/)
 - A username and password (you create these during registration)
 

@@ -2,10 +2,10 @@
 # Entry VPS — where client devices connect + web panels.
 #
 # Preferred:
-#   sudo WG_ENTRY_PUBLIC_IP=198.51.100.10 \
-#     WG_EXIT_PUBLIC_IP=203.0.113.50 \
-#     WG_EXIT_TUNNEL_PUB='base64key=' \
-#     WG_ADMIN_PASS='secretpass' \
+#   sudo WG_ENTRY_PUBLIC_IP=ENTRY_IP \
+#     WG_EXIT_PUBLIC_IP=EXIT_IP \
+#     WG_EXIT_TUNNEL_PUB='EXIT_TUNNEL_PUBKEY' \
+#     WG_ADMIN_PASS='ADMIN_PASSWORD' \
 #     wg-ops install-entry
 #
 # Direct path after wg-ops pull:
