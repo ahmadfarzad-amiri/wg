@@ -88,7 +88,7 @@ def body(msg=""):
     <label>{html.escape(t("tools.new_endpoint"))}</label>
     <input name="new_endpoint" class="field-input" value="{_field_value(infra, "entry_endpoint")}" placeholder="198.51.100.10:51820" required>
     <label>{html.escape(t("tools.old_ip"))}</label>
-    <input name="old_ip" class="field-input" value="{_field_value(infra, "entry_old_ip")}" placeholder="216.147.121.53">
+    <input name="old_ip" class="field-input" value="{_field_value(infra, "entry_old_ip")}" placeholder="198.51.100.20">
     <button type="submit" class="btn" data-confirm="{html.escape(t("tools.change_entry_confirm"), quote=True)}">{html.escape(t("tools.change_entry_btn"))}</button>
   </form>
   <form class="form-stack infra-form" method="post" action="{admin_url("/tool-action")}">

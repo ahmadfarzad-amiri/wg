@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # Remove WireGuard VPN deployment — panels, database, configs, nginx, systemd units.
-# Works on entry or exit servers (auto-detected).
+# Works on entry or exit servers (auto-detected). Fresh-install stack only.
 #
-# Non-interactive:
-#   curl -fsSL .../uninstall-server.sh -o /tmp/uninstall-server.sh
-#   sudo WG_UNINSTALL_CONFIRM=yes bash /tmp/uninstall-server.sh
+# Preferred:
+#   sudo WG_UNINSTALL_CONFIRM=yes wg-ops uninstall
 #
-# Optional backup before removal:
-#   sudo WG_UNINSTALL_BACKUP=1 WG_UNINSTALL_CONFIRM=yes bash /tmp/uninstall-server.sh
+# Optional config snapshot before removal:
+#   sudo WG_UNINSTALL_BACKUP=1 WG_UNINSTALL_CONFIRM=yes wg-ops uninstall
 #
-# Interactive:
+# Direct (repo checkout):
 #   sudo bash deploy/uninstall-server.sh
 set -eo pipefail
 

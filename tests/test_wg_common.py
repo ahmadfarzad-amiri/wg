@@ -22,14 +22,14 @@ class PasswordTest(unittest.TestCase):
         stored, salt = hash_password("secret123")
         self.assertTrue(verify_password("secret123", stored, salt))
         self.assertFalse(verify_password("wrong", stored, salt))
+        self.assertEqual(PBKDF2_ITERATIONS, 300_000)
 
-    def test_legacy_iterations_accepted(self):
+    def test_wrong_iteration_count_rejected(self):
         salt = "abc123"
-        legacy = hashlib.pbkdf2_hmac(
+        other = hashlib.pbkdf2_hmac(
             "sha256", b"oldpass", salt.encode(), 250_000
         ).hex()
-        self.assertTrue(verify_password("oldpass", legacy, salt))
-        self.assertEqual(PBKDF2_ITERATIONS, 300_000)
+        self.assertFalse(verify_password("oldpass", other, salt))
 
 
 class ClientStatusTest(unittest.TestCase):

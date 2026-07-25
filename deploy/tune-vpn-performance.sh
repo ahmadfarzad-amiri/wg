@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Apply VPN routing repair + performance tuning (MSS clamp, BBR, UDP buffers), then diagnose.
 #
-# Run on entry and exit servers before speed tests or after upgrades:
+# Run on entry and exit servers before speed tests or after config changes:
 #   sudo bash deploy/tune-vpn-performance.sh
 #   sudo bash deploy/tune-vpn-performance.sh --role entry
 #
@@ -58,7 +58,6 @@ fi
 
 log "=== Tune VPN performance (${ROLE}) ==="
 log "WG_ENABLE_BBR=${WG_ENABLE_BBR:-1} WG_ENABLE_MSS_CLAMP=${WG_ENABLE_MSS_CLAMP:-1}"
-log "Tip: for existing installs, prefer: sudo bash deploy/migrate-vpn-stack.sh --role ${ROLE}"
 
 bash "$SCRIPT_DIR/fix-vpn-routing.sh" --role "$ROLE"
 

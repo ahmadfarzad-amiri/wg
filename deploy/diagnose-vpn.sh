@@ -123,7 +123,7 @@ diag_host_perf() {
     local mss_count
     mss_count="$(iptables-save -t mangle 2>/dev/null | grep -c 'TCPMSS.*clamp' || true)"
     if [[ "${mss_count:-0}" -gt 1 ]]; then
-      status WARNING "Duplicate MSS clamp rules (${mss_count}) — run migrate-vpn-stack.sh"
+      status WARNING "Duplicate MSS clamp rules (${mss_count}) — run: sudo bash deploy/fix-vpn-routing.sh --role ${ROLE}"
     else
       status HEALTHY "TCP MSS clamp rule present"
     fi
@@ -212,7 +212,7 @@ diag_exit() {
     local nat_count
     nat_count="$(iptables-save -t nat 2>/dev/null | grep -cE -- "-A POSTROUTING -s ${client_cidr}.*MASQUERADE" || true)"
     if [[ "${nat_count:-0}" -gt 1 ]]; then
-      status WARNING "Duplicate MASQUERADE rules (${nat_count}) — run migrate-vpn-stack.sh"
+      status WARNING "Duplicate MASQUERADE rules (${nat_count}) — run: sudo bash deploy/fix-vpn-routing.sh --role exit"
     else
       status HEALTHY "NAT MASQUERADE for ${client_cidr}"
     fi
@@ -298,7 +298,7 @@ diag_entry() {
     status FAILED "Missing FORWARD tunnel→client"
   fi
   if iptables -C FORWARD -i wg-clients -j ACCEPT 2>/dev/null; then
-    status WARNING "Legacy broad FORWARD -i wg-clients ACCEPT still present — migrate-vpn-stack.sh"
+    status WARNING "Broad FORWARD -i wg-clients ACCEPT still present — run fix-vpn-routing.sh"
   else
     status HEALTHY "No broad wg-clients FORWARD ACCEPT"
   fi
@@ -307,7 +307,7 @@ diag_entry() {
   if [[ -n "$def_if" ]] && iptables -C FORWARD -i wg-clients -o "$def_if" -j DROP 2>/dev/null; then
     status HEALTHY "Anti-leak DROP client→${def_if}"
   else
-    status WARNING "Anti-leak DROP missing (set WG_ENTRY_ANTILEAK=1 and migrate)"
+    status WARNING "Anti-leak DROP missing (set WG_ENTRY_ANTILEAK=1 and run fix-vpn-routing.sh)"
   fi
   if iptables -t nat -S POSTROUTING 2>/dev/null | grep -qE -- "-s ${client_cidr}.*MASQUERADE"; then
     status WARNING "Subnet MASQUERADE on entry for ${client_cidr} — double-NAT risk"
@@ -328,7 +328,7 @@ diag_entry() {
 
   if [[ -f /etc/wireguard/wg-clients.conf ]] \
     && grep -qE 'iptables -A FORWARD -i wg-clients -j ACCEPT' /etc/wireguard/wg-clients.conf; then
-    status WARNING "wg-clients.conf still has legacy broad PostUp FORWARD"
+    status WARNING "wg-clients.conf has unsupported broad PostUp FORWARD — reinstall or fix PostUp"
   fi
 
   local direct=0 twohop=0
@@ -380,8 +380,8 @@ esac
 echo
 status INFO "Summary: healthy=${HEALTHY} warning=${WARNING} failed=${FAILED}"
 if [[ "$FAILED" -gt 0 ]]; then
-  status INFO "Fix: sudo bash deploy/migrate-vpn-stack.sh --role ${ROLE}"
-  status INFO "Then: sudo bash deploy/fix-vpn-routing.sh --role ${ROLE}"
+  status INFO "Fix: sudo bash deploy/fix-vpn-routing.sh --role ${ROLE}"
+  status INFO "Then: sudo bash deploy/diagnose-vpn.sh --role ${ROLE}"
   exit 1
 fi
 exit 0

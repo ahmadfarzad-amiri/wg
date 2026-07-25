@@ -91,7 +91,7 @@ case "$ROLE" in
     wg_check_duplicate_client_addresses /etc/wireguard/clients
     if [[ -f /etc/wireguard/wg-clients.conf ]]; then
       if grep -qE 'iptables -A FORWARD -i wg-clients -j ACCEPT' /etc/wireguard/wg-clients.conf; then
-        warn "Legacy broad FORWARD PostUp still in wg-clients.conf — run migrate-vpn-stack.sh"
+        die "Unsupported broad FORWARD PostUp in wg-clients.conf — uninstall and reinstall, or set PostUp to route-only"
       fi
     fi
     log "Entry configuration: OK"

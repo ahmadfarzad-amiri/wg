@@ -1,6 +1,6 @@
-# Required CLI tools for production (install to /usr/local/bin)
+# CLI tools (installed to `/usr/local/bin`)
 
-Copy these from your production server if missing:
+These tools ship in this directory and are installed by `wg-ops install-entry`.
 
 | Tool | Purpose |
 |------|---------|
@@ -8,14 +8,6 @@ Copy these from your production server if missing:
 | `wg-client-single` | Single-device mode |
 | `wg-panel-admin` | CLI user/request management |
 | `wg-client-rotate-keys` | Key rotation |
-| `wg-client-import-existing` | Import existing `.conf` files |
+| `wg-client-import-existing` | Import `.conf` files into panel management |
 
-Example from an existing server:
-
-```bash
-scp root@your-server:/usr/local/bin/wg-client client-panel/bin/
-scp root@your-server:/usr/local/bin/wg-client-single client-panel/bin/
-# ... repeat for other tools
-```
-
-All tools must use `/etc/wireguard/` paths (not local dev paths).
+All tools use `/etc/wireguard/` paths.

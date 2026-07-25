@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Entry VPS — where client devices connect + web panels.
 #
-# Non-interactive example (download first — env vars before curl do NOT reach sudo bash in a pipe):
-#   curl -fsSL .../install-entry-server.sh -o /tmp/install-entry-server.sh
-#   sudo WG_ENTRY_PUBLIC_IP=203.0.113.10 \
+# Preferred:
+#   sudo WG_ENTRY_PUBLIC_IP=198.51.100.10 \
 #     WG_EXIT_PUBLIC_IP=203.0.113.50 \
 #     WG_EXIT_TUNNEL_PUB='base64key=' \
 #     WG_ADMIN_PASS='secretpass' \
-#     bash /tmp/install-entry-server.sh
+#     wg-ops install-entry
 #
-# Interactive:
+# Direct (repo checkout):
 #   WG_INSTALL_INTERACTIVE=1 sudo bash install-entry-server.sh
+# Fresh install only — existing installs must be uninstalled first.
 set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
@@ -111,12 +111,10 @@ else
   log "Exit tunnel port  : ${EXIT_TUNNEL_PORT}"
   [[ -n "$EXIT_TUNNEL_PUB" ]] || die "Set WG_EXIT_TUNNEL_PUB (exit tunnel public key)"
   [[ -n "$EXIT_IP" ]] || die "Set WG_EXIT_PUBLIC_IP"
-  if [[ -z "${WG_ADMIN_PASS:-}" && -z "${WG_ADMIN_PASS_FILE:-}" && "${WG_INSTALL_MODE:-fresh}" != "upgrade" ]]; then
+  if [[ -z "${WG_ADMIN_PASS:-}" && -z "${WG_ADMIN_PASS_FILE:-}" ]]; then
     die "Set WG_ADMIN_PASS or WG_ADMIN_PASS_FILE for non-interactive install"
   fi
-  if [[ "${WG_INSTALL_MODE:-fresh}" != "upgrade" ]]; then
-    read_admin_password
-  fi
+  read_admin_password
 fi
 
 PANEL_ADMIN_HOST="0.0.0.0"
@@ -135,7 +133,8 @@ export WG_EXIT_TUNNEL_PORT="$EXIT_TUNNEL_PORT"
 export WG_CLIENT_PORT="$CLIENT_PORT_WG"
 export WG_CLIENT_CIDR="$CLIENT_CIDR"
 wg_validate_entry_install_env
-require_fresh_or_upgrade "$CLIENT_CONF"
+require_fresh_install "$CLIENT_CONF"
+require_fresh_install "$TUNNEL_CONF"
 
 if [[ -f "$SCRIPT_DIR/../client-panel/app.py" ]]; then
   REPO_DIR="$SCRIPT_DIR/.."
@@ -157,6 +156,7 @@ fi
 
 ensure_wg_dirs
 install_bin_tools "$REPO_DIR/client-panel/bin"
+install_wg_ops "$REPO_DIR/deploy"
 write_wg_endpoint "$WG_ENDPOINT"
 
 mkdir -p "$INSTALL_DIR"
@@ -176,23 +176,10 @@ DEF_IF="${DEF_IF:-eth0}"
 wg_stop_if "$CLIENT_IF"
 wg_stop_if "$TUNNEL_IF"
 
-if [[ "${WG_INSTALL_MODE:-fresh}" == "upgrade" ]]; then
-  ensure_tunnel_listen_port_in_conf "$TUNNEL_CONF" "$TUNNEL_LISTEN_PORT"
-fi
-
-if [[ "${WG_INSTALL_MODE:-fresh}" == "upgrade" && -f "$CLIENT_CONF" ]]; then
-  log "Upgrade: preserving existing $CLIENT_CONF (including client peers)"
-  fix_entry_client_postup_in_conf "$CLIENT_CONF" "$CLIENT_IF" "$CLIENT_CIDR"
-  CLIENT_PUB="$(< /etc/wireguard/clients-server.pub 2>/dev/null || true)"
-  if [[ -z "$CLIENT_PUB" ]]; then
-    CLIENT_PRIV="$(wg_conf_private_key "$CLIENT_CONF")"
-    CLIENT_PUB="$(printf '%s' "$CLIENT_PRIV" | wg pubkey)"
-  fi
-else
-  CLIENT_PRIV="$(wg genkey)"
-  CLIENT_PUB="$(printf '%s' "$CLIENT_PRIV" | wg pubkey)"
-  umask 077
-  cat > "$CLIENT_CONF" <<EOF
+CLIENT_PRIV="$(wg genkey)"
+CLIENT_PUB="$(printf '%s' "$CLIENT_PRIV" | wg pubkey)"
+umask 077
+cat > "$CLIENT_CONF" <<EOF
 [Interface]
 Address = ${VPN_PREFIX}.1/24
 ListenPort = ${CLIENT_PORT_WG}
@@ -201,16 +188,11 @@ MTU = ${WG_CLIENTS_MTU:-${WG_SERVER_MTU:-1420}}
 PostUp = ip route replace ${CLIENT_CIDR} dev ${CLIENT_IF} scope link
 PostDown = ip route del ${CLIENT_CIDR} dev ${CLIENT_IF} scope link 2>/dev/null || true
 EOF
-  printf '%s\n' "$CLIENT_PUB" > /etc/wireguard/clients-server.pub
-  chmod 600 "$CLIENT_CONF" /etc/wireguard/clients-server.pub
-fi
+printf '%s\n' "$CLIENT_PUB" > /etc/wireguard/clients-server.pub
+chmod 600 "$CLIENT_CONF" /etc/wireguard/clients-server.pub
 
-if preserve_tunnel_keys "$TUNNEL_CONF" /etc/wireguard/tunnel-entry.pub; then
-  :
-else
-  TUNNEL_PRIV="$(wg genkey)"
-  TUNNEL_PUB="$(printf '%s' "$TUNNEL_PRIV" | wg pubkey)"
-fi
+TUNNEL_PRIV="$(wg genkey)"
+TUNNEL_PUB="$(printf '%s' "$TUNNEL_PRIV" | wg pubkey)"
 
 cat > "$TUNNEL_CONF" <<EOF
 [Interface]
@@ -404,10 +386,10 @@ elif [[ -n "$XRAY_REALITY_SNI" ]]; then
     XRAY_INSTALLED="yes"
   else
     warn "Xray install failed — run manually later:"
-    warn "  sudo WG_XRAY_REALITY_SNI=${XRAY_REALITY_SNI} bash deploy/install-xray.sh"
+    warn "  sudo WG_XRAY_REALITY_SNI=${XRAY_REALITY_SNI} wg-ops install-xray"
   fi
 else
-  log "Xray skipped — set WG_XRAY_REALITY_SNI to install, or run: sudo bash deploy/install-xray.sh"
+  log "Xray skipped — set WG_XRAY_REALITY_SNI to install, or run: sudo wg-ops install-xray"
 fi
 
 cat <<EOF
@@ -417,6 +399,12 @@ Client Endpoint (devices): ${WG_ENDPOINT}
 Client server public key  : ${CLIENT_PUB}
 Tunnel public key (entry) : ${TUNNEL_PUB}
 
+Operator CLI:
+  sudo wg-ops pull
+  sudo wg-ops test --role entry
+  sudo wg-ops diagnose --role entry
+  sudo wg-ops tune --role entry
+
 Web panels:
   ${PANEL_URL_CLIENT}
   ${PANEL_URL_ADMIN}
@@ -424,7 +412,7 @@ Admin user                : ${ADMIN_USER}
 Xray protocols            : ${XRAY_INSTALLED}
 
 IMPORTANT — on the exit server, run:
-  bash deploy/add-entry-peer.sh ${TUNNEL_PUB} ${ENTRY_IP}
+  sudo wg-ops add-peer ${TUNNEL_PUB} ${ENTRY_IP}
 
 Cloud firewall: allow UDP ${CLIENT_PORT_WG} from clients; TCP 80/443 or panel ports.
 

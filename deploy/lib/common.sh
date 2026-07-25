@@ -286,10 +286,6 @@ install_certbot_https() {
   return 1
 }
 
-install_exit_proxy_nginx() {
-  die "install_exit_proxy_nginx was removed — panels run only on the entry server"
-}
-
 load_deploy_bootstrap() {
   source_deploy_lib "${1:-}"
 }
@@ -533,6 +529,48 @@ install_bin_tools() {
   fi
 }
 
+# Install operator CLI + cache deploy scripts under /opt/wg-ops (does not clash with native `wg`).
+install_wg_ops() {
+  local deploy_dir="${1:-}"
+  local ops_dir="${WG_OPS_DIR:-/opt/wg-ops}"
+  local bin_path="${WG_OPS_BIN:-/usr/local/bin/wg-ops}"
+  mkdir -p "$ops_dir/lib" /usr/local/bin
+
+  # Full local deploy tree (repo checkout): copy everything.
+  if [[ -n "$deploy_dir" \
+    && -f "$deploy_dir/wg-ops" \
+    && -f "$deploy_dir/lib/common.sh" \
+    && -f "$deploy_dir/test-connectivity.sh" \
+    && -f "$deploy_dir/diagnose-vpn.sh" ]]; then
+    rsync -a --delete \
+      --exclude='.git' \
+      --exclude='__pycache__' \
+      --exclude='*.pyc' \
+      "$deploy_dir/" "$ops_dir/"
+    install -m 755 "$deploy_dir/wg-ops" "$bin_path"
+    log "Installed $bin_path (scripts in $ops_dir)"
+    return 0
+  fi
+
+  # Bootstrap CLI, then pull the full script set from CDN/Git.
+  if [[ -n "$deploy_dir" && -f "$deploy_dir/wg-ops" ]]; then
+    install -m 755 "$deploy_dir/wg-ops" "$bin_path"
+  elif command -v curl >/dev/null 2>&1; then
+    curl -fsSL "${GITHUB_RAW_BASE}/deploy/wg-ops" -o "$bin_path"
+    chmod 755 "$bin_path"
+  else
+    warn "wg-ops not installed (no local deploy tree and no curl)"
+    return 0
+  fi
+
+  if WG_OPS_DIR="$ops_dir" WG_OPS_BIN="$bin_path" WG_RAW_BASE="${GITHUB_RAW_BASE}" \
+    bash "$bin_path" pull; then
+    log "Installed $bin_path (scripts in $ops_dir)"
+  else
+    warn "wg-ops CLI installed but pull failed — run: sudo wg-ops pull"
+  fi
+}
+
 ensure_wg_dirs() {
   mkdir -p /etc/wireguard/{clients,client-state,backups}
   chmod 700 /etc/wireguard /etc/wireguard/clients /etc/wireguard/client-state
@@ -617,35 +655,18 @@ wg_entry_client_subnet_route_ok() {
   ip route get "$sample_ip" 2>/dev/null | grep -q "dev ${client_if}"
 }
 
-fix_entry_client_postup_in_conf() {
+ensure_entry_client_postup_in_conf() {
+  # Ensure wg-clients PostUp is route-only (FORWARD rules live in wg-tunnel PostUp).
   local conf="${1:-/etc/wireguard/wg-clients.conf}"
   local client_if="${2:-wg-clients}"
   local client_cidr="${3:-10.10.10.0/24}"
   [[ -f "$conf" ]] || return 0
-  # Migrate legacy broad FORWARD PostUp → route-only (tunnel conf owns cross-forward rules).
-  if grep -qE 'PostUp = .*iptables -A FORWARD -i' "$conf" 2>/dev/null; then
-    local tmp
-    tmp="$(mktemp)"
-    awk -v cif="$client_if" -v cidr="$client_cidr" '
-      /^PostUp[[:space:]]*=/ {
-        print "PostUp = ip route replace " cidr " dev " cif " scope link"
-        next
-      }
-      /^PostDown[[:space:]]*=/ {
-        print "PostDown = ip route del " cidr " dev " cif " scope link 2>/dev/null || true"
-        next
-      }
-      { print }
-    ' "$conf" > "$tmp"
-    chmod 600 "$tmp"
-    mv "$tmp" "$conf"
-    log "Migrated $conf PostUp to route-only (removed broad FORWARD ACCEPT)"
-    return 0
+  if grep -qE 'PostUp = .*iptables .*FORWARD' "$conf" 2>/dev/null; then
+    die "Unsupported PostUp in ${conf} (iptables FORWARD belongs on wg-tunnel). Remove conflicting resources with uninstall-server.sh, then reinstall."
   fi
   if grep -q 'ip route replace' "$conf" 2>/dev/null; then
     return 0
   fi
-  # Older installs with no route in PostUp — append route after Address if PostUp missing.
   if ! grep -q '^PostUp' "$conf" 2>/dev/null; then
     awk -v cif="$client_if" -v cidr="$client_cidr" '
       /^Address[[:space:]]*=/ && !done {
@@ -673,11 +694,11 @@ wg_entry_forward_rules_up() {
   # Narrow path only: client ↔ tunnel. Do not ACCEPT all wg-clients forwards
   # (that allows accidental WAN egress when policy routing is missing).
   wg_iptables_ensure FORWARD -i "$client_if" -o "$tunnel_if" -j ACCEPT
-  # Legacy stateful rule breaks UDP/DNS return traffic with policy routing.
+  # Stateful RELATED,ESTABLISHED alone breaks UDP/DNS return with policy routing.
   wg_iptables_delete_all FORWARD -i "$tunnel_if" -o "$client_if" -m state --state RELATED,ESTABLISHED -j ACCEPT
   wg_iptables_ensure FORWARD -i "$tunnel_if" -o "$client_if" -j ACCEPT
 
-  # Remove obsolete broad ACCEPT rules from older installs.
+  # Remove broad ACCEPT rules that would bypass the narrow path.
   wg_iptables_delete_all FORWARD -i "$client_if" -j ACCEPT
   wg_iptables_delete_all FORWARD -o "$client_if" -j ACCEPT
 
@@ -1100,7 +1121,7 @@ apply_entry_vpn_routing_fix() {
   strip_rp_filter_from_wg_postup "/etc/wireguard/${tunnel_if}.conf"
   strip_rp_filter_from_wg_postup "/etc/wireguard/${client_if}.conf"
   fix_entry_tunnel_postup_in_conf "/etc/wireguard/${tunnel_if}.conf"
-  fix_entry_client_postup_in_conf "/etc/wireguard/${client_if}.conf" "$client_if" "$client_cidr"
+  ensure_entry_client_postup_in_conf "/etc/wireguard/${client_if}.conf" "$client_if" "$client_cidr"
   wg_apply_rp_filter_for_wg
   wg_install_docker_forward_systemd
   wg_apply_vpn_performance
@@ -1222,20 +1243,12 @@ read_admin_password() {
   fi
 }
 
-require_fresh_or_upgrade() {
+require_fresh_install() {
+  # Fresh-install only: refuse when managed config already exists.
   local marker="${1:-/etc/wireguard/wg-tunnel.conf}"
-  local mode="${WG_INSTALL_MODE:-fresh}"
-  if [[ "$mode" == "upgrade" ]]; then
-    log "Upgrade mode — preserving existing WireGuard keys where possible"
-    return 0
-  fi
   if [[ -f "$marker" ]]; then
-    if [[ "${WG_INSTALL_FORCE:-0}" != "1" ]]; then
-      die "Existing install detected. Set WG_INSTALL_MODE=upgrade to preserve keys, or WG_INSTALL_FORCE=1 to overwrite."
-    fi
-    warn "WG_INSTALL_FORCE=1 — overwriting existing configuration"
+    die "Existing install detected (${marker}). This installer supports clean servers only. Uninstall first: sudo WG_UNINSTALL_CONFIRM=yes wg-ops uninstall"
   fi
-  backup_wg_configs "pre-install"
 }
 
 maybe_enable_ufw() {
@@ -1294,26 +1307,6 @@ wg_conf_public_key() {
   priv="$(wg_conf_private_key "$1")"
   [[ -n "$priv" ]] || return 1
   printf '%s' "$priv" | wg pubkey
-}
-
-preserve_tunnel_keys() {
-  local conf="$1"
-  local pub_file="$2"
-  if [[ "${WG_INSTALL_MODE:-fresh}" != "upgrade" ]]; then
-    return 1
-  fi
-  if [[ ! -f "$conf" ]]; then
-    return 1
-  fi
-  TUNNEL_PRIV="$(wg_conf_private_key "$conf")"
-  [[ -n "$TUNNEL_PRIV" ]] || return 1
-  if [[ -f "$pub_file" ]]; then
-    TUNNEL_PUB="$(<"$pub_file")"
-  else
-    TUNNEL_PUB="$(printf '%s' "$TUNNEL_PRIV" | wg pubkey)"
-  fi
-  log "Reusing existing tunnel keys from $conf"
-  return 0
 }
 
 wg_exit_forward_nat_down() {
@@ -1493,7 +1486,7 @@ uninstall_wg_ufw_rules() {
 
 uninstall_wg_bin_tools() {
   local tool
-  for tool in wg-client wg-client-single wg-panel-admin wg-client-rotate-keys wg-client-import-existing; do
+  for tool in wg-client wg-client-single wg-panel-admin wg-client-rotate-keys wg-client-import-existing wg-ops; do
     if [[ -f "/usr/local/bin/$tool" ]]; then
       rm -f "/usr/local/bin/$tool"
       log "Removed /usr/local/bin/$tool"
@@ -1501,11 +1494,35 @@ uninstall_wg_bin_tools() {
   done
 }
 
+uninstall_xray() {
+  stop_systemd_unit xray.service
+  remove_systemd_unit_file /etc/systemd/system/xray.service
+  systemctl daemon-reload 2>/dev/null || true
+  rm -f /etc/nginx/sites-enabled/xray-ws.conf /etc/nginx/sites-available/xray-ws.conf
+  if command -v nginx >/dev/null 2>&1 && nginx -t 2>/dev/null; then
+    nginx_reload_or_start || true
+  fi
+  if command -v ufw >/dev/null 2>&1; then
+    ufw delete allow 443/tcp 2>/dev/null || true
+    ufw delete allow 8388/tcp 2>/dev/null || true
+    ufw delete allow 8388/udp 2>/dev/null || true
+  fi
+  rm -rf /etc/xray /var/log/xray
+  # Keep binary unless explicitly requested — shared host tools may use it.
+  if [[ "${WG_REMOVE_XRAY_BIN:-0}" == "1" ]]; then
+    rm -f /usr/local/bin/xray
+    rm -rf /usr/local/share/xray
+  fi
+  log "Xray removed (/etc/xray, service, nginx ws site)"
+}
+
 uninstall_wg_data_dirs() {
   local install_dir="${WG_INSTALL_DIR:-/opt/wg}"
   local repo_dir="${WG_REPO_DIR:-/opt/wg-src}"
-  rm -rf "$install_dir" "$repo_dir"
-  log "Removed $install_dir and $repo_dir"
+  local ops_dir="${WG_OPS_DIR:-/opt/wg-ops}"
+  uninstall_xray
+  rm -rf "$install_dir" "$repo_dir" "$ops_dir"
+  log "Removed $install_dir, $repo_dir, and $ops_dir"
   if [[ -d /etc/wireguard ]]; then
     rm -rf /etc/wireguard
     log "Removed /etc/wireguard"

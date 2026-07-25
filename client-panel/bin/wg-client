@@ -100,11 +100,11 @@ Options for add/renew/update:
   --no-single              Disable single-device protection
 
 Examples:
-  wg-client add farzad --days 30 --limit 20G --single-ip
-  wg-client add ali --ip 10.10.10.20 --days 7 --limit 5G
-  wg-client renew farzad --days 30 --limit 20G --single-ip
-  wg-client update farzad --days 30 --limit 50G --vpn-mode direct
-  wg-client remove farzad
+  wg-client add alice --days 30 --limit 20G --single-ip
+  wg-client add bob --ip 10.10.10.20 --days 7 --limit 5G
+  wg-client renew alice --days 30 --limit 20G --single-ip
+  wg-client update alice --days 30 --limit 50G --vpn-mode direct
+  wg-client remove alice
   wg-client list
   wg-client enforce
   wg-client install-timer

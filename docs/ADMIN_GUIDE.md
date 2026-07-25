@@ -201,11 +201,11 @@ Also update your cloud firewall and any DNS records. Connected users must reconn
 1. **Tools → Change exit**.
 2. Enter the new exit server IP and its tunnel public key.
 3. Then on the **new exit** server, run:
-   ```bash
-   sudo bash /tmp/add-entry-peer.sh 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
-   ```
+```bash
+   sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
+```
 
-See [Operations guide](OPERATIONS.md) for the full migration checklist.
+See [Operations guide](OPERATIONS.md) for changing entry/exit servers and day-2 ops.
 
 ---
 
@@ -218,7 +218,7 @@ Xray provides alternative connection protocols that work when WireGuard UDP is b
 Xray must be installed on the entry server. The install is included in the entry server setup when `WG_XRAY_REALITY_SNI` is set. To install it separately:
 
 ```bash
-sudo WG_XRAY_REALITY_SNI=www.microsoft.com bash /opt/wg/deploy/install-xray.sh
+sudo WG_XRAY_REALITY_SNI=www.microsoft.com wg-ops install-xray
 ```
 
 The **Xray** tab shows `installed` / `not installed` status. If not installed, the command above is shown.
@@ -291,10 +291,10 @@ On small screens, tables become **cards** with the same action buttons in expand
 2. Keep clients on **twohop** (exit IP). Use **direct** only for short hop-isolation tests — not as a production speed fix.
 3. **Disable** rather than **delete** when suspending service temporarily — deletion cannot be undone.
 4. Keep the admin panel behind nginx + HTTPS. Do not expose port `8090` to the public internet directly.
-5. Run a backup before bulk operations:
-   ```bash
-   sudo bash deploy/backup.sh
-   ```
+5. Take an operational backup before bulk destructive operations:
+```bash
+   sudo wg-ops backup
+```
 
 ---
 
@@ -302,5 +302,5 @@ On small screens, tables become **cards** with the same action buttons in expand
 
 - [User guide](USER_GUIDE.md) — what your users see in the client panel
 - [Architecture](ARCHITECTURE.md) — two-hop design and data layout
-- [Operations guide](OPERATIONS.md) — install, backup, server migration
+- [Operations guide](OPERATIONS.md) — install, backup, server changes
 - [Performance guide](PERFORMANCE.md) — two-hop throughput tuning and hop measurements

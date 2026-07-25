@@ -2,8 +2,9 @@
 # Replace stale client Endpoint IPs in all WireGuard client configs on the entry server.
 #
 # Usage:
-#   sudo bash deploy/fix-client-endpoint.sh 31.25.93.168:51820
-#   sudo bash deploy/fix-client-endpoint.sh --old 216.147.121.53 --new 31.25.93.168:51820
+#   sudo bash deploy/fix-client-endpoint.sh 198.51.100.10:51820
+#   sudo bash deploy/fix-client-endpoint.sh --old 198.51.100.20 --new 198.51.100.10:51820
+#   sudo WG_ENTRY_PUBLIC_IP=198.51.100.10 bash deploy/fix-client-endpoint.sh
 set -eo pipefail
 
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
@@ -37,7 +38,7 @@ set -u
 require_root
 require_entry_server
 
-OLD_IP="${WG_OLD_ENTRY_IP:-216.147.121.53}"
+OLD_IP="${WG_OLD_ENTRY_IP:-}"
 NEW_EP=""
 CLIENT_DIR="${WG_CLIENT_DIR:-/etc/wireguard/clients}"
 ENV_FILE="/etc/wireguard/entry-server.env"
@@ -69,7 +70,7 @@ if [[ -z "$NEW_EP" ]]; then
     NEW_EP="${WG_ENTRY_PUBLIC_IP}:${CLIENT_PORT}"
   else
     _pub="$(detect_public_ip || true)"
-    [[ -n "$_pub" && "$_pub" != "127.0.0.1" ]] || die "Pass NEW_ENDPOINT (e.g. 31.25.93.168:51820) or set WG_ENTRY_PUBLIC_IP"
+    [[ -n "$_pub" && "$_pub" != "127.0.0.1" ]] || die "Pass NEW_ENDPOINT (e.g. 198.51.100.10:51820) or set WG_ENTRY_PUBLIC_IP"
     NEW_EP="${_pub}:${CLIENT_PORT}"
   fi
 fi
@@ -77,6 +78,15 @@ fi
 NEW_IP="${NEW_EP%%:*}"
 NEW_PORT="${NEW_EP#*:}"
 [[ "$NEW_PORT" == "$NEW_EP" ]] && NEW_PORT="$CLIENT_PORT"
+
+if [[ -z "$OLD_IP" ]]; then
+  if [[ -f /etc/wireguard/wg-endpoint ]]; then
+    OLD_IP="$(cut -d: -f1 </etc/wireguard/wg-endpoint)"
+  elif [[ -f "$ENV_FILE" ]] && grep -q '^WG_ENDPOINT=' "$ENV_FILE"; then
+    OLD_IP="$(grep -m1 '^WG_ENDPOINT=' "$ENV_FILE" | cut -d= -f2- | cut -d: -f1 | tr -d \"\' )"
+  fi
+fi
+[[ -n "$OLD_IP" ]] || die "Set --old OLD_IP or WG_OLD_ENTRY_IP (current entry IP to replace)"
 
 log "Old entry IP to replace: ${OLD_IP}"
 log "New client endpoint:   ${NEW_EP}"
@@ -112,7 +122,6 @@ if [[ -d "$CLIENT_DIR" ]]; then
   shopt -u nullglob
 fi
 
-# Any other wireguard tree paths
 for extra in /etc/wireguard/*.conf; do
   [[ -f "$extra" ]] || continue
   [[ "$extra" == *wg-clients.conf ]] && continue

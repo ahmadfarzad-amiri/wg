@@ -19,5 +19,5 @@ def require_wg_common():
         install_root = Path(__file__).resolve().parent.parent.parent
         raise SystemExit(
             f"Missing wg_common package at {install_root / 'wg_common'}. "
-            "Run: sudo bash deploy/update-panels.sh (or rsync wg_common/ to the install dir)."
+            "Run: sudo wg-ops update-panels (or rsync wg_common/ to the install dir)."
         ) from exc

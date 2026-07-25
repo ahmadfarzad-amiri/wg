@@ -1,10 +1,12 @@
 # Deployment guide
 
-**Documentation:** [docs/README.md](../docs/README.md) · [Operations guide](../docs/OPERATIONS.md) · [Performance guide](../docs/PERFORMANCE.md) · [Admin guide](../docs/ADMIN_GUIDE.md)
+**Documentation:** [docs/README.md](../docs/README.md) · [Operations guide](../docs/OPERATIONS.md) · [Fresh deployment](../docs/FRESH_DEPLOYMENT.md) · [Performance guide](../docs/PERFORMANCE.md)
 
 **Traffic path:** devices → **entry server** (`wg-clients`) → **encrypted tunnel** → **exit server** → internet
 
 Install scripts pull from [github.com/ahmadfarzad-amiri/wg](https://github.com/ahmadfarzad-amiri/wg).
+
+Install on clean entry and exit servers. If a managed config already exists, uninstall first.
 
 ## Architecture
 
@@ -22,16 +24,25 @@ Install scripts pull from [github.com/ahmadfarzad-amiri/wg](https://github.com/a
 
 Default client subnet: `10.10.10.0/24` (override with `WG_CLIENT_CIDR` on both servers).
 
-## Step 1 — Exit server (run first)
-
-Non-interactive by default:
+## Install operator CLI (each server)
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/install-exit-server.sh -o /tmp/install-exit-server.sh
-sudo WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP bash /tmp/install-exit-server.sh
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/wg-ops \
+  -o /usr/local/bin/wg-ops && sudo chmod 755 /usr/local/bin/wg-ops
+sudo wg-ops pull
 ```
 
-Override with env vars: `WG_EXIT_PUBLIC_IP`, `WG_TUNNEL_PORT`, `WG_CLIENT_CIDR`. Interactive: `WG_INSTALL_INTERACTIVE=1`.
+Interactive menu: `sudo wg-ops`.
+
+## Step 1 — Exit server (run first)
+
+```bash
+sudo WG_EXIT_PUBLIC_IP=203.0.113.50 wg-ops install-exit
+```
+
+Replace `203.0.113.50` with your exit public IP. Override with env vars: `WG_EXIT_PUBLIC_IP`, `WG_TUNNEL_PORT`, `WG_CLIENT_CIDR`. Interactive: `WG_INSTALL_INTERACTIVE=1` or menu → **1**.
+
+If a previous install is detected, uninstall first: `sudo wg-ops uninstall`.
 
 **Save from output:**
 - Tunnel public key (`tunnel-server.pub`)
@@ -39,23 +50,20 @@ Override with env vars: `WG_EXIT_PUBLIC_IP`, `WG_TUNNEL_PORT`, `WG_CLIENT_CIDR`.
 
 ## Step 2 — Entry server (run second)
 
-Download the script first — env vars on `curl` do **not** reach `sudo bash` in a pipe:
-
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/install-entry-server.sh -o /tmp/install-entry-server.sh
-sudo WG_ENTRY_PUBLIC_IP=YOUR_ENTRY_IP \
-  WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP \
+sudo WG_ENTRY_PUBLIC_IP=198.51.100.10 \
+  WG_EXIT_PUBLIC_IP=203.0.113.50 \
   WG_EXIT_TUNNEL_PUB='paste-exit-pubkey' \
   WG_ADMIN_PASS='your-password' \
   WG_XRAY_REALITY_SNI=www.microsoft.com \
-  bash /tmp/install-entry-server.sh
+  wg-ops install-entry
 ```
 
-`WG_XRAY_REALITY_SNI` installs VLESS+Reality, WebSocket, and Shadowsocks 2022 alongside WireGuard. Omit to skip Xray; install later with `sudo bash deploy/install-xray.sh`.
+`WG_XRAY_REALITY_SNI` installs VLESS+Reality, WebSocket, and Shadowsocks 2022 alongside WireGuard. Omit to skip Xray; install later with `sudo WG_XRAY_REALITY_SNI=… wg-ops install-xray`.
 
-Set `WG_ENTRY_PUBLIC_IP` when auto-detect picks a private address (common on VPS hosts: `172.16.x.x`). Use the **public** IP clients will connect to.
+Set `WG_ENTRY_PUBLIC_IP` when auto-detect picks a private address. Use the **public** IP clients will connect to.
 
-Interactive: `WG_INSTALL_INTERACTIVE=1`. Full env list: [config.env.example](config.env.example).
+Interactive: `WG_INSTALL_INTERACTIVE=1` or menu → **2**. Full env list: [config.env.example](config.env.example).
 
 **Save from output:**
 - Entry tunnel public key (`tunnel-entry.pub`)
@@ -65,8 +73,7 @@ Interactive: `WG_INSTALL_INTERACTIVE=1`. Full env list: [config.env.example](con
 Run **on the exit server only**:
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/add-entry-peer.sh -o /tmp/add-entry-peer.sh
-sudo bash /tmp/add-entry-peer.sh 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
+sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
 ```
 
 The peer is persisted in `/etc/wireguard/wg-tunnel.conf` (survives reboot).
@@ -78,70 +85,58 @@ The peer is persisted in `/etc/wireguard/wg-tunnel.conf` (survives reboot).
 | Entry | UDP **51820** (all clients share this one port); UDP **51822** (entry tunnel return path); or open range **51820–51830** |
 | Exit | UDP 51821 — restrict to entry server egress IP when possible |
 
-All client configs connect to the **same** `ENTRY_IP:51820`. You do not need a separate port per user unless you run custom multi-interface setups.
-
-Open a UDP range on the entry VPS (ufw + provider panel):
+All client configs connect to the **same** `ENTRY_IP:51820`.
 
 ```bash
-curl -fsSL .../open-firewall-ports.sh -o /tmp/open-ports.sh
-sudo WG_UDP_PORT_RANGE=51820:51830 bash /tmp/open-ports.sh --role entry
+sudo WG_UDP_PORT_RANGE=51820:51830 wg-ops open-ports --role entry
 ```
 
 Note: entry servers behind NAT may connect to exit from a **different egress IP** than `WG_ENTRY_PUBLIC_IP`. Allow the IP shown as `endpoint` in `wg show wg-tunnel` on exit.
 
-## Upgrade / repair / backup
+## Validate / repair / backup
+
+Prefer the operator menu after install:
 
 ```bash
-# Dataplane migrate (existing servers — preferred after this release)
-sudo bash deploy/migrate-vpn-stack.sh --role entry --dry-run
-sudo bash deploy/migrate-vpn-stack.sh --role entry
-sudo bash deploy/migrate-vpn-stack.sh --role exit
-
-# Validate + diagnose
-sudo bash deploy/validate-config.sh --role runtime
-sudo bash deploy/diagnose-vpn.sh --role entry
-
-# Upgrade installers (preserve keys and client peers)
-curl -fsSL .../install-exit-server.sh -o /tmp/install-exit-server.sh
-sudo WG_INSTALL_MODE=upgrade WG_EXIT_PUBLIC_IP=... bash /tmp/install-exit-server.sh
-
-curl -fsSL .../install-entry-server.sh -o /tmp/install-entry-server.sh
-sudo WG_INSTALL_MODE=upgrade WG_ENTRY_PUBLIC_IP=... WG_EXIT_PUBLIC_IP=... \
-  WG_EXIT_TUNNEL_PUB='...' bash /tmp/install-entry-server.sh
-
-# Repair routing only (safe to re-run anytime)
-curl -fsSL .../fix-vpn-routing.sh -o /tmp/fix-vpn-routing.sh
-sudo bash /tmp/fix-vpn-routing.sh --role entry   # or exit | auto
-
-# Deep diagnostics
-curl -fsSL .../diagnose-vpn.sh -o /tmp/diagnose-vpn.sh
-sudo bash /tmp/diagnose-vpn.sh --role entry
-
-# Wrong Endpoint IP in client configs (e.g. old 216.x → current 31.x)
-curl -fsSL .../fix-client-endpoint.sh -o /tmp/fix-ep.sh
-sudo bash /tmp/fix-ep.sh 31.25.93.168:51820
-# or: sudo bash /tmp/fix-ep.sh --old 216.147.121.53 --new 31.25.93.168:51820
-
-sudo bash deploy/backup.sh
-sudo bash deploy/update-panels.sh
-sudo bash deploy/check-sync-panel-styles.sh        # verify panel CSS on disk + HTTP
-sudo bash deploy/check-sync-panel-styles.sh --fix  # sync panels from repo if stale
-sudo bash deploy/restore.sh /etc/wireguard/backups/TIMESTAMP-label
+sudo wg-ops
 ```
 
-Install and upgrade scripts automatically apply routing fixes. Use `fix-vpn-routing.sh` after manual iptables changes or if client traffic is one-way.
+Or non-interactive:
+
+```bash
+# Refresh scripts from the repo
+sudo wg-ops pull
+
+# Validate + diagnose
+sudo wg-ops validate --role runtime
+sudo wg-ops diagnose --role entry
+
+# Repair routing (safe to re-run on the current stack)
+sudo wg-ops fix-routing --role entry   # or exit | auto
+
+# Update client Endpoint after changing entry public IP
+sudo wg-ops fix-endpoint --old OLD_ENTRY_IP --new NEW_ENTRY_IP:51820
+
+# Operational backup of production configs
+sudo wg-ops backup
+sudo wg-ops update-panels
+sudo wg-ops styles
+sudo wg-ops styles --fix
+```
+
+Or call scripts directly under `deploy/` / `/opt/wg-ops/`. Install scripts apply routing for the current architecture. Use `fix-routing` after manual iptables changes or if client traffic is one-way.
 
 ## Performance tuning
 
 After install or when users report slow speeds:
 
 ```bash
-sudo bash deploy/tune-vpn-performance.sh --role entry   # on entry
-sudo bash deploy/tune-vpn-performance.sh --role exit    # on exit
-sudo bash deploy/measure-vpn-bandwidth.sh --role guide  # hop-by-hop test plan
+sudo wg-ops tune --role entry   # on entry
+sudo wg-ops tune --role exit    # on exit
+sudo wg-ops measure --role guide  # hop-by-hop test plan
 ```
 
-This applies routing repair, **persistent** TCP MSS clamp, BBR + 64 MB UDP buffers, server WG MTUs, and runs diagnostics. See **[docs/PERFORMANCE.md](../docs/PERFORMANCE.md)**.
+See **[docs/PERFORMANCE.md](../docs/PERFORMANCE.md)**.
 
 Production clients stay on **twohop** (exit IP). `direct` mode is only for short diagnostic A/B tests.
 
@@ -150,22 +145,18 @@ Production clients stay on **twohop** (exit IP). `direct` mode is only for short
 Removes WireGuard interfaces, web panels, `panel.db`, admin config, all keys and client configs under `/etc/wireguard`, nginx panel site, systemd units, CLI tools in `/usr/local/bin`, and `/opt/wg` + `/opt/wg-src`. Auto-detects entry vs exit server.
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/uninstall-server.sh -o /tmp/uninstall-server.sh
-sudo WG_UNINSTALL_CONFIRM=yes bash /tmp/uninstall-server.sh
+sudo WG_UNINSTALL_CONFIRM=yes wg-ops uninstall
 ```
 
-Optional backup before removal: `WG_UNINSTALL_BACKUP=1` (saved under `/root/wg-backup-*`). Interactive confirm: run without `WG_UNINSTALL_CONFIRM` and type `uninstall` when prompted.
+Optional snapshot before removal: `WG_UNINSTALL_BACKUP=1` (saved under `/root/wg-backup-*`). Interactive confirm: run without `WG_UNINSTALL_CONFIRM` and type `uninstall` when prompted.
 
 System packages (wireguard-tools, nginx, python3, certbot) are **not** removed. Run on **both** entry and exit servers to fully tear down the stack.
 
 ## Connection tests
 
-Quick checks:
-
 ```bash
-curl -fsSL .../test-connectivity.sh -o /tmp/test-connectivity.sh
-sudo bash /tmp/test-connectivity.sh --role exit
-sudo bash /tmp/test-connectivity.sh --role entry
+sudo wg-ops test --role exit
+sudo wg-ops test --role entry
 ```
 
 **End-to-end (on a connected client device, not the server):**
@@ -174,30 +165,26 @@ sudo bash /tmp/test-connectivity.sh --role entry
 curl -4 https://api.ipify.org
 ```
 
-Should show the **exit** server public IP for **twohop** clients (`VPN_MODE=twohop`, default), or the **entry** server public IP for **direct** clients (`VPN_MODE=direct`).
-
-Do **not** use `curl ifconfig.me` on the VPS itself to test VPN — that checks the server's own internet path and may return HTTP 403.
+Should show the **exit** server public IP for **twohop** clients.
 
 ## Change entry / exit server
 
 On the **entry** server:
 
 ```bash
-sudo bash deploy/change-entry-server.sh --new ENTRY_IP:51820
-sudo WG_EXIT_PUBLIC_IP=NEW_EXIT WG_EXIT_TUNNEL_PUB='...' bash deploy/change-exit-server.sh
+sudo wg-ops change-entry --old OLD_IP --new ENTRY_IP:51820
+sudo WG_EXIT_PUBLIC_IP=NEW_EXIT WG_EXIT_TUNNEL_PUB='...' wg-ops change-exit
 ```
 
-After changing exit, on the **new** exit: `add-entry-peer.sh` with this entry's tunnel public key. Remove the old entry peer on the previous exit if replacing it.
+After changing exit, on the **new** exit: `sudo wg-ops add-peer` with this entry's tunnel public key.
 
 ## Multiple configs per user
 
 Admin assigns one or more WireGuard clients per panel user. Users download all assigned `.conf` files from the client panel as **`/configs.zip`**.
 
-Per-client routing: `wg-client add NAME --vpn-mode direct|twohop` (admin **Clients** form includes VPN path).
+Per-client routing: `wg-client add NAME --vpn-mode direct|twohop`.
 
 ## Troubleshooting one-way traffic (TX up, RX stuck)
-
-Symptoms: `wg show wg-clients` on entry shows high **received**, tiny **sent**; client has no internet.
 
 | Check | Command | Expected |
 |-------|---------|----------|
@@ -207,24 +194,20 @@ Symptoms: `wg show wg-clients` on entry shows high **received**, tiny **sent**; 
 | rp_filter on entry | `sysctl net.ipv4.conf.wg-tunnel.rp_filter` | `0` |
 | Docker on entry | `iptables -L DOCKER-USER -n -v` | ACCEPT rules for `wg-clients ↔ wg-tunnel` |
 
-Common causes fixed automatically by `fix-vpn-routing.sh`:
+Common causes fixed by `sudo wg-ops fix-routing`:
 
 1. **Exit:** client subnet routed via default NIC instead of `wg-tunnel`
-2. **Entry:** same subnet routed via provider LAN (`ens160` / `172.16.x.x`) instead of `wg-clients`
+2. **Entry:** same subnet routed via provider LAN instead of `wg-clients`
 3. **Entry:** `rp_filter=2` on `wg-tunnel` drops asymmetric return traffic
-4. **Entry:** Docker `DOCKER-USER` chain blocks forwarded packets before WireGuard rules
+4. **Entry:** Docker `DOCKER-USER` chain blocks forwarded packets
 
-Run `sudo bash deploy/diagnose-vpn.sh --role entry` for a full report.
+Run `sudo wg-ops diagnose --role entry` for a full report.
 
 ## DNS and HTTPS (optional)
 
 **No domain:** panels at `http://ENTRY_IP:8088/login` and `http://ENTRY_IP:8090/admin/login`.
 
 **With domain:** point A record to entry IP; enable Let's Encrypt during install or run `certbot --nginx -d your-domain.com`.
-
-## Legacy script
-
-`install-panel-server.sh` redirects to `install-entry-server.sh`.
 
 ## Config files
 

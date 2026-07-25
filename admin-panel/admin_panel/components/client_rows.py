@@ -7,8 +7,6 @@ from admin_panel.core.labels import label_client_status, label_single_mode, labe
 from admin_panel.core.statuses import ClientState
 from admin_panel.core.wireguard import human_time
 
-CLIENT_COLSPAN = 6  # kept for compatibility with legacy table markup
-
 
 def _badge_class(state_key):
     if state_key == ClientState.ACTIVE:
@@ -288,11 +286,6 @@ def client_list(clients, assigned_names=None, users_by_client_map=None):
 """
 
 
-def client_rows(clients, assigned_names=None, users_by_client_map=None):
-    """Legacy adapter — returns empty table rows; use client_list() instead."""
-    return "", ""
-
-
 def bulk_add_client_form():
     vpn_tabs = _option_tabs(
         "vpn_mode",
@@ -360,7 +353,7 @@ def add_client_form():
   <div class="add-client-fields">
     <label class="field field-name">
       <span class="field-label">{html.escape(t("client.name"))}</span>
-      <input name="client" class="field-input" placeholder="farzad_" required autocomplete="off">
+      <input name="client" class="field-input" placeholder="alice" required autocomplete="off">
     </label>
     <div class="field field-vpn">
       <span class="field-label">{vpn_mode_label}</span>

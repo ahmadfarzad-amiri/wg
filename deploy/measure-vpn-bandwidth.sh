@@ -107,7 +107,7 @@ Results depend on client ISP, entry/exit VPS, CPU, PPS limits, peering,
 distance, loss, and shaping — no fixed Mbps guarantee.
 
 Interpretation:
-  Step1 slow          → upgrade exit plan / provider
+  Step1 slow          → improve exit plan / provider
   Step2 slow, Step1 ok → entry↔exit peering/location; co-locate or change providers
   Step3 ≪ Step2       → tunnel/MTU/CPU issue on WG path
   Step4 ≪ Step3       → client↔entry path or client MTU/loss

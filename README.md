@@ -8,49 +8,58 @@ devices  →  entry VPS (wg-clients + panels)  →  encrypted tunnel  →  exit 
 
 **Repository:** [github.com/ahmadfarzad-amiri/wg](https://github.com/ahmadfarzad-amiri/wg)
 
+Fresh install on clean entry and exit servers.
+
 ---
 
 ## Install order
 
-### 1. Exit VPS first
+On **each** server, install the operator CLI once:
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/install-exit-server.sh \
-  -o /tmp/install-exit-server.sh
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/wg-ops \
+  -o /usr/local/bin/wg-ops && sudo chmod 755 /usr/local/bin/wg-ops
+sudo wg-ops pull
+```
 
-sudo WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP bash /tmp/install-exit-server.sh
+### 1. Exit VPS first
+
+Interactive menu: `sudo wg-ops` → **1. Install exit server**
+
+Or non-interactive:
+
+```bash
+sudo WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP wg-ops install-exit
 ```
 
 Save the **tunnel public key** and **exit IP:51821** printed at the end.
 
 ### 2. Entry VPS second
 
-```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/install-entry-server.sh \
-  -o /tmp/install-entry-server.sh
+Interactive menu: `sudo wg-ops` → **2. Install entry server**
 
+Or non-interactive:
+
+```bash
 sudo WG_ENTRY_PUBLIC_IP=YOUR_ENTRY_IP \
   WG_EXIT_PUBLIC_IP=YOUR_EXIT_IP \
   WG_EXIT_TUNNEL_PUB='PASTE_EXIT_TUNNEL_PUBKEY' \
   WG_ADMIN_PASS='your-admin-password' \
   WG_XRAY_REALITY_SNI=www.microsoft.com \
-  bash /tmp/install-entry-server.sh
+  wg-ops install-entry
 ```
 
 Save the **entry tunnel public key** printed at the end.
 
-> Interactive mode: add `WG_INSTALL_INTERACTIVE=1` before running. Full env var list: [deploy/config.env.example](deploy/config.env.example).
+> Full env var list: [deploy/config.env.example](deploy/config.env.example).
 
 ### 3. Link the tunnel on the exit VPS
 
-Copy the entry tunnel public key from step 2, then on the **exit** server:
-
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main/deploy/add-entry-peer.sh \
-  -o /tmp/add-entry-peer.sh
-
-sudo bash /tmp/add-entry-peer.sh 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
+sudo wg-ops add-peer 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
 ```
+
+Or menu → **27. Add entry peer**.
 
 ---
 
@@ -86,7 +95,7 @@ sudo bash /tmp/add-entry-peer.sh 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
 
 - **Approve users and assign configs** — single or bulk
 - **Bulk client creation** — create up to 50 clients at once from the Clients tab
-- **Xray protocol management** — VLESS+Reality, WebSocket, and Shadowsocks 2022 via the Xray tab; clients auto-created with WireGuard clients
+- **Xray protocol management** — VLESS+Reality, WebSocket, and Shadowsocks 2022 via the Xray tab
 - **Audit log** — every admin action recorded with username, IP, and timestamp
 - **Server tools** — change entry/exit IP from the panel UI or CLI
 
@@ -95,34 +104,23 @@ sudo bash /tmp/add-entry-peer.sh 'ENTRY_TUNNEL_PUBKEY' 'ENTRY_PUBLIC_IP'
 ## Common operations
 
 ```bash
-# Backup
-sudo bash deploy/backup.sh
-
-# Restore
-sudo bash deploy/restore.sh /etc/wireguard/backups/TIMESTAMP-label
-
-# Update panels (entry server only)
-sudo bash deploy/update-panels.sh
-
-# Verify connectivity
-sudo bash deploy/test-connectivity.sh --role entry
-sudo bash deploy/test-connectivity.sh --role exit
-
-# Tune performance (entry and exit)
-sudo bash deploy/tune-vpn-performance.sh
+sudo wg-ops                 # interactive menu
+sudo wg-ops update          # scripts + panels + tools
+sudo wg-ops test --role entry
+sudo wg-ops uninstall       # full remove on this host
+sudo wg-ops status
 ```
+
+> WireGuard’s native tool remains `wg` (e.g. `sudo wg show`).
 
 ### Change entry or exit server
 
 ```bash
-# New entry IP — rewrites all client .conf files
-sudo bash deploy/change-entry-server.sh --new NEW_IP:51820
-
-# New exit VPS (then run add-entry-peer.sh on the new exit)
-sudo WG_EXIT_PUBLIC_IP=NEW_EXIT_IP WG_EXIT_TUNNEL_PUB='...' bash deploy/change-exit-server.sh
+sudo wg-ops change-entry --old OLD_IP --new NEW_IP:51820
+sudo WG_EXIT_PUBLIC_IP=NEW_EXIT_IP WG_EXIT_TUNNEL_PUB='...' wg-ops change-exit
 ```
 
-Or use **Admin panel → Tools** for the same operations without SSH.
+Or use **Admin panel → Tools**.
 
 ### Per-client VPN mode
 
@@ -133,15 +131,15 @@ Or use **Admin panel → Tools** for the same operations without SSH.
 
 ```bash
 sudo wg-client set-mode alice twohop
-# Diagnostic only:
-sudo wg-client set-mode alice direct
+sudo wg-client set-mode alice direct   # diagnostic only
 sudo wg-client sync-vpn-modes
 ```
 
+### Uninstall
+
 ```bash
-# Migrate / repair dataplane after upgrades
-sudo bash deploy/migrate-vpn-stack.sh --role entry
-sudo bash deploy/diagnose-vpn.sh --role entry
+sudo wg-ops uninstall
+# or: sudo WG_UNINSTALL_CONFIRM=yes wg-ops uninstall
 ```
 
 ---
@@ -153,9 +151,8 @@ sudo bash deploy/diagnose-vpn.sh --role entry
 | **[docs/README.md](docs/README.md)** | Documentation index |
 | **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** | VPN users (client panel) |
 | **[docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)** | Administrators (admin panel) |
-| **[docs/OPERATIONS.md](docs/OPERATIONS.md)** | Server install, backup, migration |
+| **[docs/OPERATIONS.md](docs/OPERATIONS.md)** | Server install, ops, troubleshooting |
 | **[docs/PERFORMANCE.md](docs/PERFORMANCE.md)** | Two-hop throughput — MTU, BBR, hop measurements |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | How the two-hop stack works |
-| **[docs/ASSESSMENT.md](docs/ASSESSMENT.md)** | Packet path and bottleneck analysis |
 | **[docs/FRESH_DEPLOYMENT.md](docs/FRESH_DEPLOYMENT.md)** | Clean entry/exit install procedure |
 | **[deploy/README-DEPLOY.md](deploy/README-DEPLOY.md)** | Detailed script reference |

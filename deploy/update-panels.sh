@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Update panel code without touching WireGuard keys.
+# Update panel code, CLI tools, and wg-ops without touching WireGuard keys.
 # Usage: sudo bash deploy/update-panels.sh
-#        curl -fsSL .../deploy/update-panels.sh | sudo bash
+#        sudo wg-ops update-panels
 set -eo pipefail
 
-# curl | bash: save to a temp file and re-run so stdin is not the script body.
 if [[ -z "${WG_DEPLOY_REEXEC:-}" && ! -t 0 ]]; then
   export WG_DEPLOY_REEXEC=1
   GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@main}"
@@ -37,18 +36,24 @@ require_root
 
 INSTALL_DIR="${WG_INSTALL_DIR:-/opt/wg}"
 ENV_FILE="/etc/wireguard/entry-server.env"
+REPO_DIR="${WG_REPO_DIR:-/opt/wg-src}"
 
 [[ -f "$ENV_FILE" ]] || die "Not an entry server ($ENV_FILE missing)"
 
-REPO_DIR="${WG_REPO_DIR:-/opt/wg-src}"
-if [[ ! -f "$REPO_DIR/client-panel/app.py" ]]; then
-  if [[ -f "$SCRIPT_DIR/../client-panel/app.py" ]]; then
-    REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-  else
-    install_packages git curl
-    clone_or_update_repo "${WG_GITHUB_REPO:-$GITHUB_REPO_URL}" "${WG_GITHUB_BRANCH:-$GITHUB_BRANCH}" "$REPO_DIR"
-  fi
+install_packages git curl rsync
+
+# Prefer a full repo checkout; always refresh when possible.
+if [[ -f "$SCRIPT_DIR/../client-panel/app.py" && -d "$SCRIPT_DIR/../.git" ]]; then
+  REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+  clone_or_update_repo "${WG_GITHUB_REPO:-$GITHUB_REPO_URL}" "${WG_GITHUB_BRANCH:-$GITHUB_BRANCH}" "$REPO_DIR"
+elif [[ -f "$SCRIPT_DIR/../client-panel/app.py" ]]; then
+  REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+  log "Using local repo tree at $REPO_DIR"
+else
+  clone_or_update_repo "${WG_GITHUB_REPO:-$GITHUB_REPO_URL}" "${WG_GITHUB_BRANCH:-$GITHUB_BRANCH}" "$REPO_DIR"
 fi
+
+[[ -f "$REPO_DIR/client-panel/app.py" ]] || die "Panel sources missing under $REPO_DIR"
 
 log "Updating panels in $INSTALL_DIR from $REPO_DIR"
 mkdir -p "$INSTALL_DIR"
@@ -62,11 +67,14 @@ rsync -a --delete \
   --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
   "$REPO_DIR/wg_common/" "$INSTALL_DIR/wg_common/"
 
+install_bin_tools "$REPO_DIR/client-panel/bin"
+install_wg_ops "$REPO_DIR/deploy"
+
 systemctl restart wg-panel wg-admin-panel
 log "Panels restarted."
 if [[ -f "$INSTALL_DIR/client-panel/client_panel/config/settings.py" ]]; then
   _ver="$(grep -E '^VERSION[[:space:]]*=' "$INSTALL_DIR/client-panel/client_panel/config/settings.py" \
     | sed -E "s/.*[\"']([^\"']+)[\"'].*/\1/" | head -1)"
   log "Client panel VERSION (CSS cache bust): ${_ver:-unknown}"
-  log "Verify UI: sudo bash ${SCRIPT_DIR}/check-sync-panel-styles.sh"
 fi
+log "Done. Optional UI check: sudo wg-ops styles"
