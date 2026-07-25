@@ -41,12 +41,12 @@ Optional: point a DNS A record at the entry IP if you want HTTPS panels later.
 Run on **entry** and **exit**:
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8/deploy/wg-ops \
+curl -fsSL https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.9/deploy/wg-ops \
   -o /usr/local/bin/wg-ops && sudo chmod 755 /usr/local/bin/wg-ops
 sudo wg-ops pull
 ```
 
-`@v1.0.8` is the current pinned release on jsDelivr (see `deploy/repo.conf`).  
+`@v1.0.9` is the current pinned release on jsDelivr (see `deploy/repo.conf`).  
 `wg-ops pull` downloads the full script set into `/opt/wg-ops` from that same CDN base.
 
 Then either:
@@ -214,4 +214,4 @@ sudo wg-ops measure --role guide
 | End-user help | [User guide](USER_GUIDE.md) |
 
 Full environment variable list: after `wg-ops pull`, see `/opt/wg-ops/config.env.example`  
-or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8/deploy/config.env.example
+or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.9/deploy/config.env.example

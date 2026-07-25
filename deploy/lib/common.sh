@@ -11,7 +11,7 @@ fi
 GITHUB_OWNER="${GITHUB_OWNER:-ahmadfarzad-amiri}"
 GITHUB_REPO_NAME="${GITHUB_REPO_NAME:-wg}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
-GITHUB_CDN_REF="${GITHUB_CDN_REF:-v1.0.8}"
+GITHUB_CDN_REF="${GITHUB_CDN_REF:-v1.0.9}"
 GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/${GITHUB_OWNER}/${GITHUB_REPO_NAME}.git}"
 # jsDelivr CDN mirrors GitHub and works where raw.githubusercontent.com is blocked (e.g. Iran).
 # Pin GITHUB_CDN_REF to a semver tag (not @latest) — jsDelivr @latest purge is often throttled.
@@ -412,7 +412,7 @@ fetch_deploy_helper_scripts() {
 source_deploy_lib() {
   local script_ref="${1:-}"
   # jsDelivr works where raw.githubusercontent.com is blocked (Iran, etc.)
-  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8}"
+  GITHUB_RAW_BASE="${GITHUB_RAW_BASE:-https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.9}"
   if [[ -n "$script_ref" && -f "$(dirname "$script_ref")/lib/common.sh" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "$script_ref")" && pwd)"
     # shellcheck source=lib/common.sh
@@ -633,6 +633,10 @@ wg_entry_tunnel_routes_down() {
 wg_entry_tunnel_routes_up() {
   local client_cidr="${1:-10.10.10.0/24}"
   local tunnel_if="${2:-wg-tunnel}"
+  if ! ip link show "$tunnel_if" >/dev/null 2>&1; then
+    warn "Tunnel routes skipped — $tunnel_if is not up (start WireGuard first)"
+    return 1
+  fi
   ip rule del from "$client_cidr" lookup 100 priority 100 2>/dev/null || true
   ip rule add from "$client_cidr" lookup 100 priority 100
   ip route del default dev "$tunnel_if" table 100 2>/dev/null || true
@@ -1101,20 +1105,52 @@ wg_sync_all_client_modes() {
   fi
 }
 
+# Ensure wg-quick@IF is active; clear orphans and reinstall tolerant rp_filter drop-ins.
+ensure_wg_quick_running() {
+  local ifname="$1"
+  local conf="/etc/wireguard/${ifname}.conf"
+  local unit="wg-quick@${ifname}"
+  [[ -f "$conf" ]] || die "WireGuard config missing: $conf"
+  wg_install_rp_filter_systemd_hooks 2>/dev/null || true
+  if systemctl is-active --quiet "$unit" 2>/dev/null && ip link show "$ifname" >/dev/null 2>&1; then
+    return 0
+  fi
+  if ip link show "$ifname" >/dev/null 2>&1; then
+    log "Clearing orphan interface ${ifname}"
+    wg-quick down "$ifname" 2>/dev/null || true
+    ip link del "$ifname" 2>/dev/null || true
+  fi
+  systemctl reset-failed "$unit" 2>/dev/null || true
+  if systemctl start "$unit" 2>/dev/null && ip link show "$ifname" >/dev/null 2>&1; then
+    log "Started ${unit}"
+    return 0
+  fi
+  # Fallback without systemd (still applies conf PostUp).
+  log "systemctl start ${unit} failed — trying wg-quick up"
+  wg_quick_up "$conf" "$ifname"
+}
+
 apply_entry_vpn_routing_fix() {
   local client_if="${WG_IF:-wg-clients}"
   local tunnel_if="${WG_TUNNEL_IF:-wg-tunnel}"
   local client_cidr="${WG_CLIENT_CIDR:-10.10.10.0/24}"
-  wg_apply_ip_forward
-  wg_entry_docker_forward_rules_up "$client_if" "$tunnel_if"
-  wg_entry_forward_rules_up "$client_if" "$tunnel_if"
-  wg_entry_tunnel_routes_up "$client_cidr" "$tunnel_if"
-  wg_entry_client_subnet_route_up "$client_cidr" "$client_if"
+
+  # Conf/hooks first, then bring interfaces up, then live routes.
   strip_wrong_entry_tunnel_peer_block "/etc/wireguard/${tunnel_if}.conf"
   strip_rp_filter_from_wg_postup "/etc/wireguard/${tunnel_if}.conf"
   strip_rp_filter_from_wg_postup "/etc/wireguard/${client_if}.conf"
   fix_entry_tunnel_postup_in_conf "/etc/wireguard/${tunnel_if}.conf"
   ensure_entry_client_postup_in_conf "/etc/wireguard/${client_if}.conf" "$client_if" "$client_cidr"
+  wg_install_rp_filter_systemd_hooks
+
+  ensure_wg_quick_running "$tunnel_if"
+  ensure_wg_quick_running "$client_if"
+
+  wg_apply_ip_forward
+  wg_entry_docker_forward_rules_up "$client_if" "$tunnel_if"
+  wg_entry_forward_rules_up "$client_if" "$tunnel_if"
+  wg_entry_tunnel_routes_up "$client_cidr" "$tunnel_if" || true
+  wg_entry_client_subnet_route_up "$client_cidr" "$client_if" || true
   wg_apply_rp_filter_for_wg
   wg_install_docker_forward_systemd
   wg_apply_vpn_performance
@@ -1136,6 +1172,8 @@ apply_exit_vpn_routing_fix() {
   def_if="$(default_route_iface)"
   def_if="${def_if:-eth0}"
 
+  ensure_wg_quick_running "$tunnel_if"
+
   wg_apply_ip_forward
   # Collapse duplicate NAT / FORWARD rules from older PostUp + fix runs.
   wg_iptables_delete_all -t nat POSTROUTING -s "$client_cidr" -o "$def_if" -j MASQUERADE
@@ -1144,7 +1182,7 @@ apply_exit_vpn_routing_fix() {
   wg_iptables_delete_all FORWARD -o "$tunnel_if" -j ACCEPT
   iptables -A FORWARD -i "$tunnel_if" -j ACCEPT
   iptables -A FORWARD -o "$tunnel_if" -j ACCEPT
-  wg_exit_tunnel_routes_up "$client_cidr" "$tunnel_peer_ip" "$tunnel_if"
+  wg_exit_tunnel_routes_up "$client_cidr" "$tunnel_peer_ip" "$tunnel_if" || true
   wg_apply_vpn_performance
   ensure_wg_conf_permissions
 

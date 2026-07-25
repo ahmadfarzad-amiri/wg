@@ -31,17 +31,17 @@ Native WireGuard CLI remains `wg` (example: `sudo wg show`).
 
 | What | Source | Notes |
 |------|--------|--------|
-| `wg-ops` bootstrap + `pull` / `update` scripts | jsDelivr **pinned tag** (e.g. `@v1.0.8`) | Avoid `@latest` — jsDelivr purge is often throttled and can stick on an old release |
+| `wg-ops` bootstrap + `pull` / `update` scripts | jsDelivr **pinned tag** (e.g. `@v1.0.9`) | Avoid `@latest` — jsDelivr purge is often throttled and can stick on an old release |
 | Panel code (`update-panels`, entry install) | Git branch `main` | Clone into `/opt/wg-src` (GitHub or `gh-proxy.com`) |
 
 Default CDN base (bump with each release in `deploy/repo.conf`):
 
-`https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8`
+`https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.9`
 
 If `wg-ops update` still shows an old version (stuck `@latest` cache), force one pull:
 
 ```bash
-sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8' wg-ops pull
+sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.9' wg-ops pull
 ```
 
 ---
@@ -301,7 +301,7 @@ Runtime file on entry: `/etc/wireguard/entry-server.env`
 | `WG_ENABLE_MSS_CLAMP` | `1` | MSS clamp service |
 
 Full list: `/opt/wg-ops/config.env.example`  
-or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8/deploy/config.env.example
+or https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.9/deploy/config.env.example
 
 ---
 
@@ -316,14 +316,14 @@ For each release:
 3. On servers still stuck on an old `@latest` cache, pull once with an explicit base:
 
 ```bash
-sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8' wg-ops pull
+sudo WG_RAW_BASE='https://cdn.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.9' wg-ops pull
 sudo wg-ops update
 ```
 
 Optional purge (often throttled):
 
 ```bash
-curl 'https://purge.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.8/deploy/wg-ops'
+curl 'https://purge.jsdelivr.net/gh/ahmadfarzad-amiri/wg@v1.0.9/deploy/wg-ops'
 ```
 
 Or use the [jsDelivr purge tool](https://www.jsdelivr.com/tools/purge).
